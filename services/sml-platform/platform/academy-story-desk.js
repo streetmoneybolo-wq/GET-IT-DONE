@@ -122,7 +122,7 @@ function createStoryDesk({
   universe, candles, gamma = null, shortData = null, finra = null, institutional = null, darkPool = null, smc = null, sentiment = null, earnings = null, playbook = null, direction = null, runner = null, company = null,
   heat = null, publisher = null, polisher = null, dm = null, ownerIds = [], store = null, marketState = null, now = Date.now, logger = () => {},
   perTick = 18, maxPerTick = 3, maxPerDay = 12, dedupeDays = 3, autopublish = false, windowFrom = 420, windowTo = 990, siteUrl = 'https://stockmarketloop.com', byline = 'Vaughn McNair', publication = 'Making Easy Money',
-  insights = {}, chartEndpoint = '', discordUrl = '', authorPath = '/n/grandmasterobi/',
+  insights = {}, chartEndpoint = '', discordUrl = '', authorPath = '/n/grandmasterobi/', writer = null,
   /* scheduled pieces: [{ at: minutes into the ET day, subjects: ['the market', 'nasdaq'] }], each slot once per trading
      day in the hour after its time (the market-open and the market-close reads) */
   schedule = [], settlePerTick = 20
@@ -229,7 +229,10 @@ function createStoryDesk({
     ]);
     const { media, gifInfo, posterMedia } = gif;
     const coverUrl = posterMedia && posterMedia.url ? posterMedia.url : (media && media.url ? media.url : '');
-    const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author: byline, publication, siteUrl, authorUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic, record: recordNow() });
+    /* the prose: the model writes as the byline from the fact sheet (checked: no new numbers, no repeats, no padding); the house writer otherwise */
+    let narrative = null;
+    if (writer && typeof writer.write === 'function') { try { narrative = await writer.write(desk2.factSheet({ story, c, dossier, record: recordNow() })); } catch (error) { logger('warn', 'story_writer_failed', { symbol: c.symbol, error: String(error && error.message || error) }); narrative = null; } }
+    const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author: byline, publication, siteUrl, authorUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic, record: recordNow(), narrative });
     const guess = compose('');
     const pkg = file ? compose(`${siteUrl}${authorPath}${guess.slug}/`) : guess;
     const symLine = `${c.symbol} price-action scenario to $${story.pt}`;
@@ -314,7 +317,7 @@ function createStoryDesk({
         const c = cands.find((x) => x.symbol === s.symbol);
         const built = await produce(s, c);
         const filed = await file(s, c, built);
-        results.push({ ...filed, frames: built.gifFrames });
+        results.push({ ...filed, frames: built.gifFrames, writer: built.pkg && built.pkg.narrative ? built.pkg.narrative.source : 'house' });
         // a filing that failed (credential rejected, site down) is not "written": the next tick tries the name again
         if (!filed.error) { state.written[s.symbol + ':' + s.angle] = t; state.count += 1; logOutcome(s, c, { filed: true, letterId: filed.letterId, url: filed.url }); }
         note(`${s.symbol} ${s.angle} PT $${s.pt} rank ${s.rank}: ${filed.error || (filed.published ? 'published' : 'draft')} ${filed.url || ''}`, { symbol: s.symbol, angle: s.angle, letterId: filed.letterId });

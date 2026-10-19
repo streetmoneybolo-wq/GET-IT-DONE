@@ -55,6 +55,7 @@ const { createCandleRecap } = require('./academy-candle-recap');
 const { createMarketDirectionV2 } = require('./academy-market-direction-v2');
 const { createStoryDesk, createLettersPublisher, createPolisher } = require('./academy-story-desk');
 const articleChart = require('./academy-article-chart');
+const { createArticleWriter } = require('./academy-article-writer');
 const { createNewsHeat } = require('./academy-story-engine');
 const POPOUT_BASE = (() => { const u = String(process.env.SML_ACADEMY_POPOUT_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, ''); return /^https:\/\/[a-z0-9.-]+$/i.test(u) ? u : 'https://sml-platform-api.onrender.com'; })();
 const { createPgStateStore } = require('./academy-state-store');
@@ -5574,6 +5575,8 @@ async function main() {
       memAlgo: async (s) => { const r = await sentimentCandles(s, '1D'); return r && Array.isArray(r.bars) && r.bars.length >= 60 ? require('./academy-mem-algo').analyze(r.bars, 'swing', {}, '1D', {}) : null; }
     },
     chartEndpoint: config.academyTrialPublicUrl ? config.academyTrialPublicUrl + '/academy-activity/article-chart' : '',
+    /* the prose is written by the model as the byline from the fact sheet (SML_STORY_WRITER=off keeps the house writer only) */
+    writer: createArticleWriter({ ai: config.anthropicApiKey && String(process.env.SML_STORY_WRITER || 'on').toLowerCase() !== 'off' ? { apiKey: config.anthropicApiKey, model: config.academyAskModel } : null, logger: log }),
     discordUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || ''),
     /* the scheduled reads: the market and the Nasdaq after the open (9:45 ET) and into the close (15:50 ET); SML_STORY_SCHEDULE=off skips them */
     schedule: String(process.env.SML_STORY_SCHEDULE || 'on').toLowerCase() === 'off' ? [] : [{ at: 585, subjects: ['the market', 'nasdaq'] }, { at: 950, subjects: ['the market', 'nasdaq'] }]
@@ -5582,7 +5585,7 @@ async function main() {
   if (storyDesk) {
     let storySkip = '';
     const runStoryDesk = () => storyDesk.tick().then((r) => {
-      if (r && !r.skipped) { storySkip = ''; log('info', 'story_desk_tick', { scanned: r.scanned, candidates: r.candidates, ranked: r.ranked, filed: r.filed, results: (r.results || []).map((x) => x.symbol + ':' + x.angle + ':' + (x.error || (x.published ? 'published' : 'draft'))) }); }
+      if (r && !r.skipped) { storySkip = ''; log('info', 'story_desk_tick', { scanned: r.scanned, candidates: r.candidates, ranked: r.ranked, filed: r.filed, results: (r.results || []).map((x) => x.symbol + ':' + x.angle + ':' + (x.error || (x.published ? 'published' : 'draft')) + (x.writer ? ':' + x.writer : '')) }); }
       else if (r && r.skipped && r.skipped !== storySkip) { storySkip = r.skipped; log('info', 'story_desk_skipped', { why: r.skipped }); }
       else if (!r) log('info', 'story_desk_skipped', { why: 'busy_or_failed' });
     }).catch((error) => log('warn', 'story_desk_tick_failed', { error }));

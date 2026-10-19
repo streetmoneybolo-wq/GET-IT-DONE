@@ -33,61 +33,72 @@ test('a topic or a ticker resolves to a subject', () => {
   assert.equal(D.resolveSubject('something long and weird!!'), null); assert.equal(D.resolveSubject(''), null);
 });
 
-test('the composed piece reads the whole dossier: every desk section, the modules, the sources, no machine tells', () => {
+test('the composed piece is a letter, not a report: a lede with a side, at most six sections, the numbers inside sentences, one disclaimer, no glossary, no FAQ, no sentence twice', () => {
   const a = compose();
-  for (const s of ['What the data says', 'What the smart money is doing', 'The dark-pool tape', "The short seller's problem", 'Options: what the dealers have to do', 'The earnings angle', 'Why it matters: the mechanism', 'The speculation', 'The bull case and the bear case', 'What kills it', 'What to watch next session', 'The crowd', 'Insiders and filings', 'On the chart', 'Bottom line', 'Questions readers ask', 'Keep reading', 'Glossary', 'Sources']) assert.ok(a.sections.includes(s), 'section ' + s);
-  assert.deepEqual(a.modules, ['board', 'chart', 'meters', 'tabs', 'countdown', 'bullbear', 'tracker', 'killswitch', 'poll']);
-  assert.ok(a.wordCount >= 1100, 'long enough: ' + a.wordCount); assert.ok(a.readMinutes >= 5);
-  assert.match(a.bodyHtml, /<svg class="mem-chart"/); assert.match(a.bodyHtml, /data-live-endpoint="https:\/\/sml-platform-api\.onrender\.com\/academy-activity\/article-chart"/); assert.match(a.bodyHtml, /class="mem-gauge"/);
-  assert.match(a.bodyHtml, /Smart money is accumulating/); assert.match(a.bodyHtml, /VPIN 0\.44 \(informed\)/); assert.match(a.bodyHtml, /HEAVY: \$4\.1M block/); assert.match(a.bodyHtml, /Squeeze risk scores <strong>71 of 100<\/strong>/); assert.match(a.bodyHtml, /Revenue grew 24%/); assert.match(a.bodyHtml, /insiders buying/); assert.match(a.bodyHtml, /Bull flag, Hammer/);
-  assert.match(a.bodyHtml, /class="mem-tabs"/); assert.match(a.bodyHtml, /<input type="radio" name="mem-tab-\d+"/); assert.match(a.bodyHtml, /THE BULL CASE/); assert.match(a.bodyHtml, /THE BEAR CASE/); assert.match(a.bodyHtml, /KILL SWITCH/); assert.match(a.bodyHtml, /EARNINGS COUNTDOWN/); assert.match(a.bodyHtml, /YOUR CALL ON \$ABCD/); assert.match(a.bodyHtml, /SHARE THIS READ/); assert.match(a.bodyHtml, /LABELLED SPECULATION/);
-  for (const h of ['https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001234567', 'https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data/daily-short-sale-volume-files', 'https://www.nasdaq.com/market-activity/stocks/abcd/short-interest', 'https://www.cboe.com/delayed_quotes/abcd/quote_table', 'https://www.investor.gov/introduction-investing/investing-basics/glossary/short-sales', 'https://abcd.example', 'https://stockmarketloop.com/stocks/abcd/', 'https://discord.gg/makingeasymoney']) assert.ok(a.links.some((l) => l.startsWith(h)), 'link ' + h);
-  assert.match(a.bodyHtml, /<a href="https:\/\/www\.sec\.gov[^"]+" rel="noopener" target="_blank">/); assert.ok(!/href="https:\/\/stockmarketloop\.com\/stocks\/abcd\/" rel=/.test(a.bodyHtml), 'internal links carry no noopener');
-  const text = a.bodyHtml.replace(/<script>[\s\S]*<\/script>/, '').replace(/<svg[\s\S]*?<\/svg>/g, '');
-  assert.ok(!/—/.test(text), 'no em dash'); assert.ok(!/\b(delve|tapestry|landscape|in conclusion|it is important to note|as an AI)\b/i.test(text), 'no machine phrases');
-  assert.ok(!/earn money|guaranteed|guarantee\b/i.test(text), 'no promises');
-  assert.equal((a.bodyHtml.match(/<script/g) || []).length, 1, 'one enhancement script at the end'); assert.ok(a.js.includes('localStorage') && a.js.includes('data-live-endpoint') && !/<\/script/.test(a.js));
-  assert.ok(a.faq.length >= 4 && a.faq.every((f) => f.q.includes('$ABCD') || f.q.includes('Abcd')));
+  assert.ok(a.sections.length >= 4 && a.sections.length <= 6, 'sections: ' + a.sections.join(' | ')); assert.equal(a.sections[a.sections.length - 1], 'Bottom line');
+  assert.ok(!a.sections.some((h) => /what the data says|key takeaways|questions readers ask|glossary|sources|the crowd|insiders and filings/i.test(h)), 'no template headings');
+  assert.deepEqual(a.modules, ['board', 'chart', 'countdown', 'bullbear', 'tracker', 'killswitch', 'poll']);
+  assert.ok(a.wordCount >= 700 && a.wordCount <= 1500, 'a readable length: ' + a.wordCount);
+  const text = a.textHtml.replace(/<[^>]+>/g, ' ').replace(/&#39;/g, "'").replace(/\s+/g, ' ');
+  assert.equal((text.match(/not financial advice/gi) || []).length, 1, 'one disclaimer'); assert.ok(!/Not a forecast|LABELLED SPECULATION|argues with itself/i.test(a.bodyHtml), 'no stacked disclaimers, no meta');
+  assert.ok(/\bI\b/.test(text), 'first person'); assert.ok(!/—/.test(text), 'no em dash'); assert.ok(!/\b(delve|tapestry|landscape|in conclusion)\b/i.test(text));
+  const sentences = text.split(/(?<=[.!?])\s+/).map((x) => x.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '')).filter((x) => x.split(' ').length >= 6);
+  assert.equal(new Set(sentences).size, sentences.length, 'no sentence appears twice');
+  assert.match(a.bodyHtml, /<svg class="mem-chart"/); assert.match(a.bodyHtml, /data-live-endpoint="https:\/\/sml-platform-api\.onrender\.com\/academy-activity\/article-chart"/);
+  assert.match(a.bodyHtml, /Smart money is accumulating/); assert.match(a.bodyHtml, /HEAVY: \$4\.1M block/); assert.match(a.bodyHtml, /THE BULL CASE/); assert.match(a.bodyHtml, /KILL SWITCH/); assert.match(a.bodyHtml, /EARNINGS COUNTDOWN/); assert.match(a.bodyHtml, /YOUR CALL ON \$ABCD/); assert.match(a.bodyHtml, /SHARE THIS READ/);
+  for (const h of ['https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001234567', 'https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data/daily-short-sale-volume-files', 'https://www.nasdaq.com/market-activity/stocks/abcd/short-interest', 'https://www.cboe.com/delayed_quotes/abcd/quote_table', 'https://abcd.example', 'https://stockmarketloop.com/stocks/abcd/', 'https://discord.gg/makingeasymoney']) assert.ok(a.links.some((l) => l.startsWith(h)), 'link ' + h);
+  assert.ok(!a.links.some((l) => /investor\.gov/.test(l)), 'no explainer links: the readers know what gamma is');
+  assert.equal((a.bodyHtml.match(/<script/g) || []).length, 1, 'one enhancement script at the end'); assert.ok(a.js.includes('localStorage') && !/<\/script/.test(a.js));
+  assert.equal(a.narrative.source, 'house'); assert.deepEqual(a.faq, []);
+  const rich = compose({ rich: true }); assert.ok(rich.modules.includes('meters') && rich.modules.includes('tabs'), 'the meters and the data strip only on request');
 });
 
-test('the head carries the title, description, canonical, social tags and NewsArticle + FAQPage + BreadcrumbList JSON-LD; the document is one page', () => {
+test('a narrative from the model is laid out as given: its title, its headings, its bull and bear lines, its kill list', () => {
+  const W = require('./academy-article-writer');
+  const sheet = W.factSheet({ story: story(), c: base, dossier });
+  const n = { ...W.housePiece(sheet, 5), title: '$ABCD: dealers are short gamma and $13.00 is the strike that matters', dek: 'A dek of my own.', sections: [{ heading: 'What I am watching', paragraphs: ['Paragraph one about $ABCD at $12.40.'] }, { heading: 'Where it goes', paragraphs: ['The path to $13.00.'] }, { heading: 'What makes me wrong', paragraphs: ['A close under $11.80.'] }], bull: ['Dealers short gamma'], bear: ['Earnings in 6 days'], kill: ['Loses $11.80', 'Tape flips', 'Volume dies'], source: 'ai', checked: { ok: true, reasons: [] } };
+  const a = compose({ narrative: n });
+  assert.equal(a.title, n.title); assert.equal(a.dek, 'A dek of my own.'); assert.deepEqual(a.sections, ['What I am watching', 'Where it goes', 'What makes me wrong', 'Bottom line']); assert.equal(a.narrative.source, 'ai');
+  assert.match(a.bodyHtml, /<li>Dealers short gamma<\/li>/); assert.match(a.bodyHtml, /<li>Earnings in 6 days<\/li>/); assert.match(a.bodyHtml, /<span>Loses \$11\.80<\/span>/);
+  const killAt = a.bodyHtml.indexOf('KILL SWITCH'), wrongAt = a.bodyHtml.indexOf('<h2>What makes me wrong</h2>'); assert.ok(killAt > wrongAt, 'the kill switch sits under the section that names the exit');
+});
+
+test('the head carries the title, description, canonical, social tags and NewsArticle + BreadcrumbList JSON-LD; the document is one page', () => {
   const a = compose();
   assert.match(a.headHtml, /^<title>[^<]{10,60}<\/title>/); assert.match(a.headHtml, /<meta name="description" content="[^"]{110,155}">/); assert.match(a.headHtml, /<link rel="canonical" href="https:\/\/stockmarketloop\.com\/n\/grandmasterobi\/abcd\/">/);
   assert.match(a.headHtml, /property="og:image" content="https:\/\/stockmarketloop\.com\/wp-content\/uploads\/p\.png"/); assert.match(a.headHtml, /name="twitter:card" content="summary_large_image"/); assert.match(a.headHtml, /name="news_keywords"/); assert.match(a.headHtml, /property="article:tag" content="ABCD"/);
   const ld = JSON.parse(/<script type="application\/ld\+json">(.*?)<\/script>/s.exec(a.headHtml)[1]);
-  assert.deepEqual(ld.map((x) => x['@type']), ['NewsArticle', 'FAQPage', 'BreadcrumbList']);
-  assert.equal(ld[0].about.tickerSymbol, 'ABCD'); assert.equal(ld[0].author.name, 'Vaughn McNair'); assert.ok(ld[0].wordCount > 1000); assert.ok(ld[1].mainEntity.length >= 4); assert.equal(ld[2].itemListElement[2].name, '$ABCD');
+  assert.deepEqual(ld.map((x) => x['@type']), ['NewsArticle', 'BreadcrumbList']);
+  assert.equal(ld[0].about.tickerSymbol, 'ABCD'); assert.equal(ld[0].author.name, 'Vaughn McNair'); assert.ok(ld[0].wordCount > 600); assert.equal(ld[1].itemListElement[2].name, '$ABCD');
   assert.match(a.document, /^<!doctype html>\n<html lang="en">/); assert.ok(a.document.includes(a.headHtml) && a.document.includes(a.css) && a.document.includes(a.bodyHtml));
   assert.ok(a.css.includes('.mem-article{') && a.css.includes('.mem-tabs') && !/url\(|@import/.test(a.css), 'self-contained css');
   assert.equal(a.slug.length > 10, true); assert.equal(a.seo.meta_title.length <= 60, true);
 });
 
-test('the Loop Letters blocks carry the prose as reader blocks and each module as custom code with the stylesheet', () => {
+test('the Loop Letters blocks carry the prose as reader blocks and each module as sanitizer-safe custom code with the stylesheet', () => {
   const a = compose();
   const types = a.blocks.map((b) => b.type);
   assert.equal(types[0], 'custom_code'); assert.ok(types.filter((t) => t === 'custom_code').length === a.modules.length);
-  assert.ok(a.blocks.some((b) => b.type === 'heading' && b.text === 'What the smart money is doing')); assert.ok(a.blocks.some((b) => b.type === 'list'));
-  /* the letters sanitizer drops svg, iframe, script, input and details: no module block may depend on them */
+  assert.ok(a.blocks.some((b) => b.type === 'heading' && b.text === 'Bottom line')); assert.ok(a.blocks.some((b) => b.type === 'heading' && b.level === 2 && b.text === a.sections[0]));
   for (const b of a.blocks.filter((x) => x.type === 'custom_code')) assert.ok(!/<svg|<iframe|<script|<input|<details|style="/.test(b.html), b.id + ' is sanitizer-safe');
   const chartBlock = a.blocks.find((b) => b.id === 'mod-chart'); assert.match(chartBlock.html, /<img src="https:\/\/stockmarketloop\.com\/wp-content\/uploads\/p\.png"/); assert.match(chartBlock.html, /CHART · AS OF PUBLICATION/); assert.ok(chartBlock.css.startsWith(a.css)); assert.ok(chartBlock.height >= 400);
-  const meters = a.blocks.find((b) => b.id === 'mod-meters'); assert.match(meters.html, /class="mem-ring r0"/); assert.match(meters.css, /\.mem-ring\.r0\{background:conic-gradient\(#ffb04a 64%/); assert.match(meters.css, /\.mem-ring\.r1\{background:conic-gradient\(#19c37d 71%/);
-  const tabs = a.blocks.find((b) => b.id === 'mod-tabs'); assert.match(tabs.html, /class="mem-strip"/); assert.match(tabs.html, /<h3>TAPE<\/h3>/);
   const track = a.blocks.find((b) => b.id === 'mod-tracker'); assert.match(track.css, /\.mem-track-bar i\{left:[\d.]+%\}/); assert.ok(!/data-live/.test(track.html));
   const kill = a.blocks.find((b) => b.id === 'mod-killswitch'); assert.match(kill.html, /class="mem-check"/);
   const poll = a.blocks.find((b) => b.id === 'mod-poll'); assert.match(poll.html, /href="https:\/\/discord\.gg\/makingeasymoney"/);
-  assert.match(a.bodyHtml, /<iframe class="mem-chart-embed" [^>]*src="https:\/\/sml-platform-api\.onrender\.com\/academy-activity\/article-chart-embed\?symbol=ABCD"/, 'the page keeps the embed, at the right path');
-  const faqHeading = a.blocks.find((b) => b.type === 'heading' && b.level === 3 && /Is \$ABCD a buy/.test(b.text)); assert.ok(faqHeading, 'faq questions become headings');
+  assert.ok(!a.blocks.some((b) => b.id === 'mod-meters' || b.id === 'mod-tabs'));
+  const rich = compose({ rich: true }); const meters = rich.blocks.find((b) => b.id === 'mod-meters'); assert.match(meters.html, /class="mem-ring r0"/); assert.match(meters.css, /\.mem-ring\.r0\{background:conic-gradient\(#ffb04a 64%/); assert.match(rich.blocks.find((b) => b.id === 'mod-tabs').html, /class="mem-strip"/);
   assert.ok(a.blocks.some((b) => b.type === 'paragraph' && b.spans.some((s) => s.mark === 'link' && /sec\.gov/.test(s.href))), 'links survive into spans');
   assert.ok(!a.blocks.some((b) => b.type === 'paragraph' && b.spans.some((s) => /<|>/.test(s.text))), 'no tag soup in spans');
+  assert.match(a.bodyHtml, /<iframe class="mem-chart-embed" [^>]*src="https:\/\/sml-platform-api\.onrender\.com\/academy-activity\/article-chart-embed\?symbol=ABCD"/, 'the page keeps the embed, at the right path');
 });
 
-test('a thin dossier still composes: no insight sections, the modules that have data, and a topic headline', () => {
+test('a thin dossier still composes: the modules that have data, a topic headline, and no chart block without a poster', () => {
   const thin = { ...base, gamma: null, tape: null, smc: null, earnings: null, short: { ratio: 0.55, daysToCover: 6 } };
   const st = E.rankStories([thin])[0]; assert.equal(st.angle, 'short');
   const a = D.composeArticle({ story: st, c: thin, dossier: {}, asOf: Date.UTC(2026, 9, 19, 14, 30), topic: 'crude oil' });
-  assert.match(a.title, /^Crude oil through \$ABCD: /); assert.ok(!a.sections.includes('What the smart money is doing') && !a.sections.includes('The crowd'));
-  assert.deepEqual(a.modules, ['board', 'chart', 'tabs', 'bullbear', 'tracker', 'killswitch', 'poll']); assert.ok(a.wordCount >= 700, String(a.wordCount));
-  assert.ok(!a.blocks.some((b) => b.id === 'mod-chart'), 'no poster, no chart block in the letter'); assert.ok(a.blocks.some((b) => b.id === 'mod-tabs'));
+  assert.match(a.title, /^Crude oil through \$ABCD: /); assert.equal(a.sections.length, 4);
+  assert.deepEqual(a.modules, ['board', 'chart', 'bullbear', 'tracker', 'killswitch', 'poll']); assert.ok(a.wordCount >= 500, String(a.wordCount));
+  assert.ok(!a.blocks.some((b) => b.id === 'mod-chart'), 'no poster, no chart block in the letter'); assert.ok(a.blocks.some((b) => b.id === 'mod-bullbear'));
   assert.match(a.bodyHtml, /<figure class="mem-chartbox" data-symbol="ABCD">/, 'no endpoint, no live polling attribute');
   const b = D.bullBear(st, thin, {}, 1); assert.ok(b.bull.length >= 1 && b.bear.length >= 1);
 });

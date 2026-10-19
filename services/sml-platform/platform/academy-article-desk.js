@@ -26,6 +26,7 @@ const V = require('./academy-article-voice');
 const { seoFor } = require('./academy-article-seo');
 const chart = require('./academy-article-chart');
 const { htmlToBlocks } = require('./academy-letter-blocks');
+const writer = require('./academy-article-writer');
 
 const esc = chart.esc;
 const num = (v, d = null) => { if (v == null || v === '') return d; const n = Number(v); return Number.isFinite(n) ? n : d; };
@@ -282,21 +283,21 @@ function modChart(st, c, d, chartEndpoint, imageUrl = '') {
   if (c.smc && c.smc.sweeps && c.smc.sweeps[0]) levels.push({ label: 'SWEPT ' + (c.smc.sweeps[0].kind === 'EQL' ? 'LOWS' : 'HIGHS'), price: c.smc.sweeps[0].level, kind: c.smc.sweeps[0].kind === 'EQL' ? 'support' : 'resistance' });
   const mapLv = d.intent && d.intent.map && d.intent.map.levels ? d.intent.map.levels.slice(0, 2) : [];
   for (const l of mapLv) if (num(l.price) != null && levels.length < 5) levels.push({ label: (l.labels && l.labels[0] ? plain(l.labels[0]).toUpperCase().slice(0, 18) : 'MAP LEVEL'), price: l.price, kind: l.price > c.price ? 'resistance' : 'support' });
-  const ch = chart.candleChart({ symbol: c.symbol, bars: c.daily, price: c.price, target: st.pt, stop: st.stop, levels, path: st.path, lean: st.lean, count: 60, title: `$${c.symbol} daily: the path to ${px(st.pt)}`, subtitle: `${engine.ANGLES[st.angle].label} scenario. Real candles, then the move the setup needs. Speculative, not advice.` });
+  const ch = chart.candleChart({ symbol: c.symbol, bars: c.daily, price: c.price, target: st.pt, stop: st.stop, levels, path: st.path, lean: st.lean, count: 60, title: `$${c.symbol} daily: the path to ${px(st.pt)}`, subtitle: `${engine.ANGLES[st.angle].label} scenario. Real candles, then the move the setup needs.` });
   if (!ch.ok) return null;
   const embed = chartEndpoint ? chartEndpoint.replace(/\/article-chart(?:\?.*)?$/, '/article-chart-embed') + '?symbol=' + encodeURIComponent(c.symbol) : '';
   const html = `<figure class="mem-chartbox" data-symbol="${esc(c.symbol)}"${chartEndpoint ? ` data-live-endpoint="${esc(chartEndpoint)}"` : ''}>
 <div class="mem-chiprow"><span class="mem-chip mem-chip-live"><i></i>LIVE CHART</span><span class="mem-chip">$${esc(c.symbol)} <b data-live="price">${esc(px(c.price))}</b> <em data-live="change" class="${num(c.changePct, 0) >= 0 ? 'up' : 'dn'}">${num(c.changePct) != null ? esc(pct(c.changePct)) : ''}</em></span><span class="mem-chip mem-chip-mut" data-live="updated">as of publication</span></div>
 ${ch.svg}
 ${embed ? `<iframe class="mem-chart-embed" title="$${esc(c.symbol)} live price fallback" loading="lazy" src="${esc(embed)}"></iframe>` : ''}
-<figcaption>Daily candles with the levels that matter and the scenario path: ${esc((st.path || []).map((p) => p.label.toLowerCase()).concat('target').join(', '))}. The white line is the last price and moves with the tape where the page can run script. Not a forecast.</figcaption></figure>`;
+<figcaption>Daily candles with the levels that matter and the scenario path: ${esc((st.path || []).map((p) => p.label.toLowerCase()).concat('target').join(', '))}. The white line is the last price and moves with the tape where the page can run script.</figcaption></figure>`;
   /* the Loop Letters sanitizer keeps img and drops svg, iframe and script: the letter block carries the uploaded poster
      (the same scenario, drawn as a still) under a chip that says what it is; no poster, no chart block (the GIF image
      block in the body still shows the path) */
   const letter = imageUrl ? `<figure class="mem-chartbox mem-chartimg" data-symbol="${esc(c.symbol)}">
 <div class="mem-chiprow"><span class="mem-chip">CHART · AS OF PUBLICATION</span><span class="mem-chip">$${esc(c.symbol)} <b>${esc(px(c.price))}</b> <em class="${num(c.changePct, 0) >= 0 ? 'up' : 'dn'}">${num(c.changePct) != null ? esc(pct(c.changePct)) : ''}</em></span></div>
 <img src="${esc(imageUrl)}" alt="$${esc(c.symbol)} daily chart with the scenario path to ${esc(px(st.pt))}" width="1200" height="675" loading="lazy">
-<figcaption>The candles as published, the levels that matter and the scenario path to ${esc(px(st.pt))}. Not a forecast.</figcaption></figure>` : '';
+<figcaption>The candles as published, the levels that matter and the scenario path to ${esc(px(st.pt))}.</figcaption></figure>` : '';
   return { html, height: 560, letter, letterHeight: imageUrl ? 760 : 0 };
 }
 function modBoard(parts, c) {
@@ -431,7 +432,7 @@ function headFor({ seo, draft, url, siteUrl, authorUrl, publication, byline, c, 
   const title = esc(seo.meta_title), desc = esc(seo.meta_desc);
   const ld = [
     { '@context': 'https://schema.org', '@type': 'NewsArticle', headline: String(draft.title).slice(0, 110), alternativeHeadline: plain(draft.dek).slice(0, 150), description: plain(seo.meta_desc), mainEntityOfPage: { '@type': 'WebPage', '@id': url || '' }, url: url || undefined, image: imageUrl ? [imageUrl] : undefined, datePublished: asOfIso, dateModified: asOfIso, articleSection: section, keywords: (draft.tags || []).join(', '), inLanguage: 'en-US', isAccessibleForFree: true, wordCount: draft.wordCount || undefined, about: { '@type': 'Corporation', name: c.name || c.symbol, tickerSymbol: c.symbol }, author: { '@type': 'Person', name: byline, url: authorUrl || undefined }, publisher: { '@type': 'Organization', name: publication, url: siteUrl || undefined, logo: logoUrl ? { '@type': 'ImageObject', url: logoUrl } : undefined }, speakable: { '@type': 'SpeakableSpecification', cssSelector: ['h1', '.mem-dek'] } },
-    { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })) },
+    ...(faq && faq.length ? [{ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })) }] : []),
     { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [{ '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl }, { '@type': 'ListItem', position: 2, name: 'Markets', item: siteUrl + '/markets/' }, { '@type': 'ListItem', position: 3, name: '$' + c.symbol, item: siteUrl + '/stocks/' + c.symbol.toLowerCase() + '/' }] }
   ];
   const tags = (draft.tags || []).slice(0, 8);
@@ -445,73 +446,57 @@ function headFor({ seo, draft, url, siteUrl, authorUrl, publication, byline, c, 
 }
 
 /* ---------- compose ---------- */
-function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author = 'Vaughn McNair', publication = 'Making Easy Money', siteUrl = 'https://stockmarketloop.com', authorUrl = '', chartEndpoint = '', discordUrl = '', url = '', imageUrl = '', topic = null, logoUrl = '', record = null } = {}) {
+function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author = 'Vaughn McNair', publication = 'Making Easy Money', siteUrl = 'https://stockmarketloop.com', authorUrl = '', chartEndpoint = '', discordUrl = '', url = '', imageUrl = '', topic = null, logoUrl = '', record = null, narrative = null, rich = false } = {}) {
   const d = dossier || {};
   const draft = engine.draftArticle(st, c, { asOf, author, publication });
   const seed = seedOf(c.symbol + st.angle + Math.round(asOf / 3_600_000));
   const S = '$' + c.symbol, label = engine.ANGLES[st.angle].label;
   const src = Object.fromEntries(sourcesFor(c, d, { siteUrl, authorUrl: authorUrl || siteUrl + '/n/grandmasterobi/', discordUrl }).map((s) => [s.key, s]));
-  const title = topic ? `${cap(topic)} through ${S}: ${draft.title.replace(/^\$[A-Z0-9.\-]+:?\s*/, '')}`.slice(0, 110) : draft.title;
+  /* the prose: the model's narrative when the desk got one past the checks, else the house writer, from the same sheet */
+  const sheet = writer.factSheet({ story: st, c, dossier: d, record });
+  const n = narrative && Array.isArray(narrative.sections) && narrative.sections.length ? narrative : writer.housePiece(sheet, seed);
+  const baseTitle = plain(n.title || draft.title);
+  const title = (topic ? `${cap(topic)} through ${S}: ${baseTitle.replace(/^\$[A-Z0-9.\-]+:?\s*/, '')}` : baseTitle).slice(0, 110);
   const id = String(Math.abs(seedOf(c.symbol + asOf)) % 100000);
   const when = draft.parts.when;
   const readMin = (words) => Math.max(3, Math.round(words / 230));
 
-  /* sections */
-  const lede = ledeFor(st, c, d, seed);
-  const intentSec = intentSection(d, c, seed), shortSec = shortSection(d, c, seed), dpSec = darkPoolSection(d, seed), erSec = earningsSection(d, c, seed), optSec = optionsSection(c, seed), sentSec = sentimentSection(d, seed), filSec = filingsSection(d, src, seed), patSec = patternsSection(d, seed);
-  const bb = bullBear(st, c, d, seed);
-  const faq = faqFor(st, c, d, seed);
-  const next = nextSession(st, c, d);
-  const killItems = [cap(plain(st.scenario.invalidation)) + '.', st.lean === 'bearish' ? 'Buyers absorb the selling at a map level and price reclaims it on volume.' : 'Sellers absorb the buying at a map level and price loses it on volume.', 'The tape flips: the sweeps and blocks start printing on the other side.', c.earnings && num(c.earnings.daysAway) != null && c.earnings.daysAway <= 10 ? 'The earnings print gaps the stock through the invalidation.' : 'Two sessions of price moving against the read with no new fuel.'];
-
-  /* modules */
-  const chartMod = modChart(st, c, d, chartEndpoint, imageUrl), meter = modMeter(intentSec, shortSec, sentSec), tabs = modTabs(st, c, d, id), vs = modVs(bb), track = modTrack(st, c), kill = modKill(st, c, killItems), count = modCountdown(c.earnings, c), pollMod = modPoll(st, c, id, discordUrl);
+  /* the modules: the chart, the board, the two sides, the tracker, the kill switch, the countdown, the poll; the meters
+     and the data strip only when asked for (rich), since a wall of modules reads as a dashboard, not a letter */
+  const intentSec = rich ? intentSection(d, c, seed) : null, shortSec = rich ? shortSection(d, c, seed) : null, sentSec = rich ? sentimentSection(d, seed) : null;
+  const bb = { bull: (n.bull || []).map(plain).filter(Boolean), bear: (n.bear || []).map(plain).filter(Boolean) };
+  const killItems = (n.kill || []).map(plain).filter(Boolean);
+  const chartMod = modChart(st, c, d, chartEndpoint, imageUrl), meter = rich ? modMeter(intentSec, shortSec, sentSec) : null, tabs = rich ? modTabs(st, c, d, id) : null, vs = bb.bull.length || bb.bear.length ? modVs(bb) : null, track = modTrack(st, c), kill = killItems.length ? modKill(st, c, killItems) : null, count = c.earnings && num(c.earnings.daysAway) != null && c.earnings.daysAway <= 14 ? modCountdown(c.earnings, c) : null, pollMod = modPoll(st, c, id, discordUrl);
   const board = modBoard(draft.parts, c);
-  const takeaways = draft.parts.takeaways || [];
 
   /* chunks: text (goes to reader blocks as prose) and module (custom code) */
   const chunks = [];
   const text = (html) => chunks.push({ kind: 'text', html });
   const mod = (m, name) => { if (m) chunks.push({ kind: 'module', name, html: m.html, height: m.height || 300, letter: m.letter === undefined ? m.html : m.letter, letterHeight: m.letterHeight || m.height || 300, css: m.css || '' }); };
+  const paras = (list, firstStrong = false) => (list || []).map((t, i) => `<p>${i === 0 && firstStrong ? '<strong>' + esc(t) + '</strong>' : esc(t)}</p>`).join('\n');
 
   const header = `<div class="mem-kick">${esc(draft.parts.kicker)} · ${esc(label.toUpperCase())}</div>
 <h1>${esc(title)}</h1>
-<p class="mem-dek">${esc(draft.dek)}</p>
-<div class="mem-by"><span>By <b>${esc(author)}</b></span><span>${esc(publication)}</span><time datetime="${esc(draft.asOfIso)}">${esc(when)}</time><span>${readMin(1400)} min read</span><span class="mem-chip mem-chip-live"><i></i>LIVE DATA</span></div>`;
+<p class="mem-dek">${esc(plain(n.dek || draft.dek))}</p>
+<div class="mem-by"><span>By <b>${esc(author)}</b></span><span>${esc(publication)}</span><time datetime="${esc(draft.asOfIso)}">${esc(when)}</time><span class="mem-chip mem-chip-live"><i></i>LIVE DATA</span></div>`;
   chunks.push({ kind: 'module', name: 'board', html: board, height: 170, letter: board.replace(/<div class="mem-sparkcell">[\s\S]*?<\/div>/, ''), letterHeight: 170, css: '' });
-  text(`<div class="mem-lede">${lede.map((p) => `<p>${esc(p)}</p>`).join('\n')}</div>`);
+  text(`<div class="mem-lede">${paras(n.lede, true)}</div>`);
   mod(chartMod, 'chart');
-  text(`<aside class="mem-take"><h3>KEY TAKEAWAYS</h3><ul>${takeaways.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></aside>`);
-  text(`<h2>What the data says</h2><ul>${(st.facts || []).map((f) => `<li>${esc(plain(f))}</li>`).join('')}</ul>${c.direction && c.direction.label ? `<p>Backdrop: the market read is <strong>${esc(c.direction.label)}</strong> (bias ${c.direction.bias >= 0 ? '+' : ''}${esc(c.direction.bias)}), ${c.direction.bias >= 20 ? 'a tailwind for the long case' : c.direction.bias <= -20 ? 'a headwind for any long idea' : 'neither help nor hindrance'}.</p>` : ''}`);
-  if (meter) mod(meter, 'meters');
-  if (intentSec) text(`<h2>${esc(intentSec.title)}</h2>${intentSec.html}`);
-  mod(tabs, 'tabs');
-  if (dpSec) text(`<h2>${esc(dpSec.title)}</h2>${dpSec.html}`);
-  if (shortSec) text(`<h2>${esc(shortSec.title)}</h2>${shortSec.html}<p class="mem-gloss">Daily short volume comes from ${link(src.finraShort, 'FINRA\'s daily short sale volume files')}; the twice-monthly short interest from ${link(src.finraSi, 'FINRA\'s equity short interest data')} and ${link(src.nasdaqSi, 'Nasdaq\'s short interest page')}. ${link(src.shortSales, 'Investor.gov explains short sales')} for anyone new to the mechanics.</p>`);
-  if (optSec) text(`<h2>${esc(optSec.title)}</h2>${optSec.html}<p class="mem-gloss">Live option quotes are on ${link(src.cboe, 'Cboe')}; ${link(src.options, 'Investor.gov covers the basics of options')}.</p>`);
-  if (erSec) { text(`<h2>${esc(erSec.title)}</h2>${erSec.html}<p class="mem-gloss">Confirm the date on ${link(src.nasdaqEr, 'the Nasdaq earnings calendar')}${src.ir ? ' or ' + link(src.ir, 'the company\'s investor site') : ''}; the filings land on ${link(src.edgar, 'EDGAR')}.</p>`); mod(count, 'countdown'); }
-  text(`<h2>Why it matters: the mechanism</h2>${V.mechanism(st, c, seed).map((t) => `<p>${esc(t)}</p>`).join('')}`);
-  text(`<h2>The speculation</h2><div class="mem-spec"><span class="mem-label">LABELLED SPECULATION</span><p><em>This is the speculative part, and it is labelled that way on purpose.</em> ${esc(st.controversy)} ${esc(plain(speculationLine(st, c, seed)))}</p><p>${esc(V.humor(st, c, seed))}</p></div>`);
-  text(`<p class="mem-pull">${esc(pullQuote(st, c, seed))}</p>`);
-  text(`<h2>The bull case and the bear case</h2><p>${esc(pick([`Every piece here argues with itself before it closes. Here is the fight, laid out so you can pick a side with your eyes open.`, `A thesis you cannot argue against is a belief, not a thesis. Both sides, side by side.`], seed))}</p>`);
-  mod(vs, 'bullbear');
-  text(`<h2>The path to ${esc(px(st.pt))} (${esc(pct(st.ptPct))})</h2><ol class="mem-path"><li><strong>Trigger:</strong> ${esc(st.scenario.trigger)}.</li><li><strong>Confirmation:</strong> ${esc(st.scenario.confirm)}.</li><li><strong>Target:</strong> ${esc(st.scenario.target)}.</li></ol><p>The chart above draws that exact sequence: real candles, then the move the setup needs. Horizon for the idea: ${esc(st.timeframe)}.</p>`);
-  mod(track, 'tracker');
-  text(`<h2>What kills it</h2><p>${esc(cap(plain(st.scenario.invalidation)))}. If that happens, the story is wrong and the position should not exist anymore. No averaging down, no hoping, no renaming the thesis after the fact.</p>`);
-  mod(kill, 'killswitch');
-  text(`<h2>What to watch next session</h2><ul>${next.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`);
-  if (sentSec) text(`<h2>${esc(sentSec.title)}</h2>${sentSec.html}`);
-  if (filSec) text(`<h2>${esc(filSec.title)}</h2>${filSec.html}`);
-  if (patSec) text(`<h2>${esc(patSec.title)}</h2>${patSec.html}`);
+  const secs = n.sections.slice(0, 6);
+  const wrongAt = Math.max(0, secs.findIndex((sx) => /wrong|exit|kill|against|risk/i.test(String(sx.heading || ''))));
+  secs.forEach((sx, i) => {
+    text(`<h2>${esc(plain(sx.heading))}</h2>${paras(sx.paragraphs)}`);
+    if (i === 0) { if (meter) mod(meter, 'meters'); if (tabs) mod(tabs, 'tabs'); if (count) mod(count, 'countdown'); }
+    if (i === Math.min(1, secs.length - 1)) { mod(vs, 'bullbear'); mod(track, 'tracker'); }
+    if (i === (wrongAt > 0 ? wrongAt : secs.length - 1)) mod(kill, 'killswitch');
+  });
   const recordText = require('./academy-article-outcomes').recordLine(record);
-  text(`<h2>Bottom line</h2><p>${esc(bottomLine(st, c, seed))}</p>${recordText ? `<p class="mem-record"><strong>Desk record.</strong> ${esc(recordText.replace(/^Desk record: /, ''))}</p>` : ''}`);
+  text(`<h2>Bottom line</h2><p>${esc(plain(n.bottom || bottomLine(st, c, seed)))}</p>${recordText ? `<p class="mem-record"><strong>Desk record.</strong> ${esc(recordText.replace(/^Desk record: /, ''))}</p>` : ''}`);
   mod(pollMod, 'poll');
-  text(`<h2>Questions readers ask</h2><div class="mem-faq">${faq.map((f) => `<details><summary>${esc(f.q)}</summary><p>${esc(f.a)}</p></details>`).join('')}</div>`);
-  text(`<h2>Keep reading</h2><ul class="mem-sources"><li>${link(src.stocks, S + ' quote, chart and data')} on StockMarketLoop.</li><li>${link(src.author, 'More from this desk')}.</li>${src.discord ? `<li>${link(src.discord, 'The Making Easy Money Discord')}, where the alerts land first.</li>` : ''}</ul>`);
-  const glossary = d.intent && d.intent.glossary ? Object.entries(d.intent.glossary).slice(0, 8) : [];
-  if (glossary.length) text(`<h2>Glossary</h2><dl class="mem-gloss">${glossary.map(([k, v]) => `<dt>${esc(k.toUpperCase())}</dt><dd>${esc(plain(v))}</dd></dl>`).join('')}`);
-  text(`<h2>Sources</h2><ol class="mem-sources">${['edgar', 'finraShort', 'finraSi', 'nasdaqSi', 'cboe', 'ir', 'shortSales', 'options', 'margin'].filter((k) => src[k]).map((k) => `<li>${link(src[k])} <small>(${esc(src[k].who)})</small></li>`).join('')}</ol>`);
-  text(`<p class="mem-disclosure">Data as of ${esc(when)} from the ${esc(publication)} Academy data desk: options positioning, FINRA daily short volume, the off-exchange trade record, the smart-money structure map, SEC filings and the ticker's headlines. Levels are rounded, scenarios are illustrations rather than forecasts, and nothing here is a recommendation. This is speculation and education, not financial advice; ${esc(author)} and the ${esc(publication)} publication may hold or trade positions in the names discussed.</p>`);
+  /* the sources, one line: the primary records this piece leans on, and the site's own pages */
+  const keys = ['edgar', ...(st.angle === 'short' || st.angle === 'tape' || d.shortInsight ? ['finraShort', 'nasdaqSi'] : []), ...(c.gamma && c.gamma.available ? ['cboe'] : []), ...(c.earnings && num(c.earnings.daysAway) != null && c.earnings.daysAway <= 45 ? ['nasdaqEr'] : []), ...(src.ir ? ['ir'] : []), 'stocks', ...(src.discord ? ['discord'] : [])];
+  text(`<p class="mem-sources">Sources and further reading: ${[...new Set(keys)].filter((k) => src[k]).map((k) => link(src[k])).join(' · ')}.</p>`);
+  text(`<p class="mem-disclosure">Data as of ${esc(when)} from the ${esc(publication)} Academy data desk: options positioning, FINRA short volume, the off-exchange trade record, the structure map, SEC filings and the ticker's headlines. ${esc(author)} and the ${esc(publication)} publication may hold or trade positions in the names discussed. This is speculation and education, not financial advice.</p>`);
 
   const share = modShare(url || siteUrl + '/stocks/' + c.symbol.toLowerCase() + '/', title);
   const bodyInner = header + '\n<div itemprop="articleBody">\n' + chunks.map((ch) => ch.html).join('\n') + '\n</div>\n' + share;
@@ -519,7 +504,7 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   const textOnly = chunks.filter((ch) => ch.kind === 'text').map((ch) => ch.html).join('\n');
   const wordCount = plain(bodyInner.replace(/<svg[\s\S]*?<\/svg>/g, ' ')).split(/\s+/).filter(Boolean).length;
   const seo = seoFor({ story: st, c, headline: title, tags: draft.tags, publication, posterUrl: imageUrl, asOf });
-  const headHtml = headFor({ seo, draft: { ...draft, title, wordCount }, url, siteUrl, authorUrl: authorUrl || siteUrl + '/n/grandmasterobi/', publication, byline: author, c, faq, imageUrl, asOfIso: draft.asOfIso, logoUrl });
+  const headHtml = headFor({ seo, draft: { ...draft, title, dek: n.dek || draft.dek, wordCount }, url, siteUrl, authorUrl: authorUrl || siteUrl + '/n/grandmasterobi/', publication, byline: author, c, faq: [], imageUrl, asOfIso: draft.asOfIso, logoUrl });
   const document = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">\n${headHtml}\n<style>${CSS}</style></head><body style="margin:0;background:#0b1119">\n${bodyHtml}\n</body></html>`;
   /* Loop Letters blocks: the prose as reader blocks, each module as custom code with the stylesheet */
   const blocks = [];
@@ -527,13 +512,14 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
     /* the letter variant of each module: the letters sanitizer keeps markup but drops svg, iframe, script, input and details,
        so each module ships a version that needs none of them (a module with nothing safe to show is left out) */
     if (ch.kind === 'module') { if (ch.letter) blocks.push({ id: 'mod-' + ch.name, type: 'custom_code', html: `<div class="mem-article mem-letter" data-theme="dark">${ch.letter}</div>`, css: CSS + (ch.css ? '\n' + ch.css : ''), height: ch.letterHeight }); }
-    else blocks.push(...htmlToBlocks(ch.html.replace(/<(aside|div)[^>]*>|<\/(aside|div)>/g, '').replace(/<details><summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g, '<h3>$1</h3>$2').replace(/<dl[^>]*>([\s\S]*?)<\/dl>/g, (m) => m.replace(/<dt>([\s\S]*?)<\/dt>\s*<dd>([\s\S]*?)<\/dd>/g, '<p><strong>$1:</strong> $2</p>')), { tickers: [c.symbol] }));
+    else blocks.push(...htmlToBlocks(ch.html.replace(/<(aside|div)[^>]*>|<\/(aside|div)>/g, ''), { tickers: [c.symbol] }));
   }
   const links = [...bodyInner.matchAll(/href="([^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, '&')).filter((h) => /^https?:/.test(h));
   return {
-    title, dek: draft.dek, slug: engine.slugify(title), tags: draft.tags, tldr: draft.tldr, keyword: seo.keyword, seo, lean: st.lean, pt: st.pt, ptPct: st.ptPct, angle: st.angle,
+    title, dek: plain(n.dek || draft.dek), slug: engine.slugify(title), tags: draft.tags, tldr: draft.tldr, keyword: seo.keyword, seo, lean: st.lean, pt: st.pt, ptPct: st.ptPct, angle: st.angle,
     bodyHtml, textHtml: textOnly, css: CSS, js: JS, headHtml, document, blocks, wordCount, readMinutes: readMin(wordCount), links: [...new Set(links)],
-    modules: chunks.filter((ch) => ch.kind === 'module').map((ch) => ch.name), sections: [...bodyInner.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => plain(m[1]).replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')), parts: draft.parts, asOfIso: draft.asOfIso, faq
+    modules: chunks.filter((ch) => ch.kind === 'module').map((ch) => ch.name), sections: [...bodyInner.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => plain(m[1]).replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')), parts: draft.parts, asOfIso: draft.asOfIso, faq: [],
+    narrative: { source: n.source || 'house', checked: n.checked || null, headings: secs.map((sx) => plain(sx.heading)) }, sheet: { lines: sheet.lines.length, numbers: sheet.numbers.size }
   };
 }
 
@@ -567,4 +553,4 @@ function bottomLine(st, c, seed) {
   return pick(L, seed + 13);
 }
 
-module.exports = { composeArticle, buildDossier, resolveSubject, sourcesFor, faqFor, bullBear, CSS, JS, TOPICS, headFor };
+module.exports = { composeArticle, buildDossier, resolveSubject, sourcesFor, faqFor, bullBear, CSS, JS, TOPICS, headFor, factSheet: writer.factSheet };

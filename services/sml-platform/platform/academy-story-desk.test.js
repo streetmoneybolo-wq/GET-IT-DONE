@@ -45,13 +45,13 @@ test('a tick scans the universe, writes the strongest uncovered angle as a draft
   assert.ok(r && r.filed === 1, JSON.stringify(r && { scanned: r.scanned, candidates: r.candidates, ranked: r.ranked, filed: r.filed }));
   const created = h.posts.find((p) => p.kind === 'create');
   assert.equal(created.l.visibility, 'public'); assert.match(created.l.title, /\$ABCD/); assert.ok(!('author_id' in created.l), 'the signed-in account is the author');
-  assert.ok(created.l.tags.includes('ABCD')); assert.match(created.l.html, /What the data says/);
-  assert.ok(created.l.blocks.some((b) => b.type === 'heading' && b.text === 'What the data says') && created.l.blocks.some((b) => b.type === 'paragraph'), 'reader blocks');
+  assert.ok(created.l.tags.includes('ABCD')); assert.match(created.l.html, /<h2>Bottom line<\/h2>/);
+  assert.ok(created.l.blocks.some((b) => b.type === 'heading' && b.text === 'Bottom line') && created.l.blocks.some((b) => b.type === 'paragraph'), 'reader blocks');
   assert.equal(created.l.blocks[0].type, 'custom_code', 'the styled card leads'); assert.match(created.l.blocks[0].html, /Key takeaways/); assert.match(created.l.blocks[0].css, /\.ad-t/); assert.ok(created.l.blocks[0].height >= 420);
-  assert.ok(created.l.blocks.some((b) => b.type === 'heading' && /Why it matters/.test(b.text)) && created.l.blocks.some((b) => b.type === 'heading' && /The bull case and the bear case/.test(b.text)));
+  assert.ok(created.l.blocks.filter((b) => b.type === 'heading' && b.level === 2).length >= 4 && created.l.blocks.filter((b) => b.type === 'heading' && b.level === 2).length <= 6, 'four to six sections');
   /* the letter's chart block is the uploaded poster (an img: the letters sanitizer drops svg); without the GIF rasterizer there is no poster and no chart block */
   if (require('./academy-scenario-gif').available()) assert.ok(created.l.blocks.some((b) => b.id === 'mod-chart' && b.type === 'custom_code' && /<img src="https:\/\/stockmarketloop\.com\/wp-content\/uploads\/x\.gif"/.test(b.html)), 'the chart block carries the poster image');
-  assert.ok(created.l.blocks.some((b) => b.id === 'mod-tabs' && /mem-strip/.test(b.html)) && created.l.blocks.some((b) => b.id === 'mod-bullbear'), 'the module blocks are the letter-safe variants');
+  assert.ok(created.l.blocks.some((b) => b.id === 'mod-tracker') && created.l.blocks.some((b) => b.id === 'mod-bullbear'), 'the module blocks are the letter-safe variants');
   assert.ok(created.l.blocks.filter((b) => b.type === 'custom_code').every((b) => !/<svg|<iframe|<script|<input|<details/.test(b.html)), 'nothing the letters sanitizer would drop');
   assert.match(created.l.html, /class="mem-article"/); assert.match(created.l.html, /sec\.gov/);
   assert.ok(created.l.subtitle.length > 20 && created.l.subtitle.length <= 160);
@@ -92,7 +92,7 @@ test('write(subject, { file: false }) composes the package without touching the 
   const r = await h.desk.write('abcd', { file: false });
   assert.equal(r.ok, true); assert.equal(r.filed, null); assert.equal(h.posts.length, 0, 'nothing filed'); assert.equal(h.media.length, 0, 'nothing uploaded'); assert.equal(h.dms.length, 0);
   assert.deepEqual(r.subject, { symbol: 'ABCD', topic: null, label: '$ABCD' }); assert.equal(r.dossier.intent, true); assert.equal(r.dossier.shortInsight, true); assert.equal(r.dossier.sentiment, false);
-  assert.ok(r.draft.sections.includes('What the smart money is doing') && r.draft.sections.includes("The short seller's problem")); assert.ok(r.draft.modules.includes('meters'));
+  assert.ok(r.draft.sections.length >= 4 && r.draft.sections.includes('Bottom line')); assert.ok(r.draft.modules.includes('tracker')); assert.equal(r.article.html.includes('Smart money is accumulating') || r.article.html.includes('Markup: the positioned side'), true, 'the intent read is in the prose');
   assert.match(r.article.html, /data-live-endpoint="https:\/\/api\.example\/academy-activity\/article-chart"/); assert.match(r.article.html, /Markup: the positioned side/);
   assert.equal(r.article.url, ''); assert.ok(!/rel="canonical"/.test(r.article.head), 'no canonical before the piece has a URL');
   assert.ok(!Object.keys(h.saved() || {}).length || !(h.saved().written || {})['ABCD:' + r.story.angle], 'an unfiled piece is not marked written');
