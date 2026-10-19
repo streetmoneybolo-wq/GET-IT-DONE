@@ -148,7 +148,9 @@
   function cardHtml(c, id, img) {
     const d = c.discord || {}, site = c.site || {};
     const you = id === selfId;
-    let h = '<div class="bn"' + (d.accentColor ? ' style="background:' + escapeHtml(d.accentColor) + '"' : '') + '></div><div class="hd">' + (img ? '<img class="big" alt="" src="' + escapeHtml(img) + '">' : '<span class="big"></span>') + '<div class="who"><b>' + escapeHtml(d.name || d.username || 'Member') + '</b><span>' + (d.username ? '@' + escapeHtml(d.username) : '') + '</span></div></div>';
+    let h = '<div class="bn"' + (d.accentColor ? ' style="background:' + escapeHtml(d.accentColor) + '"' : '') + '></div><div class="hd">' + (img ? '<img class="big" alt="" src="' + escapeHtml(img) + '">' : '<span class="big"></span>') + '<div class="who"><b>' + escapeHtml(d.name || d.username || 'Member') + '</b><span>' + (d.username ? '@' + escapeHtml(d.username) : '') + '</span></div></div>'
+      /* the Academy card (tier, followers, posts, Follow) lands here, right under the name (academy-profile-ui.js fills it) */
+      + '<div class="apc-slot"></div>';
     h += '<div class="sec"><h6>DISCORD</h6><div class="btns"><button type="button" class="dc" data-open="' + escapeHtml(d.profileUrl || '') + '">' + (you ? 'Open my Discord profile' : 'Add on Discord') + '</button></div><p class="note">' + (you ? 'This is you.' : 'Opens their Discord profile, where the Add Friend button is.') + '</p></div>';
     if (site.linked) {
       h += '<div class="sec"><h6>STOCKMARKETLOOP.COM</h6><b style="color:#fff">' + escapeHtml(site.name || site.handle) + '</b> <span style="color:#8fa5b1">@' + escapeHtml(site.handle) + '</span><div class="btns" style="margin-top:6px">'
@@ -178,9 +180,13 @@
   cardEl.addEventListener('mouseleave', () => { hideTimer = setTimeout(hideCard, 220); });
   // touch has no hover: a tap on a name or avatar opens the card, a tap anywhere else closes it
   logEl.addEventListener('click', (e) => { const el = idOf(e.target); if (el && window.smlAcademySessionToken) { clearTimeout(hideTimer); void showCard(el.dataset.uid, el); } });
-  document.addEventListener('click', (e) => { if (cardEl.style.display !== 'none' && !cardEl.contains(e.target) && !idOf(e.target)) hideCard(); });
+  /* a tap on any member anchor on the page (chat, Ticker Talk) keeps the card; anything else closes it */
+  document.addEventListener('click', (e) => { if (cardEl.style.display !== 'none' && !cardEl.contains(e.target) && !(e.target && e.target.closest && e.target.closest('[data-uid]'))) hideCard(); });
   cardEl.addEventListener('click', (e) => { const b = e.target.closest('[data-open]'); if (b && b.dataset.open) openUrl(b.dataset.open); });
   logEl.addEventListener('scroll', hideCard, { passive: true });
+  /* shared with Ticker Talk and any other surface that names a member: the avatar as a data: URL, and the profile card */
+  window.smlAcademyAvatar = avatarFor;
+  window.smlAcademyProfileCard = { show: (id, anchor) => { clearTimeout(hideTimer); return showCard(id, anchor); }, hide: hideCard, hideSoon: () => { clearTimeout(hideTimer); hideTimer = setTimeout(hideCard, 220); }, keep: () => clearTimeout(hideTimer), element: cardEl };
 
   /* ---------- @mentions: type @ and pick a member (only members who have used the Academy are offered); the tag is kept
      on the message and highlighted for everyone, and the tagged member is DMed on Discord by the server ---------- */

@@ -510,7 +510,9 @@
       + (c.server ? '<span>Main server</span><b>' + esc(c.server.name) + '</b>' : '') + (c.paper ? '<span>Paper rank</span><b>' + (c.paper.rank ? '#' + c.paper.rank + ' of ' + c.paper.of + (Number.isFinite(c.paper.returnPct) ? ' (' + pct(c.paper.returnPct) + ')' : '') : 'unranked') + '</b>' : '') + '</div>'
       + (c.posts && c.posts.length ? c.posts.map((x) => '<div class="p"><i>' + esc(ROOMS[x.channel] || x.channel) + '</i>' + esc(x.body) + '</div>').join('') : '<p class="note" style="margin:4px 0 0;color:#7f95a1;font-weight:500">No posts yet.</p>')
       + '<div class="btns"><button type="button" data-pv-open="' + esc(id) + '">View Academy profile</button>' + (c.own ? '' : '<button type="button" data-pv-follow="' + esc(id) + '" data-on="' + (c.viewerFollows ? '1' : '0') + '">' + (c.viewerFollows ? '✓ Following' : '+ Follow') + '</button>') + '</div>';
-    const ft = cardEl.querySelector('.ft'); if (ft) cardEl.insertBefore(div, ft); else cardEl.appendChild(div);
+    const slot = cardEl.querySelector('.apc-slot');
+    if (slot) slot.replaceChildren(div);
+    else { const ft = cardEl.querySelector('.ft'); if (ft) cardEl.insertBefore(div, ft); else cardEl.appendChild(div); }
   }
   document.addEventListener('click', async (e) => {
     const o = e.target.closest('[data-pv-open]'); if (o) { e.preventDefault(); e.stopPropagation(); void open(o.dataset.pvOpen); const card = document.getElementById('academy-profile-card'); if (card) card.style.display = 'none'; return; }

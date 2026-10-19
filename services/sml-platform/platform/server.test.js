@@ -2301,3 +2301,14 @@ test('Academy Evolve routes: beacons from anyone, knobs for the page, the brief 
   assert.match(html, /id = 'evolve-btn'/, 'and the owner panel');
   assert.match(require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-live.js'), 'utf8'), /smlEvolveConfig\.livePollMs/, 'the live poll reads its cadence from the knob');
 });
+
+test('Ticker Talk comments carry the author\'s Discord avatar and open the shared profile card, whose Academy section (with Follow) sits right under the name', () => {
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  assert.match(html, /window\.smlAcademyAvatar = avatarFor/, 'the chat panel shares its avatar loader');
+  assert.match(html, /window\.smlAcademyProfileCard = \{ show:/, 'and its profile card');
+  assert.match(html, /<div class="apc-slot"><\/div>/, 'the card has a slot under the name for the Academy section');
+  assert.match(html, /const slot = cardEl\.querySelector\('\.apc-slot'\);\s*if \(slot\) slot\.replaceChildren\(div\);/, 'the Academy section (tier, followers, Follow) fills that slot');
+  assert.match(html, /<span class="ava"' \+ anchor \+ '>/, 'Talk avatars are member anchors');
+  assert.match(html, /function paintAvatars\(root\)/); assert.match(html, /function cardOn\(host\)/);
+  assert.match(html, /cardOn\(panel\);/); assert.match(html, /shield\(m\); cardOn\(m\); \}/, 'the expanded view opens the card too');
+});

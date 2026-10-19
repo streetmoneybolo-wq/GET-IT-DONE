@@ -48,7 +48,7 @@
 /* comments */
 .tk-c{margin:0 0 7px;padding:8px 9px;border:1px solid #17323d;border-radius:10px;background:#0a1118;content-visibility:auto;contain-intrinsic-size:auto 120px;cursor:default}.tk-c.new{animation:tkIn .5s ease}.tk-c.hi,.tk-r.hi{border-color:#5fa8e0}
 @keyframes tkIn{from{background:#12304a}to{background:#0a1118}}
-.tk-c .who,.tk-r .who{display:flex;align-items:center;gap:7px;margin:0 0 4px}.tk-c .ava,.tk-r .ava{width:22px;height:22px;border-radius:50%;background:#1b4a6e;color:#fff;display:grid;place-items:center;font:800 .62rem system-ui;flex:none}.tk-c .nm,.tk-r .nm{font:800 .72rem system-ui;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tk-c .when,.tk-r .when{margin-left:auto;color:#6f8794;font:700 .56rem ui-monospace,monospace;flex:none}
+.tk-c .who,.tk-r .who{display:flex;align-items:center;gap:7px;margin:0 0 4px}.tk-c .who [data-uid],.tk-r .who [data-uid]{cursor:pointer}.tk-c img.ava,.tk-r img.ava{object-fit:cover;background:#0b141c;border:1px solid #1b3540}.tk-c .who .nm[data-uid]:hover,.tk-r .who .nm[data-uid]:hover{text-decoration:underline}.tk-c .ava,.tk-r .ava{width:22px;height:22px;border-radius:50%;background:#1b4a6e;color:#fff;display:grid;place-items:center;font:800 .62rem system-ui;flex:none}.tk-c .nm,.tk-r .nm{font:800 .72rem system-ui;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tk-c .when,.tk-r .when{margin-left:auto;color:#6f8794;font:700 .56rem ui-monospace,monospace;flex:none}
 .tk-c .txt,.tk-r .txt{color:#dbe6ec;white-space:pre-wrap;word-break:break-word}.tk-c .txt h3,.tk-r .txt h3{margin:4px 0 2px;font:900 .9rem system-ui;color:#fff}.tk-c .txt h4,.tk-r .txt h4{margin:4px 0 2px;font:800 .78rem system-ui;color:#e6f1f5}
 #talk-panel .tk-c>.txt{display:-webkit-box;-webkit-line-clamp:7;-webkit-box-orient:vertical;overflow:hidden}#talk-panel .tk-r>.txt{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .tk-c .ct,.tk-r .ct{display:inline-block;padding:1px 6px;border-radius:999px;background:#0d3a2a;color:#3ef0a8;font:800 .64rem ui-monospace,monospace;cursor:pointer;border:0}.tk-c .ct:hover,.tk-r .ct:hover{background:#12513a}
@@ -135,7 +135,7 @@
     const fresh = (r.comments || []).filter((c) => !S.index.has(String(c.id)));
     fresh.forEach(remember); S.rows = S.rows.concat(fresh);
     S.before = S.rows.length ? S.rows[S.rows.length - 1].id : '';
-    if (fresh.length) listEl.insertAdjacentHTML('beforeend', fresh.map((c) => commentHtml(c, false)).join(''));
+    if (fresh.length) { listEl.insertAdjacentHTML('beforeend', fresh.map((c) => commentHtml(c, false)).join('')); paintAvatars(listEl); }
     statusEl.textContent = S.rows.length ? (S.hasMore ? '' : 'You have read them all.') : 'No comments on $' + S.symbol + ' yet. Start the conversation.';
     paintHead(); paintButton();
     if (S.hasMore && bodyEl.scrollHeight <= bodyEl.clientHeight + 40) load(false);
@@ -156,7 +156,7 @@
     if (fresh.length) {
       const h0 = bodyEl.scrollHeight, s0 = bodyEl.scrollTop;
       fresh.forEach(remember); S.rows = fresh.concat(S.rows);
-      listEl.insertAdjacentHTML('afterbegin', fresh.map((c) => commentHtml(c, false, true)).join(''));
+      listEl.insertAdjacentHTML('afterbegin', fresh.map((c) => commentHtml(c, false, true)).join('')); paintAvatars(listEl);
       if (s0 > 8) bodyEl.scrollTop = s0 + (bodyEl.scrollHeight - h0);
       statusEl.textContent = S.hasMore ? '' : 'You have read them all.';
     }
@@ -194,7 +194,24 @@
     }
     return out;
   }
-  function who(c, long) { return '<div class="who"><span class="ava">' + esc(String(c.authorName || 'M').slice(0, 1).toUpperCase()) + '</span><span class="nm">' + esc(c.authorName || 'Member') + '</span><span class="when">' + (long ? whenLong(c.createdAt) : when(c.createdAt)) + '</span></div>'; }
+  /* the author's Discord avatar (painted in once it arrives) and name; both open their profile card (academy-chat-panel.js) */
+  function who(c, long) { const uid = /^\d{15,25}$/.test(String(c.authorId || '')) ? String(c.authorId) : ''; const anchor = uid ? ' data-uid="' + esc(uid) + '" title="' + esc(c.authorName || 'Member') + '"' : ''; return '<div class="who"><span class="ava"' + anchor + '>' + esc(String(c.authorName || 'M').slice(0, 1).toUpperCase()) + '</span><span class="nm"' + anchor + '>' + esc(c.authorName || 'Member') + '</span><span class="when">' + (long ? whenLong(c.createdAt) : when(c.createdAt)) + '</span></div>'; }
+  function paintAvatars(root) {
+    if (!root || typeof window.smlAcademyAvatar !== 'function' || !token()) return;
+    root.querySelectorAll('span.ava[data-uid]').forEach((el) => {
+      const id = el.dataset.uid;
+      window.smlAcademyAvatar(id).then((url) => { if (!url || !el.isConnected) return; const img = document.createElement('img'); img.className = 'ava'; img.dataset.uid = id; img.alt = ''; img.title = el.title || ''; img.src = url; el.replaceWith(img); });
+    });
+  }
+  function cardOn(host) {
+    const card = () => window.smlAcademyProfileCard;
+    const anchorOf = (t) => (t && t.closest ? t.closest('.who [data-uid]') : null);
+    let showTimer = 0;
+    host.addEventListener('click', (e) => { const a = anchorOf(e.target); if (!a || !card() || !token()) return; e.stopPropagation(); void card().show(a.dataset.uid, a); });
+    host.addEventListener('mouseover', (e) => { const a = anchorOf(e.target); if (!a || !card() || !token()) return; clearTimeout(showTimer); card().keep(); showTimer = setTimeout(() => { void card().show(a.dataset.uid, a); }, 260); });
+    host.addEventListener('mouseout', (e) => { if (!anchorOf(e.target) || !card()) return; clearTimeout(showTimer); card().hideSoon(); });
+    if (typeof MutationObserver === 'function') new MutationObserver(() => { clearTimeout(host.__avaT); host.__avaT = setTimeout(() => paintAvatars(host), 40); }).observe(host, { childList: true, subtree: true });
+  }
   function acts(c, isReply) {
     const mine = S.viewer && String(c.authorId) === String(S.viewer.id), canDel = mine || (S.viewer && S.viewer.elevated);
     return '<div class="tk-acts">' + (isReply ? '' : '<button type="button" data-reply="' + esc(c.id) + '" data-name="' + esc(c.authorName || '') + '">Reply' + (c.replies && c.replies.length ? ' · ' + c.replies.length : '') + '</button>')
@@ -288,8 +305,8 @@
     const c = S.index.get(String(id)); if (!c) return;
     S.view = c.id;
     let m = $('talk-view');
-    if (!m) { m = document.createElement('div'); m.className = 'tk-modal tk-view'; m.id = 'talk-view'; m.innerHTML = '<div class="tk-box" role="dialog" aria-label="Comment"><div class="tk-mh"><b></b><small></small><button type="button" class="tk-x" data-close-view="1" aria-label="Close">×</button></div><div class="tk-mb"></div><div class="tk-mf"></div></div>'; document.body.appendChild(m); shield(m); }
-    paintView(focusId);
+    if (!m) { m = document.createElement('div'); m.className = 'tk-modal tk-view'; m.id = 'talk-view'; m.innerHTML = '<div class="tk-box" role="dialog" aria-label="Comment"><div class="tk-mh"><b></b><small></small><button type="button" class="tk-x" data-close-view="1" aria-label="Close">×</button></div><div class="tk-mb"></div><div class="tk-mf"></div></div>'; document.body.appendChild(m); shield(m); cardOn(m); }
+    paintView(focusId); paintAvatars(m);
   }
   function paintView(focusId) {
     const m = $('talk-view'), c = S.view && S.index.get(String(S.view)); if (!m) return; if (!c) { closeView(); return; }
@@ -350,6 +367,7 @@
     if (d.zoom) { if (!t.closest('.tk-view')) { const root = S.index.get(String(d.zoom)); if (root) openView(root.id, root.id !== d.zoom ? d.zoom : ''); } }
   }
   panel.addEventListener('click', onClick);
+  cardOn(panel);
   panel.addEventListener('dblclick', (e) => { if (e.target.closest('button,a,img,textarea')) return; const el = e.target.closest('.tk-r,.tk-c'); if (!el) return; e.preventDefault(); const root = S.index.get(String(el.dataset.id)); if (root) openView(root.id, el.classList.contains('tk-r') ? el.dataset.id : ''); try { getSelection().removeAllRanges(); } catch (_) { /* ignore */ } });
   document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('#talk-editor,#talk-view')) onClick(e); });
   ['pointerdown', 'wheel', 'keydown'].forEach((ev) => panel.addEventListener(ev, (e) => e.stopPropagation()));
