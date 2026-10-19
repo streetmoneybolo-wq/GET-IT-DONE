@@ -75,6 +75,7 @@ const { createRedditService, mergeSocial } = require('./academy-reddit');
 const { createClassifier } = require('./academy-classifier');
 const { createEarningsPlaybook } = require('./academy-earnings-playbook');
 const { createEarningsInsight } = require('./academy-earnings-insight');
+const { createShortInsight } = require('./academy-short-insight');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
@@ -1885,7 +1886,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   appApi = null,
   /* Academy data services and the challenge/paper surfaces live in main(); the handler only sees what is passed here */
   academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null, academyFlowDaily = null, academySignalOutcomes = null, optionBars = null, tickerTalk = null,
-  getEarningsPlaybook = () => null, getEarningsInsight = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
+  getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null,
   logger = log, now = Date.now }) {
@@ -3976,6 +3977,26 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Short-sale insight (academy-short-insight.js): short volume against the price path, short interest against the price, the
+       "pressing" and "squeeze" scores from the Level 3 book, the Massive tape, the flow ledger and the chain, and a verdict for a
+       short seller and for a long. Paid tiers, like the short data itself. */
+    if (request.method === 'GET' && path === '/academy-activity/short-insight') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const svc = getShortInsight();
+      if (!svc) { sendJson(response, 503, { ok: false, error: 'insight_unavailable' }); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const sq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(sq.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      try { const out = await svc.insight(symbol); sendJson(response, out.ok ? 200 : (out.status || 503), out); }
+      catch (error) { logger('error', 'academy_short_insight_failed', { symbol, error }); sendJson(response, 503, { ok: false, error: 'insight_unavailable' }); }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/sentiment') {
       if (!academyOAuth || !academySentiment) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -4615,6 +4636,19 @@ async function main() {
     });
     return earningsInsight;
   };
+  /* Short-sale insight (academy-short-insight.js): the short feed read with the Level 3 book, the Massive tape, the flow ledger and the chain. Built on first use. */
+  let shortInsight = null;
+  const getShortInsight = () => {
+    if (shortInsight || process.env.SML_ACADEMY_SHORT_INSIGHT === 'off' || !academyAlerts) return shortInsight;
+    const memAlgo = require('./academy-mem-algo');
+    shortInsight = createShortInsight({
+      shortData: (s) => academyAlerts.shortData(s), candles: (s, tf) => sentimentCandles(s, tf),
+      orderFlow: academyOrderFlow ? (s) => academyOrderFlow.get(s) : null, tape: academyMassive ? (s) => academyMassive.peek(s) : null,
+      flowDays: academyFlowDaily && academyFlowDaily.configured ? (s, d) => academyFlowDaily.summary(s, d) : null,
+      chain: (s) => academyAlerts.chainFor(s), memAlgo: (bars) => memAlgo.analyze(bars, 'short', {}, '1D', {}), logger: log
+    });
+    return shortInsight;
+  };
   const getFdaService = () => {
     if (fdaService || process.env.SML_ACADEMY_FDA === 'off') return fdaService;
     fdaService = createFdaService({
@@ -5159,7 +5193,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,

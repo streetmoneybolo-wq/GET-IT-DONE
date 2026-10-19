@@ -2123,3 +2123,20 @@ test('the earnings insight route serves the model, signals and brief to paid mem
   assert.match(html, /EARNINGS INSIGHT/); assert.match(html, /data-ei="cost"/, 'the cost stack chart');
   assert.doesNotMatch(html, PAGE_BANNED);
 });
+
+test('the short insight route serves the two scores and the verdicts to paid members, and the panel reads it', async () => {
+  await withServer({}, async (base) => { assert.equal((await fetch(`${base}/academy-activity/short-insight?symbol=AAPL`)).status, 503); });
+  const academyOAuth = { verifySession: (auth) => (auth === 'Bearer member' ? { ok: true, tier: 'academy', userId: '1' } : auth === 'Bearer free' ? { ok: true, tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const svc = { insight: async (s) => ({ ok: true, available: true, symbol: s, pressing: { score: 70, components: [] }, squeeze: { score: 20, components: [] }, verdict: { shortSeller: { call: 'press', tone: 'up', reasons: [] }, long: { call: 'no', tone: 'down', reasons: [] } } }) };
+  await withServer({ academyOAuth, getShortInsight: () => svc }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/short-insight?symbol=AAPL`)).status, 401);
+    assert.equal((await fetch(`${base}/academy-activity/short-insight?symbol=AAPL`, { headers: { authorization: 'Bearer free' } })).status, 403);
+    assert.equal((await fetch(`${base}/academy-activity/short-insight?symbol=../x`, { headers: { authorization: 'Bearer member' } })).status, 400);
+    const ok = await fetch(`${base}/academy-activity/short-insight?symbol=aapl`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(ok.status, 200); const body = await ok.json(); assert.equal(body.symbol, 'AAPL'); assert.equal(body.pressing.score, 70);
+  });
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m' });
+  assert.match(html, /academy-activity\/short-insight\?symbol=/); assert.match(html, /SHORTS PRESSING/); assert.match(html, /SQUEEZE RISK/);
+  assert.doesNotMatch(html, PAGE_BANNED);
+});
