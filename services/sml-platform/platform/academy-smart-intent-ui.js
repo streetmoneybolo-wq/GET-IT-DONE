@@ -20,7 +20,7 @@
 
   const css = document.createElement('style');
   css.textContent = '#intent-btn{margin-left:4px;padding:5px 9px;border:1px solid #2e7d6a;border-radius:7px;background:#0b1f1b;color:#8ff1c5;font:800 .64rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer}#intent-btn.on{background:#128a66;color:#fff;border-color:#35e6a0}'
-    + '#intent-layer{position:absolute;pointer-events:none;z-index:6}'
+    + '#intent-layer{position:absolute;pointer-events:none;z-index:6;background:none!important;border:0!important;border-radius:0;box-shadow:none}'
     + '#intent-panel{position:absolute;right:8px;top:26px;z-index:9;width:min(330px,calc(100% - 24px));max-height:calc(100% - 40px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;display:none;background:rgba(7,14,20,.95);border:1px solid #1f5a4a;border-radius:10px;color:#dbe6ec;font:500 .66rem/1.45 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.5)}#intent-panel.open{display:block}'
     + '#intent-panel .ih{display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid #1b3540;position:sticky;top:0;background:rgba(7,14,20,.98)}#intent-panel .ih b{font:900 .7rem ui-monospace,monospace;letter-spacing:.08em;color:#8ff1c5}#intent-panel .ih small{color:#7f98a6;font:700 .56rem ui-monospace,monospace}#intent-panel .ih button{margin-left:auto;background:none;border:0;color:#7f98a6;font-size:18px;cursor:pointer;line-height:1}'
     + '#intent-panel .ib{padding:8px 10px}'
