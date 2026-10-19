@@ -28,7 +28,9 @@
  */
 
 const crypto = require('node:crypto');
-const entranceGif = require('node:fs').readFileSync(require('node:path').join(__dirname, 'assets', 'mem-verification.gif'));
+const entranceAssets = new Map([
+  ['mem-verification.gif', 'image/gif'], ['mem-verification.mp4', 'video/mp4'], ['mem-verification-poster.jpg', 'image/jpeg']
+].map(([name, type]) => [`/verify/assets/${name}`, { type, bytes: require('node:fs').readFileSync(require('node:path').join(__dirname, 'assets', name)) }]));
 const { MEM_GUILD, MEM_CHANNEL, MEM_MESSAGE, MEM_URL, entrancePanel, entranceHtml } = require('./verify-entrance');
 
 const EPHEMERAL = 64;
@@ -434,11 +436,12 @@ function createVerifyGate({ pool, botToken = '', secret = '', baseUrl = 'https:/
 
   /* Returns true when the request was a verification page request. */
   async function handleHttp(request, response, path, readBody) {
-    if (path === '/verify/assets/mem-verification.gif') {
+    if (entranceAssets.has(path)) {
+      const asset = entranceAssets.get(path);
       const read = request.method === 'GET' || request.method === 'HEAD';
-      response.writeHead(read ? 200 : 405, { 'content-type': read ? 'image/gif' : 'text/plain',
+      response.writeHead(read ? 200 : 405, { 'content-type': read ? asset.type : 'text/plain',
         'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' });
-      response.end(request.method === 'GET' ? entranceGif : undefined);
+      response.end(request.method === 'GET' ? asset.bytes : undefined);
       return true;
     }
     const m = path.match(/^\/verify\/([A-Za-z0-9_-]{20,64})$/);

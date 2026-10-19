@@ -278,4 +278,17 @@ test('MEM page retains rules and disclosure, supports reduced motion, and escape
   const passed = gate.pageHtml({ state: 'passed', guildId: GUILD });
   assert.match(passed, /You are verified ✓/);
   assert.match(passed, /https:\/\/discord.com\/channels\/938894329076940820/);
+  assert.match(page, /<video autoplay muted loop playsinline/);
+  assert.match(page, /TAP TO VERIFY/);
+});
+
+test('verification media is served without querying member data', async () => {
+  const gate = createVerifyGate({ pool: { query: () => { throw new Error('unexpected member query'); } } });
+  for (const [file, type] of [['mem-verification.gif','image/gif'],['mem-verification.mp4','video/mp4'],['mem-verification-poster.jpg','image/jpeg']]) {
+    const res = fakeResponse();
+    assert.equal(await gate.handleHttp(fakeRequest('GET'), res, '/verify/assets/' + file), true);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['content-type'], type);
+    assert.ok(res.body.length > 1000);
+  }
 });
