@@ -43,7 +43,7 @@ test('the trial link: landing, Discord sign-in with a signed state, a 15-day pas
   assert.equal(trial.openState(state.slice(0, -2) + 'xx'), null, 'a tampered state is refused');
   // callback: the pass is granted, the page opens the Activity
   res = fakeResponse(); await trial.handle(req('/academy-activity/trial/callback'), res, '/academy-activity/trial/callback', new URL('https://academy.example/academy-activity/trial/callback?code=abc&state=' + encodeURIComponent(state)));
-  assert.equal(res.status, 200); assert.match(res.body, /You’re in, Ana\./); assert.match(res.body, /discord\.com\/activities\/1551336038713139370/); assert.match(res.body, /oauth2\/authorize\?client_id=1551336038713139370/);
+  assert.equal(res.status, 200); assert.match(res.body, /You’re in, Ana\./); assert.match(res.body, /discord\.com\/activities\/1551336038713139370/); assert.match(res.body, /oauth2\/authorize\?client_id=1551336038713139370&integration_type=1&scope=applications.commands/); assert.match(res.body, /Paste this link into any Discord chat/); assert.match(res.body, /value="https:\/\/discord.com\/activities\/1551336038713139370"/);
   const pass = await store.active('420000000000000042', new Date(T0 + 1000), 'academy');
   assert.equal(pass.plan, 'trial'); assert.equal(pass.amount, 0); assert.equal(pass.ref, 'acad-trial:420000000000000042');
   assert.equal(new Date(pass.expiresAt).getTime() - new Date(pass.startsAt).getTime(), 15 * 86_400_000);

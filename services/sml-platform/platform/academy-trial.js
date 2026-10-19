@@ -80,26 +80,33 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
 
   /* ---------- pages ---------- */
   const activityUrl = DISCORD + '/activities/' + encodeURIComponent(clientId);
-  const installUrl = DISCORD + '/oauth2/authorize?client_id=' + encodeURIComponent(clientId);
+  const installUrl = DISCORD + '/oauth2/authorize?client_id=' + encodeURIComponent(clientId) + '&integration_type=1&scope=applications.commands';
   const page = (title, body) => '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(title) + '</title>'
     + '<meta name="robots" content="noindex"><style>html,body{margin:0;background:#06101a;color:#e6eef2;font:500 16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}'
     + 'main{max-width:560px;margin:0 auto;padding:48px 20px 60px}.card{border:1px solid #1f3942;border-radius:16px;background:linear-gradient(160deg,#0a1620,#0d1b26);padding:26px 24px;box-shadow:0 24px 60px rgba(0,0,0,.5)}'
     + 'h1{margin:0 0 6px;font-size:1.55rem;line-height:1.2}.k{font:800 .68rem ui-monospace,monospace;letter-spacing:.1em;color:#00c47d;margin:0 0 14px}p{margin:0 0 12px;color:#c9dae2}'
     + '.btn{display:inline-block;margin:8px 8px 0 0;padding:12px 18px;border-radius:10px;background:#00c47d;color:#04140d;font-weight:800;text-decoration:none}.btn.alt{background:rgba(255,255,255,.06);color:#e6eef2;border:1px solid #2b4b5a}'
-    + 'ol{padding-left:20px;color:#c9dae2}li{margin:0 0 6px}small{display:block;margin-top:16px;color:#7f95a1;font-size:.78rem}</style></head><body><main><div class="card">' + body + '</div></main></body></html>';
+    + 'ol{padding-left:20px;color:#c9dae2}li{margin:0 0 6px}small{display:block;margin-top:16px;color:#7f95a1;font-size:.78rem}'
+    + '.lk{display:block;width:100%;box-sizing:border-box;margin:10px 0 4px;padding:11px 12px;border:1px solid #2b4b5a;border-radius:10px;background:#07111a;color:#aef5d5;font:700 .92rem ui-monospace,monospace}h3{margin:18px 0 6px;font-size:1rem}</style></head><body><main><div class="card">' + body + '</div></main></body></html>';
+  /* how an Activity actually opens: from inside Discord. The link becomes a Play card when pasted into any chat or DM; the
+     App Launcher is the other door; the user-install link puts the Academy on the account for servers that never added it. */
+  const launch = () => '<h3>Open the Academy</h3><p>Paste this link into any Discord chat or DM and press <b>Play</b> on the card:</p>'
+    + '<input class="lk" readonly value="' + esc(activityUrl) + '" onfocus="this.select()" aria-label="Academy activity link">'
+    + '<a class="btn" href="' + activityUrl + '">Open in Discord</a><a class="btn alt" href="' + installUrl + '">Add the Academy to your Discord account</a>'
+    + '<ol><li>Or, in any Discord chat, tap the <b>Apps</b> (rocket) button, find <b>' + esc(appName) + '</b> and press <b>Launch</b>.</li>'
+    + '<li>In a server that never added the Academy, use <b>Add the Academy to your Discord account</b> first; after that it launches anywhere for you.</li>'
+    + '<li>Sign in when the Academy asks; your access is recognised from your Discord account.</li></ol>';
   const landing = (via) => page(appName + ' · free trial', '<p class="k">FREE TRIAL · ' + trialDays + ' DAYS</p><h1>' + esc(appName) + '</h1>'
     + '<p>The live chart lab, every lesson with narration, the scanner, options, Level 2, alerts desk and member profiles. Free for ' + trialDays + ' days on your Discord account, in any Discord server where the Academy runs. No card.</p>'
     + '<a class="btn" href="/academy-activity/trial/start' + (via ? '?via=' + encodeURIComponent(via) : '') + '">Continue with Discord</a>'
     + '<small>Discord only tells us who you are (your id and name). One trial per Discord account. Educational content, not financial advice.</small>');
   const started = (name, pass) => page('Your Academy trial is on', '<p class="k">TRIAL STARTED</p><h1>You’re in' + (name ? ', ' + esc(name) : '') + '.</h1>'
     + '<p>Your ' + trialDays + '-day Academy pass is on your Discord account until <b>' + esc(new Date(pass.expiresAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')) + '</b>. It works wherever you open the Academy.</p>'
-    + '<a class="btn" href="' + activityUrl + '">Open the Academy in Discord</a><a class="btn alt" href="' + installUrl + '">Add the Academy to your Discord</a>'
-    + '<ol><li>If the Academy does not open from the button, join a voice channel in any server you are in, tap the rocket (Activities) and choose ' + esc(appName) + '.</li><li>Sign in when the Academy asks; your trial is recognised from your Discord account.</li></ol>'
-    + '<small>Enjoy the trial. When it ends, the Academy tells you how to keep access.</small>');
+    + launch() + '<small>Enjoy the trial. When it ends, the Academy tells you how to keep access.</small>');
   const used = (name, info) => page('Trial already used', '<p class="k">ONE TRIAL PER ACCOUNT</p><h1>' + (info.active ? 'Your trial is already running' : 'This account has had its trial') + (name ? ', ' + esc(name) : '') + '.</h1>'
-    + (info.active ? '<p>It runs until <b>' + esc(new Date(info.pass.expiresAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')) + '</b>. Open the Academy and it is yours.</p><a class="btn" href="' + activityUrl + '">Open the Academy in Discord</a>'
+    + (info.active ? '<p>It runs until <b>' + esc(new Date(info.pass.expiresAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')) + '</b>.</p>' + launch()
       : '<p>The free trial on this Discord account ended on ' + esc(new Date(info.pass.expiresAt).toUTCString().slice(0, 16)) + '. Academy access is available to members' + (buyUrl ? ':' : '.') + '</p>' + (buyUrl ? '<a class="btn" href="' + esc(buyUrl) + '">Get Academy access</a>' : '')));
-  const member = (name) => page('You already have access', '<p class="k">MEMBER</p><h1>You already have Academy access' + (name ? ', ' + esc(name) : '') + '.</h1><p>No trial needed. Open the Academy and sign in.</p><a class="btn" href="' + activityUrl + '">Open the Academy in Discord</a>');
+  const member = (name) => page('You already have access', '<p class="k">MEMBER</p><h1>You already have Academy access' + (name ? ', ' + esc(name) : '') + '.</h1><p>No trial needed.</p>' + launch());
   const failed = (why) => page('Could not start the trial', '<p class="k">NOT YET</p><h1>That did not go through.</h1><p>' + esc(why) + '</p><a class="btn" href="' + link + '">Try again</a>');
 
   const send = (response, status, html) => { response.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' }); response.end(html); };
