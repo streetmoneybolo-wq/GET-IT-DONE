@@ -58,9 +58,11 @@
   const S = { on: false, sym: '', cols: [], events: [], ref: 1, tick: 0.01, everyMs: 5000, busy: false, err: '', note: '', hover: null, off: null, offKey: '' };
   try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) S.on = v.on === true; } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on })); } catch (_) { /* ignore */ } };
+  /* the ticker and interval ON THE CHART, not the page address: inside Discord the address never changes when a member loads another
+     ticker, so reading it left the heat map polling the first symbol forever and drawing its book on every other chart */
   const q = () => new URLSearchParams(location.search);
-  const sym = () => String(q().get('symbol') || 'SPY').toUpperCase();
-  const tf = () => String(q().get('tf') || '5m');
+  const sym = () => { try { const M = window.smlChartModel && window.smlChartModel(); if (M && M.symbol) return String(M.symbol).toUpperCase(); } catch (_) { /* fall through */ } try { const st = window.smlAcademyChartState && window.smlAcademyChartState(); if (st && st.symbol) return String(st.symbol).toUpperCase(); } catch (_) { /* fall through */ } const input = document.getElementById('symbol'); return String((input && input.value) || q().get('symbol') || 'SPY').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 10) || 'SPY'; };
+  const tf = () => { try { const M = window.smlChartModel && window.smlChartModel(); if (M && M.tf) return String(M.tf); } catch (_) { /* fall through */ } try { const st = window.smlAcademyChartState && window.smlAcademyChartState(); if (st && st.tf) return String(st.tf); } catch (_) { /* fall through */ } return String(q().get('tf') || '5m'); };
 
   const style = document.createElement('style');
   style.textContent = '#heat-layer{position:absolute;pointer-events:none;z-index:3;background:transparent;border:0;border-radius:0;min-height:0;max-width:none;mix-blend-mode:screen}'
@@ -185,7 +187,9 @@
   btn.classList.toggle('on', S.on);
   window.addEventListener('sml-chart-view', () => { if (S.on && !window.smlChartGesture) draw(); });
   window.addEventListener('resize', () => { S.offKey = ''; draw(); });
-  window.addEventListener('sml-academy-market', () => { S.cols = []; S.offKey = ''; S.hover = null; if (S.on) setTimeout(poll, 300); });
+  /* the market event fires on every candle refresh, not only on a ticker change: the columns are dropped only when the ticker really changed,
+     otherwise the map was wiped every few seconds and spent most of its time saying "collecting the book" */
+  window.addEventListener('sml-academy-market', () => { const s = sym(); if (s === S.sym) { S.offKey = ''; if (S.on) draw(); return; } S.cols = []; S.events = []; S.offKey = ''; S.hover = null; S.sym = s; if (S.on) setTimeout(poll, 300); });
   setInterval(poll, 5000);
   draw(); if (S.on) poll();
 })();

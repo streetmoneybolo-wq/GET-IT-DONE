@@ -9,7 +9,7 @@ const SYMBOL = /^[A-Z0-9.:-]{1,10}$/;
    last fifteen minutes of prints a symbol, a few hundred kilobytes for the eight symbols at most */
 const DEEP_SNAPSHOTS = 24, PRINTS_MAX = 2000, PRINTS_MS = 15 * 60_000, INSIGHTS_MEMO_MS = 2000;
 /* the order-book heat map: one column of resting size per side every five seconds, twenty minutes deep, thirty levels a side as [price, size] */
-const HEAT_EVERY_MS = 5000, HEAT_COLUMNS = 240, HEAT_LEVELS = 30;
+const HEAT_EVERY_MS = 5000, HEAT_COLUMNS = 240, HEAT_LEVELS = 60; // the full book the bridge sends, so the map spans twice the price range it used to
 
 /*
  * Keeps a rolling Level 2 history per symbol on the server, so a member who opens the Activity late still sees the last ten minutes of order flow,
