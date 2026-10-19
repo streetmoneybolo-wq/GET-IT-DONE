@@ -23,7 +23,10 @@ function createSqueezeList({ insight, universe, now = Date.now, logger = () => {
       daysToCover: num(it.daysToCover), shortInterest: num(it.shortInterest), siChangePct: num(it.siChangePct), shortRatio: num(svp.avgRatio), shortRatioTrend: num(svp.trendPts), shortVsPrice: svp.tone || 'neutral',
       close: num(px.close), hi20: num(px.hi20), lo20: num(px.lo20), aboveHigh: num(px.close) != null && num(px.hi20) != null && px.close > px.hi20,
       changePct: meta ? num(meta.changePct ?? meta.change_pct ?? meta.change) : null, volume: meta ? num(meta.volume) : null, relVol: meta ? num(meta.relVol ?? meta.relativeVolume ?? meta.rvol) : null,
-      call: v.call || '', tone: v.tone || 'neutral', why: top, sources: r.sources || null
+      call: v.call || '', tone: v.tone || 'neutral', why: top, sources: r.sources || null,
+      fuel: r.model ? num(r.model.fuel && r.model.fuel.score) : null, spark: r.model ? num(r.model.spark && r.model.spark.score) : null, accelerant: r.model ? num(r.model.accelerant && r.model.accelerant.score) : null, trap: r.model ? num(r.model.trap && r.model.trap.score) : null,
+      pctFloat: r.model && r.model.fuel ? num(r.model.fuel.pctFloat) : null, burn: r.model && r.model.fuel ? num(r.model.fuel.burn) : null, qstate: r.model && r.model.qstate ? { dominant: r.model.qstate.dominant, squeeze: num(r.model.qstate.probs && r.model.qstate.probs.squeeze), entropy: num(r.model.qstate.entropy) } : null, band: r.model ? r.model.band : '', coverage: r.model ? num(r.model.coverage) : null,
+      modelWhy: r.model && r.model.why ? [...(r.model.why.fuel || []).slice(0, 2), ...(r.model.why.spark || []).slice(0, 2)] : []
     };
   }
 
@@ -52,14 +55,14 @@ function createSqueezeList({ insight, universe, now = Date.now, logger = () => {
     state.rows = rank(found); state.at = now(); state.building = false;
     logger('info', 'squeeze_list_built', { symbols: symbols.length, scored: found.length, ms: now() - t });
   }
-  function rank(found) { return found.slice().sort((a, b) => (b.squeeze - a.squeeze) || ((b.daysToCover || 0) - (a.daysToCover || 0))).slice(0, limit).map((r, k) => ({ ...r, rank: k + 1 })); }
+  function rank(found) { return found.slice().sort((a, b) => (b.squeeze - a.squeeze) || (((b.qstate && b.qstate.squeeze) || 0) - ((a.qstate && a.qstate.squeeze) || 0)) || ((b.daysToCover || 0) - (a.daysToCover || 0))).slice(0, limit).map((r, k) => ({ ...r, rank: k + 1 })); }
 
   /* the list as it stands; a stale or missing one starts a sweep in the background and says so */
   function list({ refresh = false } = {}) {
     const stale = !state.at || now() - state.at > ttlMs;
     if ((stale || refresh) && !run) { state.building = true; state.done = 0; state.error = ''; run = build().catch((error) => { logger('error', 'squeeze_list_failed', { error: String(error && error.message || error) }); state.building = false; state.error = 'build_failed'; }).finally(() => { run = null; }); }
     return { ok: true, rows: state.rows, building: state.building, done: state.done, total: state.total, asOf: state.at || null, startedAt: state.startedAt || null, error: state.error || '', limit,
-      note: 'SQUEEZE RISK 0-100 from the short insight: days to cover, the short volume ratio and its path against price, short interest against price, the 20-day range, the Level 3 book, the Massive tape, the flow ledger and put/call open interest. Fuel and a spark, not a prediction. Educational only.' };
+      note: 'SQUEEZE RISK 0-100 = fuel (short % of float, days to cover, burn rate, short volume, short interest vs price, synthetic shorts) x spark (the 20-day high, the Massive tape, sweeps, the Level 3 book, dark pool DIX, worked orders, icebergs, pulled orders, VPIN, the flow ledger, relative volume, chatter, a dated catalyst) + accelerant (dealer gamma, the call wall, 0DTE) - trap (shorts winning). Q = the probabilistic state read. Fuel and a spark, not a prediction. Educational only.' };
   }
   return { list, build, state };
 }

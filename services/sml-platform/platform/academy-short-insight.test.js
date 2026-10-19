@@ -60,7 +60,8 @@ test('the chain summary and the service: inputs gathered in parallel, missing on
     candles: async () => ({ bars: up }), orderFlow: () => ({ ready: true, absorption: { state: 'bull', strength: 0.5 }, depth: { ready: true, pressure: { score: 40, label: 'buying pressure' }, walls: [], flow: { divergence: null } } }), tape: () => ({ stats: { count: 100, buy: 5e5, sell: 3e5, vol: 9e5, offVol: 1e5, offBuy: 6e4, offSell: 4e4, sweepN: 1, sweepBuy: 1, sweepSell: 0 } }),
     flowDays: async () => { throw new Error('db down'); }, chain: async () => rows, memAlgo: () => ({ bias: 'bear', latest: null }), now: () => clock, logger: () => {} });
   const out = await svc.insight('acme');
-  assert.equal(out.ok, true); assert.equal(out.symbol, 'ACME'); assert.deepEqual(out.sources, { short: true, candles: true, level3: true, level2: true, tape: true, flowDays: false, chain: true });
+  assert.equal(out.ok, true); assert.equal(out.symbol, 'ACME'); assert.deepEqual(out.sources, { short: true, candles: true, level3: true, level2: true, tape: true, flowDays: false, chain: true, float: false, gamma: false, sentiment: false, intent: false, earnings: false });
+  assert.ok(out.model && out.model.score != null && out.model.fuel && out.model.spark && out.model.qstate, 'the rebuilt squeeze model rides along'); assert.equal(out.squeeze.score, out.model.score); assert.equal(out.brief.available, false);
   assert.ok(out.squeeze.score > out.pressing.score); assert.equal(out.interest.daysToCover, 6); assert.equal(out.chain.putCallOi, 1.47); assert.equal(out.tape.buy, 5e5); assert.equal(out.mem, null, 'the short model needs 220 daily bars');
   await svc.insight('ACME'); assert.equal(calls, 1, 'cached'); clock += 61_000; await svc.insight('ACME'); assert.equal(calls, 2);
   assert.equal((await svc.insight('bad!')).error, 'invalid_symbol');
