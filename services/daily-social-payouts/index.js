@@ -1022,7 +1022,13 @@ client.on('interactionCreate', async (interaction) => {
       const idea = post.commentIdeas?.[Math.floor(Math.random() * post.commentIdeas.length)];
       if (!idea) return interaction.reply({ content: 'No generated reply is available for this article.', ephemeral: true });
       return interaction.reply({
-        content: `# 🔴 COPY THIS REPLY, PERSONALIZE IT, POST IT, AND COME BACK 🔴\n\n**Exactly 3 hashtags · no @handles**\n\n\`\`\`text\n${idea}\n\`\`\`\nOpen the original post, make the reply your own, submit it manually, then return to the engagement checklist.`,
+        content: `# 💬 COPY A STARTING POINT, THEN MAKE IT YOUR OWN\n\nUse Discord’s copy control on this code block, then open the original post. The suggestion is a starting point—not a script.\n\n\`\`\`text\n${idea}\n\`\`\`\nOnly post a reply you genuinely stand behind, and follow that platform’s rules.`,
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setLabel(`Engage on ${platformInfo[externalPost.platform]?.label || externalPost.platform}`.slice(0, 80))
+            .setStyle(ButtonStyle.Link)
+            .setURL(externalPost.url),
+        )],
         ephemeral: true,
       });
     }

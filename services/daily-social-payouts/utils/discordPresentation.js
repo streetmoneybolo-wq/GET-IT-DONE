@@ -12,18 +12,23 @@ const labels = {
 
 export function returnedPostShareComponents(postID, externalPostId, platform) {
   if (!labels[platform]) throw new Error('That returned-post platform is unavailable.');
-  return [new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setLabel('Get 3-Hashtag Reply')
-      .setEmoji('💬')
-      .setStyle(ButtonStyle.Secondary)
-      .setCustomId(`sml-engagement-reply:${postID}:${externalPostId}`),
-    new ButtonBuilder()
-      .setLabel(`Share Again on ${labels[platform][0]}`)
+  const engageButtons = [new ButtonBuilder()
+    .setLabel('Get reply to copy')
+    .setEmoji('💬')
+    .setStyle(ButtonStyle.Secondary)
+    .setCustomId(`sml-engagement-reply:${postID}:${externalPostId}`)];
+
+  // Stocktwits does not offer a supported reply-composer URL. Do not render a
+  // button that looks actionable but cannot complete a platform-native flow.
+  if (platform !== 'stocktwits') {
+    engageButtons.push(new ButtonBuilder()
+      .setLabel(`Share your take on ${labels[platform][0]}`)
       .setEmoji(labels[platform][1])
       .setStyle(ButtonStyle.Primary)
-      .setCustomId(`sml-reshare:${postID}:${externalPostId}:${platform}`),
-  ), new ActionRowBuilder().addComponents(
+      .setCustomId(`sml-reshare:${postID}:${externalPostId}:${platform}`));
+  }
+
+  return [new ActionRowBuilder().addComponents(engageButtons), new ActionRowBuilder().addComponents(
     new ButtonBuilder().setLabel('Submit Public Proof Link').setEmoji('🔗').setStyle(ButtonStyle.Success).setCustomId(`sml-proof-link:${postID}:${externalPostId}`),
     new ButtonBuilder().setLabel('Submit Screenshot Proof').setEmoji('📸').setStyle(ButtonStyle.Secondary).setCustomId(`sml-proof-shot:${postID}:${externalPostId}`),
     new ButtonBuilder().setLabel('Self-Report Complete').setEmoji('✅').setStyle(ButtonStyle.Secondary).setCustomId(`sml-engagement-done:${postID}:${externalPostId}`),
