@@ -371,6 +371,7 @@ const CSS = [
   '.mem-faq details{margin:8px 0;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-family:system-ui,sans-serif;font-size:15.5px}.mem-faq summary{cursor:pointer;font-weight:800;list-style:none;display:flex;justify-content:space-between;gap:10px}.mem-faq summary:after{content:"+";color:var(--acc);font-weight:900}.mem-faq details[open] summary:after{content:"\\2013"}.mem-faq details p{margin:10px 0 0;color:var(--ink)}',
   '.mem-share{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:22px 0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-family:system-ui,sans-serif}.mem-share span{font:800 11px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--mut);margin-right:auto}.mem-share a,.mem-share button{padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--ink);font:700 12px/1 system-ui,sans-serif;text-decoration:none;cursor:pointer}.mem-share button.done{border-color:var(--acc);color:var(--acc)}',
   '.mem-sources{font-family:system-ui,sans-serif;font-size:14px}.mem-sources li{margin:4px 0}.mem-sources small{color:var(--mut)}.mem-gloss{font-family:system-ui,sans-serif;font-size:14px;color:var(--mut)}.mem-gloss dt{font-weight:800;color:var(--ink);margin-top:8px}.mem-gloss dd{margin:2px 0 0}',
+  '.mem-record{padding:10px 14px;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:0 12px 12px 0;background:var(--card);font:500 14.5px/1.5 system-ui,sans-serif}',
   '.mem-disclosure{margin-top:34px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card);font:400 13.5px/1.55 system-ui,sans-serif;color:var(--mut)}',
   '@media(max-width:620px){.mem-article{padding:0 14px 60px;font-size:17px}.mem-vs{grid-template-columns:1fr}.mem-by .mem-chip-live{margin-left:0}.mem-tabs>label{padding:9px 10px;font-size:11px}}',
   '@media(prefers-color-scheme:light){.mem-article:not([data-theme="dark"]){--bg:#fbfbf8;--ink:#14181d;--mut:#5b6773;--line:#e4e6e0;--card:#fff;--acc:#00a56a;--hl:#d8f7e8}.mem-article:not([data-theme="dark"]) h1,.mem-article:not([data-theme="dark"]) .mem-chip b,.mem-article:not([data-theme="dark"]) .mem-count b,.mem-article:not([data-theme="dark"]) .mem-track-head b{color:var(--ink)}}',
@@ -420,7 +421,7 @@ function headFor({ seo, draft, url, siteUrl, authorUrl, publication, byline, c, 
 }
 
 /* ---------- compose ---------- */
-function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author = 'Vaughn McNair', publication = 'Making Easy Money', siteUrl = 'https://stockmarketloop.com', authorUrl = '', chartEndpoint = '', discordUrl = '', url = '', imageUrl = '', topic = null, logoUrl = '' } = {}) {
+function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author = 'Vaughn McNair', publication = 'Making Easy Money', siteUrl = 'https://stockmarketloop.com', authorUrl = '', chartEndpoint = '', discordUrl = '', url = '', imageUrl = '', topic = null, logoUrl = '', record = null } = {}) {
   const d = dossier || {};
   const draft = engine.draftArticle(st, c, { asOf, author, publication });
   const seed = seedOf(c.symbol + st.angle + Math.round(asOf / 3_600_000));
@@ -478,7 +479,8 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   if (sentSec) text(`<h2>${esc(sentSec.title)}</h2>${sentSec.html}`);
   if (filSec) text(`<h2>${esc(filSec.title)}</h2>${filSec.html}`);
   if (patSec) text(`<h2>${esc(patSec.title)}</h2>${patSec.html}`);
-  text(`<h2>Bottom line</h2><p>${esc(bottomLine(st, c, seed))}</p>`);
+  const recordText = require('./academy-article-outcomes').recordLine(record);
+  text(`<h2>Bottom line</h2><p>${esc(bottomLine(st, c, seed))}</p>${recordText ? `<p class="mem-record"><strong>Desk record.</strong> ${esc(recordText.replace(/^Desk record: /, ''))}</p>` : ''}`);
   mod(pollMod, 'poll');
   text(`<h2>Questions readers ask</h2><div class="mem-faq">${faq.map((f) => `<details><summary>${esc(f.q)}</summary><p>${esc(f.a)}</p></details>`).join('')}</div>`);
   text(`<h2>Keep reading</h2><ul class="mem-sources"><li>${link(src.stocks, S + ' quote, chart and data')} on StockMarketLoop.</li><li>${link(src.author, 'More from this desk')}.</li>${src.discord ? `<li>${link(src.discord, 'The Making Easy Money Discord')}, where the alerts land first.</li>` : ''}</ul>`);

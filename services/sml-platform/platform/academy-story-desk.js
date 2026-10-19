@@ -11,6 +11,7 @@ const engine = require('./academy-story-engine');
 const articleHtml = require('./academy-article-html');
 const gifs = require('./academy-scenario-gif');
 const desk2 = require('./academy-article-desk');
+const outcomes = require('./academy-article-outcomes');
 
 const num = (v, d = null) => { if (v == null || v === '') return d; const n = Number(v); return Number.isFinite(n) ? n : d; };
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -90,11 +91,44 @@ function createStoryDesk({
   universe, candles, gamma = null, shortData = null, finra = null, institutional = null, darkPool = null, smc = null, sentiment = null, earnings = null, playbook = null, direction = null, runner = null, company = null,
   heat = null, publisher = null, polisher = null, dm = null, ownerIds = [], store = null, marketState = null, now = Date.now, logger = () => {},
   perTick = 18, maxPerTick = 3, maxPerDay = 12, dedupeDays = 3, autopublish = false, windowFrom = 420, windowTo = 990, siteUrl = 'https://stockmarketloop.com', byline = 'Vaughn McNair', publication = 'Making Easy Money',
-  insights = {}, chartEndpoint = '', discordUrl = '', authorPath = '/n/grandmasterobi/'
+  insights = {}, chartEndpoint = '', discordUrl = '', authorPath = '/n/grandmasterobi/',
+  /* scheduled pieces: [{ at: minutes into the ET day, subjects: ['the market', 'nasdaq'] }], each slot once per trading
+     day in the hour after its time (the market-open and the market-close reads) */
+  schedule = [], settlePerTick = 20
 } = {}) {
   const authorUrl = siteUrl + authorPath;
   let state = null, busy = false, cursor = 0;
-  async function load() { if (!state) { try { state = (store && await store.read()) || null; } catch (_) { state = null; } if (!state || !state.written) state = { written: {}, log: [], day: '', count: 0 }; } return state; }
+  async function load() { if (!state) { try { state = (store && await store.read()) || null; } catch (_) { state = null; } if (!state || !state.written) state = { written: {}, log: [], day: '', count: 0 }; } if (!Array.isArray(state.outcomes)) state.outcomes = []; if (!state.sched || typeof state.sched !== 'object') state.sched = {}; return state; }
+  /* the record: one ledger entry per piece written, settled from the daily bars that follow (academy-article-outcomes.js) */
+  const recordNow = () => outcomes.record(state ? state.outcomes : []);
+  function logOutcome(story, c, { filed = false, letterId = null, url = '' } = {}) {
+    const e = outcomes.openEntry({ id: `${c.symbol}:${story.angle}:${now()}`, symbol: c.symbol, angle: story.angle, lean: story.lean, price: c.price, pt: story.pt, stop: story.stop, timeframe: story.timeframe, earningsDaysAway: c.earnings ? c.earnings.daysAway : null, at: now(), filed, letterId, url });
+    if (!e) return;
+    state.outcomes.push(e); if (state.outcomes.length > 400) state.outcomes.splice(0, state.outcomes.length - 400);
+  }
+  async function settle() {
+    const open = state.outcomes.filter((e) => e.status === 'open').slice(0, settlePerTick);
+    let changed = 0;
+    for (const e of open) {
+      const bars = await bars1d(e.symbol); if (!bars.length) continue;
+      const s = outcomes.settleEntry(e, bars, now());
+      const i = state.outcomes.indexOf(e); if (i >= 0) state.outcomes[i] = s;
+      if (s.status !== e.status) { changed += 1; note(`${e.symbol} ${e.angle} PT $${e.pt}: ${s.result} (${s.returnPct == null ? 'n/a' : (s.returnPct >= 0 ? '+' : '') + s.returnPct + '%'} in ${s.days} days)`, { symbol: e.symbol, angle: e.angle, result: s.result }); }
+    }
+    return changed;
+  }
+  /* the scheduled slots: each fires once per ET day, in the hour after its time */
+  async function runSchedule(et, t) {
+    const out = [];
+    for (const slot of schedule) {
+      const at = Number(slot.at); if (!Number.isFinite(at) || !Array.isArray(slot.subjects)) continue;
+      const key = `${et.date}:${at}`;
+      if (state.sched[key] || et.minutes < at || et.minutes > at + 60) continue;
+      state.sched[key] = t; for (const k of Object.keys(state.sched)) if (!k.startsWith(et.date)) delete state.sched[k];
+      for (const subject of slot.subjects) { try { const r = await write(subject, { file: true, scheduled: true }); out.push({ subject, ok: r.ok, error: r.error || (r.filed && r.filed.error) || '', url: r.filed ? r.filed.url : '' }); } catch (error) { out.push({ subject, ok: false, error: String(error && error.message || error) }); } }
+    }
+    return out;
+  }
   const save = async () => { if (store) { try { await store.write(state); } catch (error) { logger('warn', 'story_state_save_failed', { error: String(error && error.message || error) }); } } };
   const note = (text, extra = {}) => { state.log.push({ t: now(), text, ...extra }); if (state.log.length > 200) state.log.splice(0, state.log.length - 200); };
 
@@ -164,7 +198,7 @@ function createStoryDesk({
     ]);
     const { media, gifInfo, posterMedia } = gif;
     const coverUrl = posterMedia && posterMedia.url ? posterMedia.url : (media && media.url ? media.url : '');
-    const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author: byline, publication, siteUrl, authorUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic });
+    const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author: byline, publication, siteUrl, authorUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic, record: recordNow() });
     const guess = compose('');
     const pkg = file ? compose(`${siteUrl}${authorPath}${guess.slug}/`) : guess;
     const symLine = `${c.symbol} price-action scenario to $${story.pt}`;
@@ -217,7 +251,11 @@ function createStoryDesk({
       const t = now(), et = etNow(t), ms = marketState ? marketState(t) : null;
       if (!force) { if (ms && ms.tradingDay === false) return { skipped: 'holiday' }; if (et.minutes < windowFrom || et.minutes > windowTo) return { skipped: 'outside_window' }; }
       if (state.day !== et.date) { state.day = et.date; state.count = 0; }
-      if (state.count >= maxPerDay) return { skipped: 'daily_cap' };
+      /* first the record (open pieces scored against the bars since), then the scheduled reads, then the scan */
+      let settled = 0; try { settled = await settle(); } catch (error) { logger('warn', 'story_settle_failed', { error: String(error && error.message || error) }); }
+      let scheduled = []; try { scheduled = await runSchedule(et, t); } catch (error) { logger('warn', 'story_schedule_failed', { error: String(error && error.message || error) }); }
+      if (settled || scheduled.length) await save();
+      if (state.count >= maxPerDay) return { skipped: 'daily_cap', settled, scheduled };
       let rows = []; try { rows = (await universe()) || []; } catch (error) { logger('warn', 'story_universe_failed', { error: String(error && error.message || error) }); }
       rows = rows.filter((r) => r && /^[A-Z][A-Z0-9.\-]{0,9}$/.test(String(r.symbol || '').toUpperCase()));
       if (!rows.length) return { skipped: 'no_universe' };
@@ -247,19 +285,19 @@ function createStoryDesk({
         const filed = await file(s, c, built);
         results.push({ ...filed, frames: built.gifFrames });
         // a filing that failed (credential rejected, site down) is not "written": the next tick tries the name again
-        if (!filed.error) { state.written[s.symbol + ':' + s.angle] = t; state.count += 1; }
+        if (!filed.error) { state.written[s.symbol + ':' + s.angle] = t; state.count += 1; logOutcome(s, c, { filed: true, letterId: filed.letterId, url: filed.url }); }
         note(`${s.symbol} ${s.angle} PT $${s.pt} rank ${s.rank}: ${filed.error || (filed.published ? 'published' : 'draft')} ${filed.url || ''}`, { symbol: s.symbol, angle: s.angle, letterId: filed.letterId });
       }
       await save();
       await tell(results);
-      return { scanned: slice.length, candidates: cands.length, ranked: ranked.length, filed: results.length, results };
+      return { scanned: slice.length, candidates: cands.length, ranked: ranked.length, filed: results.length, results, settled, scheduled };
     } catch (error) { logger('error', 'story_tick_failed', { error: String(error && error.message || error) }); return null; }
     finally { busy = false; }
   }
   /* one subject on demand (the owner's "write about X": a ticker, or a topic the market trades through a proxy): the best
      angle, written in full. file:false composes the package to copy from without touching the site; file:true (the
      default) also files it as a Loop Letter draft (publish:true publishes it when the signed-in account is the byline). */
-  async function write(input, { publish = false, file: doFile = true } = {}) {
+  async function write(input, { publish = false, file: doFile = true, scheduled = false } = {}) {
     await load();
     const subject = desk2.resolveSubject(input);
     if (!subject) return { ok: false, error: 'invalid_symbol' };
@@ -272,16 +310,18 @@ function createStoryDesk({
     if (doFile) {
       filed = await file(ranked[0], c, built);
       if (publish && filed.letterId && publisher && !filed.published) { try { const pub = await publisher.publishLetter(filed.letterId); filed.published = true; if (pub && pub.url) filed.url = pub.url; } catch (error) { filed.error = String(error && error.message || error); } }
-      if (!filed.error) { state.written[c.symbol + ':' + ranked[0].angle] = now(); await save(); }
+      if (!filed.error) { state.written[c.symbol + ':' + ranked[0].angle] = now(); logOutcome(ranked[0], c, { filed: true, letterId: filed.letterId, url: filed.url }); }
+      note(`${scheduled ? 'scheduled ' : ''}${subject.label} ${ranked[0].angle} PT $${ranked[0].pt}: ${filed.error || (filed.published ? 'published' : 'draft')} ${filed.url || ''}`, { symbol: c.symbol, angle: ranked[0].angle, letterId: filed.letterId });
+      await save();
       await tell([filed]);
-    }
+    } else { logOutcome(ranked[0], c, { filed: false }); await save(); }
     const article = packageFor(built, filed && filed.url ? filed.url : '');
     return { ok: true, subject, story: { ...ranked[0], facts: ranked[0].facts }, dossier: Object.fromEntries(Object.entries(built.dossier || {}).map(([k, v]) => [k, !!(v && (Array.isArray(v) ? v.length : true))])),
       draft: { title: article.title, dek: article.dek, meta: article.seo.meta_desc, tags: article.tags, wordCount: article.wordCount, readMinutes: article.readMinutes, seo: article.seo, document: article.document, modules: article.modules, sections: article.sections, links: article.links },
       article, filed };
   }
-  async function status() { await load(); return { day: state.day, count: state.count, written: Object.keys(state.written).length, log: state.log.slice(-20).reverse() }; }
-  return { tick, write, status, candidate, load };
+  async function status() { await load(); return { day: state.day, count: state.count, written: Object.keys(state.written).length, log: state.log.slice(-20).reverse(), record: recordNow(), schedule: schedule.map((s) => ({ at: s.at, subjects: s.subjects, done: !!state.sched[`${state.day}:${s.at}`] })) }; }
+  return { tick, write, status, candidate, load, settle, record: recordNow };
 }
 
 module.exports = { createStoryDesk, createLettersPublisher, createPolisher };

@@ -123,3 +123,41 @@ test('the letters publisher builds the right calls', async () => {
   await p.saveSeo(9, { meta_title: 't' }); assert.deepEqual(calls[calls.length - 1].body, { seo: { meta_title: 't' } });
   assert.ok(calls.every((x) => x.auth === 'Basic '));
 });
+
+test('the record: every written piece opens a ledger entry, open entries settle against the bars that follow, and the piece shows the record once ten resolved', async () => {
+  const h = harness({ deps: { insights: {} } });
+  await h.desk.tick();
+  let st = await h.desk.status();
+  assert.equal(st.record.total, 1); assert.equal(st.record.open, 1); assert.equal(st.record.showable, false); assert.equal(st.record.recent[0].symbol, 'ABCD');
+  await h.desk.write('abcd', { file: false });
+  st = await h.desk.status(); assert.equal(st.record.total, 2, 'an unfiled copy is on the record too'); assert.equal(h.saved().outcomes.length, 2);
+  /* ten resolved entries already on the record make the next piece carry the line */
+  const saved = h.saved();
+  for (let i = 0; i < 10; i++) saved.outcomes.push({ id: 'old' + i, symbol: 'OLD', angle: 'short', lean: 'bullish', price: 10, pt: 11, stop: 9, horizonDays: 5, at: 1, status: 'resolved', result: i < 6 ? 'hit' : 'stopped', returnPct: i < 6 ? 10 : -10, maxFavPct: 0, maxAdvPct: 0, days: 2 });
+  const h2 = harness({ deps: { insights: {} } }); h2.desk.load && (await h2.desk.load());
+  const fresh = harness({ deps: { insights: {}, store: { read: async () => saved, write: async () => {} } } });
+  const r = await fresh.desk.write('abcd', { file: false });
+  assert.match(r.article.html, /class="mem-record"><strong>Desk record\.<\/strong> 6 of 10 scenario targets traded before their invalidation \(60%\), 4 stopped out/);
+  assert.ok(r.article.html.includes('Past pieces say nothing about this one.'));
+  /* settling: a future bar through the target resolves the open entry as a hit */
+  const entry = fresh.desk.record().recent.find((e) => e.status === 'open'); assert.ok(entry);
+  const lastBar = h.bars[h.bars.length - 1];
+  const settled = require('./academy-article-outcomes').settleEntry({ ...saved.outcomes.find((e) => e.status === 'open') }, [{ t: lastBar.t + 2 * DAY, o: entry.pt, h: entry.pt * 1.05, l: entry.pt * 0.99, c: entry.pt * 1.02, v: 1 }], lastBar.t + 3 * DAY);
+  assert.equal(settled.result, 'hit');
+});
+
+test('scheduled slots fire once per ET day in the hour after their time and file the subject through the desk', async () => {
+  /* the harness clock is 15 hours after the last bar; the slots are placed around that ET minute */
+  const bars = daily(80), nowMs = bars[bars.length - 1].t + 15 * 3_600_000;
+  const parts = {}; for (const x of new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(nowMs))) parts[x.type] = x.value;
+  const m = Number(parts.hour === '24' ? 0 : parts.hour) * 60 + Number(parts.minute);
+  const h = harness({ deps: { insights: {}, schedule: [{ at: m - 10, subjects: ['abcd'] }, { at: (m + 120) % 1440, subjects: ['abcd'] }] } });
+  const r = await h.desk.tick();
+  assert.ok(r && Array.isArray(r.scheduled), JSON.stringify(r && r.scheduled));
+  const fired = r.scheduled.filter((s) => s.subject === 'abcd');
+  assert.equal(fired.length, 1, 'only the slot whose hour this is: ' + JSON.stringify(r.scheduled));
+  assert.equal(fired[0].ok, true); assert.ok(fired[0].url);
+  const st = await h.desk.status(); assert.equal(st.schedule.length, 2); assert.equal(st.schedule.filter((s) => s.done).length, 1);
+  const again = await h.desk.tick(); assert.equal((again.scheduled || []).length, 0, 'a slot fires once a day');
+  assert.ok(h.posts.filter((p) => p.kind === 'create').length >= 1);
+});

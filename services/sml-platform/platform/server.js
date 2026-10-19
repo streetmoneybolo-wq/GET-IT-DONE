@@ -5544,7 +5544,9 @@ async function main() {
       memAlgo: async (s) => { const r = await sentimentCandles(s, '1D'); return r && Array.isArray(r.bars) && r.bars.length >= 60 ? require('./academy-mem-algo').analyze(r.bars, 'swing', {}, '1D', {}) : null; }
     },
     chartEndpoint: config.academyTrialPublicUrl ? config.academyTrialPublicUrl + '/academy-activity/article-chart' : '',
-    discordUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || '')
+    discordUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || ''),
+    /* the scheduled reads: the market and the Nasdaq after the open (9:45 ET) and into the close (15:50 ET); SML_STORY_SCHEDULE=off skips them */
+    schedule: String(process.env.SML_STORY_SCHEDULE || 'on').toLowerCase() === 'off' ? [] : [{ at: 585, subjects: ['the market', 'nasdaq'] }, { at: 950, subjects: ['the market', 'nasdaq'] }]
   }) : null;
   const getStoryDesk = () => storyDesk;
   if (storyDesk) {

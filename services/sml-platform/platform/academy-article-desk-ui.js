@@ -121,7 +121,8 @@
     var r = await api('');
     S.owner = !!(r && r.ok);
     btn.style.display = S.owner ? 'inline-block' : 'none';
-    if (S.owner && r.day) status('Desk ready. Today: ' + (r.count || 0) + ' filed.' + (r.log && r.log[0] ? ' Last: ' + String(r.log[0].text || '').slice(0, 90) : ''));
+    var rec = r && r.record ? r.record : null;
+    if (S.owner && r.day) status('Desk ready. Today: ' + (r.count || 0) + ' filed.' + (rec && rec.resolved ? ' Record: ' + rec.hit + ' of ' + rec.resolved + ' targets hit (' + rec.hitRate + '%), ' + rec.open + ' open.' : (rec && rec.open ? ' ' + rec.open + ' pieces open on the record.' : '')) + (r.log && r.log[0] ? ' Last: ' + String(r.log[0].text || '').slice(0, 90) : ''));
   }
   check();
   window.addEventListener('sml-academy-session', check);
