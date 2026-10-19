@@ -85,13 +85,13 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
   /* ---------- pages ---------- */
   const activityUrl = DISCORD + '/activities/' + encodeURIComponent(clientId);
   const installUrl = DISCORD + '/oauth2/authorize?client_id=' + encodeURIComponent(clientId) + '&integration_type=1&scope=applications.commands';
-  const page = (title, body) => '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(title) + '</title>'
-    + '<meta name="robots" content="noindex"><style>html,body{margin:0;background:#06101a;color:#e6eef2;font:500 16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}'
+  const page = (title, body, head = '') => '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(title) + '</title>'
+    + '<meta name="robots" content="noindex">' + head + '<style>html,body{margin:0;background:#06101a;color:#e6eef2;font:500 16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}'
     + 'main{max-width:560px;margin:0 auto;padding:48px 20px 60px}.card{border:1px solid #1f3942;border-radius:16px;background:linear-gradient(160deg,#0a1620,#0d1b26);padding:26px 24px;box-shadow:0 24px 60px rgba(0,0,0,.5)}'
     + 'h1{margin:0 0 6px;font-size:1.55rem;line-height:1.2}.k{font:800 .68rem ui-monospace,monospace;letter-spacing:.1em;color:#00c47d;margin:0 0 14px}p{margin:0 0 12px;color:#c9dae2}'
     + '.btn{display:inline-block;margin:8px 8px 0 0;padding:12px 18px;border-radius:10px;background:#00c47d;color:#04140d;font-weight:800;text-decoration:none}.btn.alt{background:rgba(255,255,255,.06);color:#e6eef2;border:1px solid #2b4b5a}'
     + 'ol{padding-left:20px;color:#c9dae2}li{margin:0 0 6px}small{display:block;margin-top:16px;color:#7f95a1;font-size:.78rem}'
-    + '.lk{display:block;width:100%;box-sizing:border-box;margin:10px 0 4px;padding:11px 12px;border:1px solid #2b4b5a;border-radius:10px;background:#07111a;color:#aef5d5;font:700 .92rem ui-monospace,monospace}h3{margin:18px 0 6px;font-size:1rem}</style></head><body><main><div class="card">' + body + '</div></main></body></html>';
+    + '.hero{display:block;width:100%;height:auto;border-radius:12px;margin:0 0 16px;border:1px solid #1f3942}.lk{display:block;width:100%;box-sizing:border-box;margin:10px 0 4px;padding:11px 12px;border:1px solid #2b4b5a;border-radius:10px;background:#07111a;color:#aef5d5;font:700 .92rem ui-monospace,monospace}h3{margin:18px 0 6px;font-size:1rem}</style></head><body><main><div class="card">' + body + '</div></main></body></html>';
   /* how an Activity actually opens: from inside Discord. The link becomes a Play card when pasted into any chat or DM; the
      App Launcher is the other door; the user-install link puts the Academy on the account for servers that never added it. */
   /* How the Academy opens, anywhere in Discord. With sign-up by Discord the site account is made (or matched) and its Discord
@@ -109,10 +109,22 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
     + '<input class="lk" readonly value="' + esc(activityUrl) + '" onfocus="this.select()" aria-label="Academy activity link">'
     + '<a class="btn" href="' + activityUrl + '">Open in Discord</a><a class="btn alt" href="' + installUrl + '">Add the Academy to your Discord account</a>'
     + (invite ? '<small>Want the community too? <a href="' + esc(invite) + '">Join the ' + esc(appName) + ' Discord server</a> (optional; the Academy works without it).</small>' : '');
-  const landing = (via) => page(appName + ' · free trial', '<p class="k">FREE TRIAL · ' + trialDays + ' DAYS</p><h1>' + esc(appName) + '</h1>'
+  /* the link preview Discord, X and the rest unfurl for the shared trial link: the banner, a headline and what is inside */
+  const bannerPath = '/academy-activity/trial/banner.jpg', bannerUrl = origin + bannerPath;
+  const previewTitle = 'Free ' + trialDays + '-Day Trial: the Master Trading Tool for Discord';
+  const previewText = 'Level 3 market data. Dark pool prints. Live order flow, order-book heat maps, a scanner and MEM ALGO, all inside Discord. See where the big money is moving. ' + trialDays + ' days free, no card.';
+  const previewTags = (via) => '<meta name="description" content="' + esc(previewText) + '">'
+    + '<meta property="og:type" content="website"><meta property="og:site_name" content="' + esc(appName) + '"><meta property="og:title" content="' + esc(previewTitle) + '">'
+    + '<meta property="og:description" content="' + esc(previewText) + '"><meta property="og:url" content="' + esc(link) + '"><meta property="og:image" content="' + esc(bannerUrl) + '">'
+    + '<meta property="og:image:type" content="image/jpeg"><meta property="og:image:width" content="2000"><meta property="og:image:height" content="668"><meta property="og:image:alt" content="Stock Market Trading Tool: discipline protects the dream, consistency builds the freedom">'
+    + '<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="' + esc(previewTitle) + '"><meta name="twitter:description" content="' + esc(previewText) + '"><meta name="twitter:image" content="' + esc(bannerUrl) + '">'
+    + '<meta name="theme-color" content="#00c47d">';
+  let bannerBytes = null;
+  const banner = () => { if (!bannerBytes) { try { bannerBytes = require('node:fs').readFileSync(require('node:path').join(__dirname, 'assets', 'mem-trial-banner.jpg')); } catch (_) { bannerBytes = false; } } return bannerBytes || null; };
+  const landing = (via) => page(appName + ' · free trial', '<img class="hero" src="' + bannerPath + '" width="2000" height="668" alt="Stock Market Trading Tool">' + '<p class="k">FREE TRIAL · ' + trialDays + ' DAYS</p><h1>' + esc(appName) + '</h1>'
     + '<p>The live chart lab, every lesson with narration, the scanner, options, Level 2, alerts desk and member profiles. Free for ' + trialDays + ' days on your Discord account, in any Discord server where the Academy runs. No card.</p>'
     + '<a class="btn" href="/academy-activity/trial/start' + (via ? '?via=' + encodeURIComponent(via) : '') + '">Continue with Discord</a>'
-    + '<small>Discord tells us who you are (your id, name and email) so your stockmarketloop.com account is made and connected in the same step; no password, no code to type. One trial per Discord account. Educational content, not financial advice.</small>');
+    + '<small>Discord tells us who you are (your id, name and email) so your stockmarketloop.com account is made and connected in the same step; no password, no code to type. One trial per Discord account. Educational content, not financial advice.</small>', previewTags(via));
   const started = (name, pass, site) => page('Your Academy trial is on', '<p class="k">TRIAL STARTED</p><h1>You’re in' + (name ? ', ' + esc(name) : '') + '.</h1>'
     + '<p>Your ' + trialDays + '-day Academy pass is on your Discord account until <b>' + esc(new Date(pass.expiresAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')) + '</b>. It works wherever you open the Academy.</p>'
     + launch(site) + '<small>Enjoy the trial. When it ends, the Academy tells you how to keep access.</small>');
@@ -129,6 +141,12 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
     if (!path.startsWith('/academy-activity/trial')) return false;
     if (!configured) { send(response, 503, page('Trial unavailable', '<p class="k">NOT CONFIGURED</p><h1>The free trial link is not switched on yet.</h1><p>Ask the Academy owner.</p>')); return true; }
     const q = url.searchParams;
+    if (path === bannerPath) {
+      const img = banner();
+      if (!img) { response.writeHead(404); response.end(); return true; }
+      response.writeHead(200, { 'content-type': 'image/jpeg', 'content-length': img.length, 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' });
+      response.end(request.method === 'HEAD' ? undefined : img); return true;
+    }
     if (request.method !== 'GET') { response.writeHead(405, { allow: 'GET' }); response.end(); return true; }
     if (path === '/academy-activity/trial' || path === '/academy-activity/trial/') { send(response, 200, landing(String(q.get('via') || '').slice(0, 40))); return true; }
     const ip = String(request.headers['x-forwarded-for'] || request.socket?.remoteAddress || '').split(',')[0].trim();

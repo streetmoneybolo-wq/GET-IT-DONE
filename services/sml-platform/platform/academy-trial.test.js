@@ -132,3 +132,16 @@ test('a reloaded or reused sign-in link says so (Discord answers 400), while a D
   const reused = await run(mk(400)); assert.equal(reused.status, 400); assert.match(reused.body, /already used or has expired/);
   const down = await run(mk(503)); assert.equal(down.status, 502); assert.match(down.body, /did not answer/);
 });
+
+test('the shared trial link unfurls with the banner, a headline and what is inside; the banner is served as a JPEG', async () => {
+  const trial = createAcademyTrial({ clientId: APP, clientSecret: 's3cret', publicUrl: 'https://academy.example/', store: createPassStore() });
+  const res = fakeResponse(); await trial.handle(req('/academy-activity/trial'), res, '/academy-activity/trial', new URL('https://academy.example/academy-activity/trial?via=site'));
+  assert.equal(res.status, 200);
+  assert.match(res.body, /<meta property="og:image" content="https:\/\/academy\.example\/academy-activity\/trial\/banner\.jpg">/);
+  assert.match(res.body, /<meta property="og:title" content="Free 15-Day Trial: the Master Trading Tool for Discord">/);
+  assert.match(res.body, /og:description" content="Level 3 market data\. Dark pool prints\./);
+  assert.match(res.body, /twitter:card" content="summary_large_image"/); assert.match(res.body, /og:url" content="https:\/\/academy\.example\/academy-activity\/trial"/);
+  const img = { status: 0, headers: {}, body: null, writeHead(s, h) { img.status = s; img.headers = h; }, end(b) { img.body = b; } };
+  await trial.handle(req('/academy-activity/trial/banner.jpg'), img, '/academy-activity/trial/banner.jpg', new URL('https://academy.example/academy-activity/trial/banner.jpg'));
+  assert.equal(img.status, 200); assert.equal(img.headers['content-type'], 'image/jpeg'); assert.ok(Buffer.isBuffer(img.body) && img.body[0] === 0xff && img.body[1] === 0xd8 && img.body.length > 50_000, 'a real JPEG');
+});
