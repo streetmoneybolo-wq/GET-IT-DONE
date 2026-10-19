@@ -272,15 +272,15 @@
     if (top.length) {
       h += '<div class="pv-rec-scroll"><table class="pv-rec-tbl"><thead><tr><th>#</th><th>ALERT</th><th>SENT</th><th>PEAK</th><th>TIME TO PEAK</th><th>NOW</th><th>RESULT</th></tr></thead><tbody>';
       top.forEach((r, i) => {
-        const res = r.status === 'open' ? 'open' : (r.result || '');
-        h += '<tr><td>' + (i + 1) + '</td><td class="sym">$' + esc(r.symbol) + '<small>' + esc(String(r.side || 'long').toUpperCase()) + ' · ' + esc(r.horizon || 'swing') + ' · ' + money(r.entry) + '</small></td>'
+        const res = r.result || 'open';
+        h += '<tr><td>' + (i + 1) + '</td><td class="sym">$' + esc(r.symbol) + '<small>' + esc(String(r.side || 'long').toUpperCase()) + ' · ' + esc(r.horizon || 'swing') + ' · ' + money(r.entry) + ' → ' + money(r.target) + (r.followUps ? ' · +' + r.followUps + ' PT update' + (r.followUps > 1 ? 's' : '') : '') + '</small></td>'
           + '<td>' + esc(whenAt(r.alertedAt)) + '</td><td class="' + signCls(r.peakPct) + '">' + pct2(r.peakPct) + '</td><td>' + esc(span(r.timeToPeakMs)) + '</td>'
           + '<td class="' + signCls(r.lastPct) + '">' + pct2(r.lastPct) + (r.live ? '' : (Number.isFinite(r.lastPct) ? ' <small style="color:#7f95a1">last close</small>' : '')) + '</td>'
           + '<td><span class="st ' + esc(res) + '">' + esc(res === 'open' ? 'OPEN' : (RESULT[res] || res.toUpperCase())) + '</span></td></tr>';
       });
       h += '</tbody></table></div>';
     }
-    h += '<p class="pv-note">Top ten by peak gain, all time. Win = the target traded; stopped = the stop traded first; missed = the horizon ran out. Peak and now are against the entry at the click. Research and education, not advice.</p></div>';
+    h += '<p class="pv-note">Top ten by peak gain, all time. Every alert is judged from its entry to its first price target: win = that target traded; stopped = the stop traded first; missed = the horizon ran out. PT SMASHED updates ride the first alert and are never counted. Peak and now are against the entry at the click. Research and education, not advice.</p></div>';
     return h;
   }
   function render() {
