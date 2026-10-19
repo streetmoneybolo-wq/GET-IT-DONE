@@ -27,17 +27,19 @@
     chip.title = 'SML VIX ' + data.level.toFixed(2) + ' (' + zone(data.level)[0] + '): 30-day volatility from live SPY options, CBOE VIX method. Click for details.';
   }
   function drawHistory(canvas) {
-    const h = (data && data.history) || [];
-    const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth || 400, ht = canvas.clientHeight || 120;
-    canvas.width = w * dpr; canvas.height = ht * dpr;
-    const ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, ht);
-    if (h.length < 2) { ctx.fillStyle = '#5f7784'; ctx.font = '600 11px system-ui'; ctx.fillText('The day’s readings build up here, one every 2 minutes in market hours.', 10, ht / 2); return; }
-    const vals = h.map((p) => p.level), lo = Math.min(...vals) - 0.3, hi = Math.max(...vals) + 0.3;
-    const x = (i) => 8 + (i / (h.length - 1)) * (w - 16), y = (v) => ht - 10 - ((v - lo) / (hi - lo)) * (ht - 20);
-    [15, 20, 25].forEach((lvl) => { if (lvl > lo && lvl < hi) { ctx.strokeStyle = '#1b3540'; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(0, y(lvl)); ctx.lineTo(w, y(lvl)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#5f7784'; ctx.font = '700 9px ui-monospace'; ctx.fillText(String(lvl), w - 18, y(lvl) - 2); } });
-    ctx.strokeStyle = zone(vals[vals.length - 1])[1]; ctx.lineWidth = 2; ctx.beginPath();
-    h.forEach((p, i) => (i ? ctx.lineTo(x(i), y(p.level)) : ctx.moveTo(x(i), y(p.level)))); ctx.stroke();
-    ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(x(h.length - 1), y(vals[vals.length - 1]), 3, 0, Math.PI * 2); ctx.fill();
+    const V = window.smlViz, h = (data && data.history) || [];
+    const { ctx, w, ht } = (() => { const r = V.setup(canvas); return { ctx: r.c, w: r.w, ht: r.h }; })();
+    if (h.length < 2) { ctx.fillStyle = V.T.muted; ctx.font = V.T.font; ctx.fillText('The day’s readings build up here, one every 2 minutes in market hours.', 10, ht / 2); return; }
+    const padL = 30, padR = 12, padT = 10, padB = 10;
+    const vals = h.map((p) => p.level), tk = V.ticks(Math.min(...vals) - 0.3, Math.max(...vals) + 0.3, 3), lo = tk.lo, hi = tk.hi;
+    const x = (i) => padL + (i / (h.length - 1)) * (w - padL - padR), y = (v) => ht - padB - ((v - lo) / (hi - lo || 1)) * (ht - padT - padB);
+    V.grid(ctx, padL, w - padR, tk.ticks.map((v) => ({ y: y(v), label: String(v) })));
+    /* the fear bands (15 / 20 / 25) as labelled hairlines when they fall inside the day's range */
+    [15, 20, 25].forEach((lvl) => { if (lvl > lo && lvl < hi && tk.ticks.indexOf(lvl) < 0) { ctx.save(); ctx.strokeStyle = V.T.baseline; ctx.beginPath(); ctx.moveTo(padL, Math.round(y(lvl)) + 0.5); ctx.lineTo(w - padR, Math.round(y(lvl)) + 0.5); ctx.stroke(); ctx.fillStyle = V.T.muted; ctx.font = V.T.font; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(String(lvl), w - padR, y(lvl) - 2); ctx.restore(); } });
+    const col = zone(vals[vals.length - 1])[1];
+    V.line(ctx, h.map((p, i) => [x(i), y(p.level)]), { color: col, width: 2, fill: true, yBase: ht - padB });
+    const xs = h.map((_, i) => x(i));
+    V.hover(canvas, (px) => { const i = V.nearestX(xs, px); if (i < 0) return null; const p = h[i]; return { title: p.t || p.at ? new Date(p.t || p.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'reading ' + (i + 1), rows: [{ label: 'SML VIX · ' + zone(p.level)[0], value: Number(p.level).toFixed(2), color: col, line: true }] }; });
   }
   function paint() {
     paintChip();

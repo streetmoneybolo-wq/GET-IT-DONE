@@ -22,10 +22,10 @@
   style.textContent = '#depth-layer{position:absolute;pointer-events:none;z-index:5;background:transparent;border:0;border-radius:0;min-height:0;max-width:none}'
     + '.depth-toggle{margin-left:4px;padding:5px 9px;border:1px solid #2b5362;border-radius:7px;background:#0d1a24;color:#9ed3e6;font:800 .64rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer}.depth-toggle.on{background:#12405a;border-color:#4dc3ff;color:#fff}'
     + '.academy-stats{margin-top:10px;border-top:1px solid #1b3540;padding-top:8px;font:600 .62rem system-ui,sans-serif;color:#c7d5dc}.academy-stats h4{margin:0 0 6px;font:800 .58rem ui-monospace;color:#86a2b0;letter-spacing:.06em}'
-    + '.academy-stats .flow{display:flex;height:10px;border-radius:5px;overflow:hidden;background:#16303a;margin:4px 0}.academy-stats .flow i{display:block;height:100%}'
+    + '.academy-stats .flow{display:flex;gap:2px;height:8px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,.08);margin:4px 0}.academy-stats .flow i{display:block;height:100%;border-radius:2px}'
     + '.academy-stats .cols{display:flex;justify-content:space-between;font:700 .6rem ui-monospace,monospace}.academy-stats .up{color:#5df0b0}.academy-stats .dn{color:#ff8ea1}.academy-stats .nu{color:#9fb4c0}'
     + '.academy-stats .kv{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin:6px 0;font:600 .6rem ui-monospace,monospace}.academy-stats .kv span:nth-child(odd){color:#8fa6b3}'
-    + '.academy-stats .pv{display:grid;grid-template-columns:52px 1fr 44px;gap:2px 6px;align-items:center;font:600 .58rem ui-monospace,monospace}.academy-stats .pv b{display:block;height:6px;border-radius:3px;background:#3a7fa6}.academy-stats .big{margin-top:4px;font:600 .58rem ui-monospace,monospace}'
+    + '.academy-stats .pv{display:grid;grid-template-columns:52px 1fr 44px;gap:2px 6px;align-items:center;font:600 .58rem ui-monospace,monospace}.academy-stats .pv b{display:block;height:6px;border-radius:0 3px 3px 0;min-width:2px;background:#3987e5}.academy-stats .big{margin-top:4px;font:600 .58rem ui-monospace,monospace}'
     + '.academy-stats small{display:block;margin-top:5px;color:#6f8794;font-weight:500;font-size:.54rem;line-height:1.35}';
   document.head.appendChild(style);
 

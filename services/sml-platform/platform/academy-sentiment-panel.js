@@ -20,7 +20,7 @@
     + '.academy-sentiment .big{display:flex;align-items:baseline;gap:8px;margin:2px 0 6px}.academy-sentiment .big b{font:800 1.15rem ui-monospace,monospace}.academy-sentiment .big span{font:700 .66rem system-ui}'
     + '.academy-sentiment .bar{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,#ff5d6c,#3a4650 50%,#37e08f);margin:4px 0 8px}.academy-sentiment .bar i{position:absolute;top:-3px;width:3px;height:14px;background:#fff;border-radius:2px;transform:translateX(-1px)}'
     + '.academy-sentiment .comp{display:grid;grid-template-columns:62px 1fr auto;gap:2px 8px;align-items:center;margin:4px 0;font:600 .6rem ui-monospace,monospace}.academy-sentiment .comp small{grid-column:2/4;color:#7f96a3;font:500 .56rem system-ui;margin:0}'
-    + '.academy-sentiment .mini{height:5px;border-radius:3px;background:#17232c;position:relative}.academy-sentiment .mini b{position:absolute;top:0;height:5px;border-radius:3px}'
+    + '.academy-sentiment .mini{height:6px;border-radius:3px;background:rgba(255,255,255,.08);position:relative}.academy-sentiment .mini b{position:absolute;top:0;height:6px;border-radius:3px}.academy-sentiment .mini::after{content:"";position:absolute;left:50%;top:-2px;width:1px;height:10px;background:#2d3f4b}'
     + '.academy-sentiment .pos{color:#5df0b0}.academy-sentiment .neg{color:#ff8a95}.academy-sentiment .na{color:#6f8794}.academy-sentiment .note{margin:4px 0;padding:5px 7px;border-left:2px solid #ffc247;background:#1a1608;color:#ffe2a3;font:600 .58rem system-ui}'
     + '.academy-sentiment svg{display:block;margin:6px 0}.academy-sentiment a{color:#8fd8ff}.academy-sentiment .drv{margin:2px 0;font:500 .56rem system-ui;color:#a9bcc7}'
     + '.academy-sentiment > small{display:block;margin-top:6px;color:#6f8794;font-weight:500;font-size:.54rem;line-height:1.35}';
@@ -52,7 +52,7 @@
     if (!Array.isArray(h) || h.length < 3) return '';
     const w = 220, ht = 34, xs = (i) => (i / (h.length - 1)) * w, ys = (v) => ht / 2 - (v * ht) / 2.4;
     const d = h.map((p, i) => (i ? 'L' : 'M') + xs(i).toFixed(1) + ' ' + ys(p.s).toFixed(1)).join(' ');
-    return '<svg viewBox="0 0 ' + w + ' ' + ht + '" width="100%" height="' + ht + '" preserveAspectRatio="none" aria-label="Sentiment history"><line x1="0" x2="' + w + '" y1="' + (ht / 2) + '" y2="' + (ht / 2) + '" stroke="#294454" stroke-dasharray="3 3"/><path d="' + d + '" fill="none" stroke="#8fd8ff" stroke-width="1.6"/></svg>';
+    return '<svg viewBox="0 0 ' + w + ' ' + ht + '" width="100%" height="' + ht + '" preserveAspectRatio="none" aria-label="Sentiment history"><line x1="0" x2="' + w + '" y1="' + (ht / 2) + '" y2="' + (ht / 2) + '" stroke="#2d3f4b" stroke-width="1"/><path d="' + d + '" fill="none" stroke="#3987e5" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>';
   }
   function comp(key, c) {
     if (!c) return '';

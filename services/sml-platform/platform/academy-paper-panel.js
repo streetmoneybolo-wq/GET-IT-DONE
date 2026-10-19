@@ -16,7 +16,10 @@
   const chartSym = () => { try { return String(window.smlAcademyChartState().symbol || new URLSearchParams(location.search).get('symbol') || 'SPY').toUpperCase(); } catch (_) { return String(new URLSearchParams(location.search).get('symbol') || 'SPY').toUpperCase(); } };
   const KEY = 'sml-paper-v2';
   const FOCUS = [['overview', 'OVERVIEW'], ['allocation', 'ALLOCATION'], ['performance', 'PERFORMANCE'], ['calendar', 'CALENDAR'], ['activity', 'ACTIVITY'], ['trade', 'TRADE']];
-  const PALETTE = ['#52e6ad', '#6be6ff', '#ffd66b', '#ff9f43', '#c46bff', '#ff778b', '#9aa7b8', '#7fd6f0', '#9ff0b0', '#ffb3b3'];
+  /* the chart kit (academy-viz.js): the validated categorical palette, thin rounded bars, gapped donuts, hairline grids, hover */
+  const V = window.smlViz;
+  const PALETTE = V.T.series;
+  const CASH = V.T.neutral;
   const S = { on: false, account: 'me', focus: 'overview', session: String(window.smlAcademySessionToken || ''), data: {}, err: '', busy: false, prevTitle: '', owner: false, timer: 0, ticket: { kind: 'stock', side: 'buy', qty: '1', symbol: '', expiry: '', strike: '', right: 'C', note: '' }, chain: null, chainSym: '', month: new Date().toISOString().slice(0, 7), cal: null, dayRecap: null, msg: '' };
   try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.on = v.on === true; if (v.account === 'challenge') S.account = 'challenge'; if (FOCUS.some(([k]) => k === v.focus)) S.focus = v.focus; } } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, account: S.account, focus: S.focus })); } catch (_) { /* ignore */ } };
@@ -39,7 +42,7 @@
     + '#paper-panel .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin:0 0 12px}#paper-panel .kpi{padding:9px 11px;border:1px solid #1a3a24;border-radius:10px;background:rgba(10,26,16,.85)}#paper-panel .kpi span{display:block;color:#7fb393;font:700 .54rem ui-monospace,monospace;letter-spacing:.06em}#paper-panel .kpi b{display:block;font:800 .95rem ui-monospace,monospace;color:#e8fbee;margin-top:3px}#paper-panel .kpi b.up{color:#52e6ad}#paper-panel .kpi b.dn{color:#ff778b}#paper-panel .kpi small{display:block;color:#7fb393;font:600 .54rem ui-monospace,monospace;margin-top:2px}'
     + '#paper-panel .viz{position:relative;border:1px solid #1a3a24;border-radius:12px;background:linear-gradient(180deg,#0a1a10,#07120b);padding:10px;margin:0 0 12px}#paper-panel .viz h3{margin:0 0 6px}#paper-panel .viz canvas{width:100%;display:block}#paper-panel .viz .lg{position:absolute;top:10px;right:12px;color:#7fb393;font:700 .54rem ui-monospace,monospace;text-align:right;line-height:1.5}'
     + '#paper-panel .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:820px){#paper-panel .two{grid-template-columns:1fr}#paper-panel .pf{grid-template-columns:auto 1fr;}#paper-panel .eq{text-align:left;grid-column:2}#paper-panel .ring{grid-column:1}}'
-    + '#paper-panel .legend{display:grid;gap:5px;margin-top:8px}#paper-panel .legend div{display:grid;grid-template-columns:12px 1fr auto auto;gap:8px;align-items:center;font:700 .62rem ui-monospace,monospace;color:#cfe9d8}#paper-panel .legend i{width:12px;height:12px;border-radius:3px;display:block}#paper-panel .legend .bar{grid-column:2/5;height:5px;border-radius:3px;background:#0e2a18;overflow:hidden}#paper-panel .legend .bar b{display:block;height:100%}'
+    + '#paper-panel .legend{display:grid;gap:5px;margin-top:8px}#paper-panel .legend div{display:grid;grid-template-columns:12px 1fr auto auto;gap:8px;align-items:center;font:700 .62rem ui-monospace,monospace;color:#cfe9d8}#paper-panel .legend i{width:12px;height:12px;border-radius:3px;display:block}#paper-panel .legend .bar{grid-column:2/5;height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}#paper-panel .legend .bar b{display:block;height:100%;border-radius:0 3px 3px 0;min-width:2px}'
     + '#paper-panel h3{margin:10px 0 6px;font:800 .64rem ui-monospace,monospace;color:#9fd6b4;letter-spacing:.06em}'
     /* ticket */
     + '#paper-panel .ticket{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;padding:10px;border:1px solid #1a3a24;border-radius:10px;background:#0a1a10;margin:0 0 12px}#paper-panel .ticket label{display:block;color:#7fb393;font:700 .56rem ui-monospace,monospace;letter-spacing:.05em;margin-bottom:2px}#paper-panel .ticket input,#paper-panel .ticket select{width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid #1f4a2e;border-radius:5px;background:#07120b;color:#e8fbee;font:700 .68rem ui-monospace,monospace}'
@@ -127,47 +130,51 @@
     return { c, w, h };
   }
   function drawCurve(canvas, points, deposits) {
-    const { c, w, h } = setup(canvas, 170);
-    if (!points || points.length < 2) { c.fillStyle = '#7fb393'; c.font = '700 11px ui-monospace,monospace'; c.fillText('The curve starts with the first trade.', 12, 24); return; }
+    const { c, w, h } = V.setup(canvas, 170);
+    if (!points || points.length < 2) { c.fillStyle = V.T.muted; c.font = V.T.font; c.fillText('The curve starts with the first trade.', 12, 24); return; }
+    const padL = 48, padR = 14, padT = 14, padB = 18;
     const t0 = points[0].t, t1 = points[points.length - 1].t || t0 + 1, vals = points.map((p) => p.value);
-    const lo = Math.min(...vals) * 0.995, hi = Math.max(...vals) * 1.005;
-    const x = (t) => 10 + (w - 20) * ((t - t0) / Math.max(1, t1 - t0)), y = (v) => h - 12 - (h - 24) * ((v - lo) / Math.max(1e-9, hi - lo));
-    for (let i = 1; i < 4; i++) { c.strokeStyle = 'rgba(26,58,36,.6)'; c.beginPath(); c.moveTo(10, 12 + (h - 24) * i / 4); c.lineTo(w - 10, 12 + (h - 24) * i / 4); c.stroke(); }
-    let dep = 0; const steps = (deposits || []).slice().sort((a, b) => a.t - b.t);
-    c.strokeStyle = '#2f5566'; c.setLineDash([3, 3]); c.beginPath(); let started = false;
-    for (const p of points) { while (steps.length && steps[0].t <= p.t) dep += steps.shift().amount; const yy = y(Math.max(lo, Math.min(hi, dep))); if (!started) { c.moveTo(x(p.t), yy); started = true; } else c.lineTo(x(p.t), yy); }
-    c.stroke(); c.setLineDash([]);
-    const last = vals[vals.length - 1], up = last >= vals[0], col = up ? '#52e6ad' : '#ff778b';
-    const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, up ? 'rgba(82,230,173,.35)' : 'rgba(255,119,139,.35)'); g.addColorStop(1, 'rgba(7,18,11,0)');
-    c.beginPath(); points.forEach((p, i) => { if (i) c.lineTo(x(p.t), y(p.value)); else c.moveTo(x(p.t), y(p.value)); }); c.lineTo(x(t1), h - 12); c.lineTo(x(t0), h - 12); c.closePath(); c.fillStyle = g; c.fill();
-    c.strokeStyle = col; c.lineWidth = 2; c.shadowColor = col; c.shadowBlur = 8; c.beginPath(); points.forEach((p, i) => { if (i) c.lineTo(x(p.t), y(p.value)); else c.moveTo(x(p.t), y(p.value)); }); c.stroke(); c.shadowBlur = 0;
-    c.fillStyle = col; c.beginPath(); c.arc(x(t1), y(last), 3.5, 0, Math.PI * 2); c.fill();
-    c.fillStyle = '#9fd6b4'; c.font = '700 10px ui-monospace,monospace'; c.fillText(usd(hi, 0), 12, 11); c.fillText(usd(lo, 0), 12, h - 2);
+    const tk = V.ticks(Math.min(...vals), Math.max(...vals), 4), lo = tk.lo, hi = tk.hi;
+    const x = (t) => padL + (w - padL - padR) * ((t - t0) / Math.max(1, t1 - t0)), y = (v) => padT + (hi - v) / (hi - lo || 1) * (h - padT - padB);
+    V.grid(c, padL, w - padR, tk.ticks.map((v) => ({ y: y(v), label: V.compact(v, true) })));
+    /* money put in: a reference step line in muted ink (dashed on purpose: it is a reference, not a series) */
+    let dep = 0; const steps = (deposits || []).slice().sort((a, b) => a.t - b.t), deps = [];
+    for (const p of points) { while (steps.length && steps[0].t <= p.t) dep += steps.shift().amount; deps.push(dep); }
+    c.save(); c.strokeStyle = V.T.muted; c.lineWidth = 1; c.setLineDash([3, 3]); c.beginPath();
+    points.forEach((p, i) => { const yy = y(Math.max(lo, Math.min(hi, deps[i]))); if (i) c.lineTo(x(p.t), yy); else c.moveTo(x(p.t), yy); }); c.stroke(); c.restore();
+    const last = vals[vals.length - 1], up = last >= vals[0], col = up ? V.T.up : V.T.down;
+    V.line(c, points.map((p) => [x(p.t), y(p.value)]), { color: col, width: 2, fill: true, yBase: h - padB });
+    c.fillStyle = V.T.ink; c.font = V.T.fontBold; c.textAlign = 'right'; c.textBaseline = 'bottom'; c.fillText(usd(last, 0), w - padR, y(last) - 7);
+    const xs = points.map((p) => x(p.t));
+    V.hover(canvas, (px) => { const i = V.nearestX(xs, px); if (i < 0) return null; const p = points[i]; return { title: new Date(p.t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }), rows: [{ label: 'account value', value: usd(p.value), color: col, line: true }, { label: 'money put in', value: usd(deps[i]), color: V.T.muted, line: true }] }; });
   }
   function drawDonut(canvas, slices, title, sub) {
-    const { c, w, h } = setup(canvas, 190);
-    const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 8, r = R * 0.64;
-    const total = slices.reduce((s, x) => s + Math.max(0, x.value), 0);
-    if (!(total > 0)) { c.fillStyle = '#7fb393'; c.font = '700 11px ui-monospace,monospace'; c.textAlign = 'center'; c.fillText('Nothing to show yet.', cx, cy); return; }
-    let a = -Math.PI / 2;
-    slices.forEach((s) => { const v = Math.max(0, s.value); if (!v) return; const b = a + (v / total) * Math.PI * 2; c.beginPath(); c.moveTo(cx, cy); c.arc(cx, cy, R, a, b); c.closePath(); c.fillStyle = s.color; c.shadowColor = s.color; c.shadowBlur = 6; c.fill(); c.shadowBlur = 0; a = b; });
-    c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fill(); c.globalCompositeOperation = 'source-over';
-    c.fillStyle = '#e8fbee'; c.textAlign = 'center'; c.font = '900 15px ui-monospace,monospace'; c.fillText(title, cx, cy + 1);
-    c.fillStyle = '#7fb393'; c.font = '700 9px ui-monospace,monospace'; c.fillText(sub, cx, cy + 15);
+    const { c, w, h } = V.setup(canvas, 190);
+    const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 10;
+    const d = V.donut(c, { cx, cy, R, r: R * 0.64, slices, title, sub });
+    if (!d.total) { c.fillStyle = V.T.muted; c.font = V.T.font; c.textAlign = 'center'; c.fillText('Nothing to show yet.', cx, cy); return; }
+    V.hover(canvas, (px, py) => { const g = V.hitSlice(d, px, py); return g ? { title: g.label || '', rows: [{ label: Math.round(g.share * 100) + '% of ' + (sub || 'the whole'), value: usd(g.v, 0), color: g.color }] } : null; });
   }
   function drawBars(canvas, days) {
-    const { c, w, h } = setup(canvas, 150);
+    const { c, w, h } = V.setup(canvas, 150);
+    if (!days.length) { c.fillStyle = V.T.muted; c.font = V.T.font; c.fillText('No closed day in this month yet.', 12, 24); return; }
     const vals = days.map((d) => (d.change != null ? d.change : d.realized) || 0);
-    if (!days.length) { c.fillStyle = '#7fb393'; c.font = '700 11px ui-monospace,monospace'; c.fillText('No closed day in this month yet.', 12, 24); return; }
-    const m = Math.max(1e-9, ...vals.map(Math.abs)), mid = h / 2, bw = Math.max(3, (w - 20) / days.length - 3);
-    c.strokeStyle = 'rgba(26,58,36,.9)'; c.beginPath(); c.moveTo(10, mid); c.lineTo(w - 10, mid); c.stroke();
-    days.forEach((d, i) => { const v = vals[i], x = 10 + i * ((w - 20) / days.length), bh = (mid - 14) * Math.abs(v) / m; c.fillStyle = v >= 0 ? '#52e6ad' : '#ff778b'; c.shadowColor = c.fillStyle; c.shadowBlur = 6; c.fillRect(x, v >= 0 ? mid - bh : mid, bw, Math.max(1, bh)); c.shadowBlur = 0; });
-    c.fillStyle = '#9fd6b4'; c.font = '700 9px ui-monospace,monospace'; c.fillText('+' + usd(m, 0), 12, 11); c.fillText('-' + usd(m, 0), 12, h - 3);
-    c.textAlign = 'right'; c.fillText(days[0].date.slice(5) + ' → ' + days[days.length - 1].date.slice(5), w - 12, 11);
+    const every = Math.max(1, Math.ceil(days.length / 8));
+    const r = V.columns(c, { x0: 48, x1: w - 10, yTop: 12, yBot: h - 20, every, fmt: (v) => V.compact(v, true), items: days.map((d, i) => ({ label: d.date.slice(5), values: [vals[i]], colors: [vals[i] >= 0 ? V.T.up : V.T.down] })) });
+    V.hover(canvas, (px) => { const g = V.hitColumn(r.geoms, px); if (!g) return null; const d = days[g.i]; return { title: d.date, rows: [{ label: d.change != null ? 'change on the day' : 'realized', value: usd(g.v), color: g.color }] }; });
   }
   function ring(valuePct, label, color) {
     const v = Math.max(0, Math.min(100, Number(valuePct) || 0)), r = 30, cN = 2 * Math.PI * r;
-    return '<svg class="ring" viewBox="0 0 74 74" aria-label="' + esc(label) + '"><circle cx="37" cy="37" r="' + r + '" fill="none" stroke="#0e2a18" stroke-width="7"/><circle cx="37" cy="37" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="7" stroke-linecap="round" stroke-dasharray="' + (cN * v / 100).toFixed(1) + ' ' + cN.toFixed(1) + '" transform="rotate(-90 37 37)" style="filter:drop-shadow(0 0 4px ' + color + ')"/><text x="37" y="35" text-anchor="middle" fill="#e8fbee" font-family="ui-monospace,monospace" font-size="12" font-weight="900">' + Math.round(v) + '%</text><text x="37" y="47" text-anchor="middle" fill="#7fb393" font-family="ui-monospace,monospace" font-size="6.5" font-weight="700">' + esc(label) + '</text></svg>';
+    return '<svg class="ring" viewBox="0 0 74 74" aria-label="' + esc(label) + '"><circle cx="37" cy="37" r="' + r + '" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="6"/><circle cx="37" cy="37" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="6" stroke-linecap="round" stroke-dasharray="' + (cN * v / 100).toFixed(1) + ' ' + cN.toFixed(1) + '" transform="rotate(-90 37 37)"/><text x="37" y="35" text-anchor="middle" fill="#eaf2f6" font-family="system-ui,sans-serif" font-size="12" font-weight="800">' + Math.round(v) + '%</text><text x="37" y="47" text-anchor="middle" fill="#8fa3ae" font-family="system-ui,sans-serif" font-size="6.5" font-weight="700">' + esc(label) + '</text></svg>';
+  }
+  /* the allocation slices: one validated hue per position in fixed order; past seven, the rest fold into one "Other" slice; cash is neutral */
+  function allocSlices(s) {
+    const pos = s.positions.slice().sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    const head = pos.slice(0, 7).map((p, i) => ({ label: p.desc, value: Math.abs(p.value), color: PALETTE[i], pnl: p.pnl, pnlPct: p.pnlPct, kind: p.kind, qty: p.qty }));
+    const tail = pos.slice(7);
+    if (tail.length) head.push({ label: tail.length + ' other position' + (tail.length === 1 ? '' : 's'), value: tail.reduce((a, p) => a + Math.abs(p.value), 0), color: PALETTE[7], pnl: tail.reduce((a, p) => a + (p.pnl || 0), 0), pnlPct: null });
+    head.push({ label: 'Cash', value: Math.max(0, s.cash), color: CASH, pnl: null });
+    return head;
   }
 
   /* ---------- stats from the fills ---------- */
@@ -189,8 +196,7 @@
   }
   function allocationHtml(d, canTrade) {
     const s = d.summary;
-    const slices = s.positions.map((p, i) => ({ label: p.desc, value: Math.abs(p.value), color: PALETTE[i % PALETTE.length], pnl: p.pnl, pnlPct: p.pnlPct, kind: p.kind, qty: p.qty }));
-    slices.push({ label: 'Cash', value: Math.max(0, s.cash), color: '#1f4a2e', pnl: null });
+    const slices = allocSlices(s);
     const total = slices.reduce((a, x) => a + x.value, 0) || 1;
     const stocks = s.positions.filter((p) => p.kind !== 'option').reduce((a, p) => a + Math.abs(p.value), 0), opts = s.positions.filter((p) => p.kind === 'option').reduce((a, p) => a + Math.abs(p.value), 0);
     const longs = s.positions.filter((p) => p.qty > 0).length, shorts = s.positions.filter((p) => p.qty < 0).length;
@@ -298,9 +304,9 @@
     el.innerHTML = headerHtml(d) + focus + body
       + '<p class="note">' + esc(d.disclaimer) + ' Buys fill at the ask and sells at the bid when a quote exists, else the last price with 5 bps slippage; options cost $0.65 a contract and settle at intrinsic value on expiry. Pre- and after-market fills need a price in that session.</p>';
     const cv = document.getElementById('paper-curve'); if (cv) drawCurve(cv, d.equity, d.deposits);
-    const dn = document.getElementById('paper-donut'); if (dn) { const s = d.summary; const slices = s.positions.map((p, i) => ({ value: Math.abs(p.value), color: PALETTE[i % PALETTE.length] })); slices.push({ value: Math.max(0, s.cash), color: '#1f4a2e' }); drawDonut(dn, slices, usd(s.equity, 0), s.positions.length + ' position' + (s.positions.length === 1 ? '' : 's') + ' + cash'); }
+    const dn = document.getElementById('paper-donut'); if (dn) { const s = d.summary; drawDonut(dn, allocSlices(s), usd(s.equity, 0), s.positions.length + ' position' + (s.positions.length === 1 ? '' : 's') + ' + cash'); }
     const br = document.getElementById('paper-bars'); if (br) drawBars(br, S.cal ? (S.cal.days || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1)) : []);
-    const wl = document.getElementById('paper-wl'); if (wl) { const st = stats(d); drawDonut(wl, [{ value: st.wins, color: '#52e6ad' }, { value: st.losses, color: '#ff778b' }], st.winRate == null ? '—' : Math.round(st.winRate) + '%', st.n + ' closed trade' + (st.n === 1 ? '' : 's')); }
+    const wl = document.getElementById('paper-wl'); if (wl) { const st = stats(d); drawDonut(wl, [{ value: st.wins, color: V.T.up, label: 'wins' }, { value: st.losses, color: V.T.down, label: 'losses' }], st.winRate == null ? '—' : Math.round(st.winRate) + '%', st.n + ' closed trade' + (st.n === 1 ? '' : 's')); }
   }
   const sync = () => btn.classList.toggle('on', S.on);
   btn.addEventListener('click', () => { S.on = !S.on; save(); sync(); if (S.on) { S.ticket.symbol = chartSym(); S.msg = ''; S.data = {}; if (S.session) void load(); } paint(); });

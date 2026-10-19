@@ -45,57 +45,41 @@
 
   /* ---- charts ---- */
   function canvasCtx(cv) { const w = cv.clientWidth || 300, h = cv.clientHeight || 170, dpr = window.devicePixelRatio || 1; cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h); return { c, w, h }; }
-  const F = '700 9px ui-monospace,monospace';
+  const V = window.smlViz; /* the chart kit: validated palette, thin rounded bars with gaps, hairline grids, hover */
+  const qLabel = (q) => q.label.replace(' FY', "'");
   function barsChart(cv, qs) {
-    const { c, w, h } = canvasCtx(cv); const padL = 44, padR = 6, padT = 14, padB = 24, pw = w - padL - padR, ph = h - padT - padB;
-    const vals = qs.flatMap((q) => [q.revenue, q.opIncome || 0]); let hi = Math.max(...vals.filter(Number.isFinite), 1), lo = Math.min(0, ...vals.filter(Number.isFinite)); const span = hi - lo || 1;
-    const y = (v) => padT + (hi - v) / span * ph, step = pw / qs.length, bw = Math.max(3, step * 0.34);
-    c.strokeStyle = 'rgba(66,120,150,.2)'; c.fillStyle = '#7f97a4'; c.font = F; c.textAlign = 'right'; c.textBaseline = 'middle';
-    for (let k = 0; k <= 4; k++) { const v = lo + span * k / 4, yy = y(v); c.beginPath(); c.moveTo(padL, yy); c.lineTo(w - padR, yy); c.stroke(); c.fillText(big(v).replace('$', ''), padL - 4, yy); }
-    qs.forEach((q, i) => {
-      const x0 = padL + i * step + step * 0.12;
-      c.fillStyle = '#2f6cf5'; c.fillRect(x0, y(Math.max(0, q.revenue)), bw, Math.abs(y(q.revenue) - y(0)));
-      if (q.opIncome != null) { c.fillStyle = q.opIncome >= 0 ? '#00d084' : '#ff5470'; c.fillRect(x0 + bw + 2, y(Math.max(0, q.opIncome)), bw, Math.abs(y(q.opIncome) - y(0))); }
-      c.fillStyle = '#9fb3be'; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(q.label.replace(' FY', "'"), x0 + bw + 1, h - 8);
-      if (q.yoy && q.yoy.revenue != null) { c.fillStyle = q.yoy.revenue >= 0 ? '#52e6ad' : '#ff778b'; c.fillText(pc(q.yoy.revenue, 0), x0 + bw + 1, y(Math.max(0, q.revenue)) - 4); }
-      c.textBaseline = 'middle';
-    });
-    c.fillStyle = '#2f6cf5'; c.fillRect(padL, 2, 8, 8); c.fillStyle = '#9fb3be'; c.textAlign = 'left'; c.fillText('revenue', padL + 11, 6); c.fillStyle = '#00d084'; c.fillRect(padL + 60, 2, 8, 8); c.fillStyle = '#9fb3be'; c.fillText('operating income · YoY above the bar', padL + 71, 6);
+    const { c, w, h } = V.setup(cv); const padL = 46, padR = 8, padT = 18, padB = 20;
+    const r = V.columns(c, { x0: padL, x1: w - padR, yTop: padT, yBot: h - padB, fmt: (v) => big(v).replace('$', ''), items: qs.map((q) => ({ label: qLabel(q), values: [q.revenue, q.opIncome == null ? NaN : q.opIncome], colors: [V.T.series[0], q.opIncome >= 0 ? V.T.up : V.T.down] })) });
+    V.legend(c, padL, 7, [{ name: 'revenue', color: V.T.series[0] }, { name: 'operating income (green profit, red loss)', color: V.T.up }]);
+    const last = qs[qs.length - 1];
+    if (last && last.yoy && last.yoy.revenue != null) { const g = r.geoms.filter((q) => q.i === qs.length - 1 && q.k === 0)[0]; if (g) { c.fillStyle = V.T.ink2; c.font = V.T.font; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(pc(last.yoy.revenue, 0) + ' YoY', g.x + g.w / 2, g.y0 - 15); } }
+    V.hover(cv, (px) => { const g = V.hitColumn(r.geoms, px); if (!g) return null; const q = qs[g.i]; const rows = [{ label: 'revenue' + (q.yoy && q.yoy.revenue != null ? ' · ' + pc(q.yoy.revenue, 0) + ' YoY' : ''), value: big(q.revenue), color: V.T.series[0] }]; if (q.opIncome != null) rows.push({ label: 'operating income', value: big(q.opIncome), color: q.opIncome >= 0 ? V.T.up : V.T.down }); return { title: q.label, rows }; });
   }
   function linesChart(cv, qs) {
-    const { c, w, h } = canvasCtx(cv); const padL = 34, padR = 6, padT = 14, padB = 24, pw = w - padL - padR, ph = h - padT - padB;
-    const series = [['grossMarginPct', '#9cc8ff', 'gross'], ['opMarginPct', '#00d084', 'operating'], ['netMarginPct', '#ffd166', 'net'], ['fcfMarginPct', '#c46bff', 'FCF']];
+    const { c, w, h } = V.setup(cv); const padL = 40, padR = 10, padT = 18, padB = 20, pw = w - padL - padR, ph = h - padT - padB;
+    const series = [['grossMarginPct', V.T.series[0], 'gross'], ['opMarginPct', V.T.series[2], 'operating'], ['netMarginPct', V.T.series[3], 'net'], ['fcfMarginPct', V.T.series[6], 'FCF']];
     const vals = qs.flatMap((q) => series.map(([k]) => q[k])).filter(Number.isFinite); if (!vals.length) return;
-    let lo = Math.min(0, ...vals), hi = Math.max(...vals); const pad = (hi - lo) * 0.1 || 5; lo -= pad; hi += pad;
-    const x = (i) => padL + (qs.length === 1 ? pw / 2 : i / (qs.length - 1) * pw), y = (v) => padT + (hi - v) / (hi - lo) * ph;
-    c.strokeStyle = 'rgba(66,120,150,.2)'; c.fillStyle = '#7f97a4'; c.font = F; c.textAlign = 'right'; c.textBaseline = 'middle';
-    for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4, yy = y(v); c.beginPath(); c.moveTo(padL, yy); c.lineTo(w - padR, yy); c.stroke(); c.fillText(v.toFixed(0) + '%', padL - 4, yy); }
-    let lx = padL;
-    for (const [k, col, name] of series) {
-      const pts = qs.map((q, i) => (Number.isFinite(q[k]) ? [x(i), y(q[k])] : null)); if (!pts.some(Boolean)) continue;
-      c.strokeStyle = col; c.lineWidth = 1.6; c.beginPath(); let started = false;
-      pts.forEach((p) => { if (!p) return; if (!started) { c.moveTo(p[0], p[1]); started = true; } else c.lineTo(p[0], p[1]); }); c.stroke();
-      c.fillStyle = col; pts.forEach((p) => { if (p) { c.beginPath(); c.arc(p[0], p[1], 2.2, 0, Math.PI * 2); c.fill(); } });
-      c.fillRect(lx, 2, 8, 8); c.fillStyle = '#9fb3be'; c.textAlign = 'left'; c.fillText(name, lx + 11, 6); lx += 14 + c.measureText(name).width + 10;
-    }
-    c.fillStyle = '#9fb3be'; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; qs.forEach((q, i) => { if (qs.length <= 8 || i % 2 === 0) c.fillText(q.label.replace(' FY', "'"), x(i), h - 8); });
+    const tk = V.ticks(Math.min(0, ...vals), Math.max(...vals), 4), lo = tk.lo, hi = tk.hi;
+    const x = (i) => padL + (qs.length === 1 ? pw / 2 : i / (qs.length - 1) * pw), y = (v) => padT + (hi - v) / (hi - lo || 1) * ph;
+    V.grid(c, padL, w - padR, tk.ticks.map((v) => ({ y: y(v), label: v.toFixed(0) + '%' })));
+    if (lo < 0) V.baseline(c, padL, w - padR, y(0));
+    const live = series.filter(([k]) => qs.some((q) => Number.isFinite(q[k])));
+    live.forEach(([k, col]) => V.line(c, qs.map((q, i) => (Number.isFinite(q[k]) ? [x(i), y(q[k])] : null)), { color: col, width: 2, markers: true, marker: false }));
+    V.legend(c, padL, 7, live.map(([, col, name]) => ({ name, color: col, line: true })));
+    c.fillStyle = V.T.ink2; c.font = V.T.font; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; qs.forEach((q, i) => { if (qs.length <= 8 || i % 2 === 0) c.fillText(qLabel(q), x(i), h - 6); });
+    const xs = qs.map((_, i) => x(i));
+    V.hover(cv, (px) => { const i = V.nearestX(xs, px); if (i < 0) return null; const q = qs[i]; return { title: q.label, rows: live.map(([k, col, name]) => ({ label: name + ' margin', value: p0(q[k]), color: col, line: true })) }; });
   }
   function costChart(cv, qs) {
-    const { c, w, h } = canvasCtx(cv); const padL = 34, padR = 6, padT = 14, padB = 24, pw = w - padL - padR, ph = h - padT - padB;
-    const parts = [['cogsPct', '#ff7a1a', 'cost of revenue'], ['rdPct', '#6c8cff', 'R&D'], ['sgaPct', '#c46bff', 'SG&A']];
-    const step = pw / qs.length, bw = Math.max(4, step * 0.6), y = (v) => padT + (100 - v) / 100 * ph;
-    c.strokeStyle = 'rgba(66,120,150,.2)'; c.fillStyle = '#7f97a4'; c.font = F; c.textAlign = 'right'; c.textBaseline = 'middle';
-    for (let k = 0; k <= 4; k++) { const v = k * 25, yy = y(v); c.beginPath(); c.moveTo(padL, yy); c.lineTo(w - padR, yy); c.stroke(); c.fillText(v + '%', padL - 4, yy); }
-    qs.forEach((q, i) => {
-      const x0 = padL + i * step + (step - bw) / 2; let acc = 0;
-      for (const [k, col] of parts) { const v = Number.isFinite(q[k]) ? q[k] : 0; if (v <= 0) continue; c.fillStyle = col; c.fillRect(x0, y(acc + v), bw, y(acc) - y(acc + v)); acc += v; }
-      const other = Number.isFinite(q.opexPct) && Number.isFinite(q.rdPct) && Number.isFinite(q.sgaPct) ? Math.max(0, q.opexPct - q.rdPct - q.sgaPct) : 0;
-      if (other > 0.2) { c.fillStyle = '#4a5a66'; c.fillRect(x0, y(acc + other), bw, y(acc) - y(acc + other)); acc += other; }
-      if (Number.isFinite(q.opMarginPct)) { c.fillStyle = q.opMarginPct >= 0 ? '#52e6ad' : '#ff778b'; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(q.opMarginPct.toFixed(0) + '%', x0 + bw / 2, y(acc) - 3); c.textBaseline = 'middle'; }
-      c.fillStyle = '#9fb3be'; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(q.label.replace(' FY', "'"), x0 + bw / 2, h - 8); c.textBaseline = 'middle';
-    });
-    let lx = padL; for (const [, col, name] of parts.concat([[null, '#4a5a66', 'other opex']])) { c.fillStyle = col; c.fillRect(lx, 2, 8, 8); c.fillStyle = '#9fb3be'; c.textAlign = 'left'; c.fillText(name, lx + 11, 6); lx += 14 + c.measureText(name).width + 10; }
-    c.fillStyle = '#9fb3be'; c.textAlign = 'left'; c.fillText('green = operating margin', lx, 6);
+    const { c, w, h } = V.setup(cv); const padL = 40, padR = 8, padT = 18, padB = 20;
+    const parts = [['cogsPct', V.T.series[1], 'cost of revenue'], ['rdPct', V.T.series[0], 'R&D'], ['sgaPct', V.T.series[6], 'SG&A']];
+    const other = (q) => (Number.isFinite(q.opexPct) && Number.isFinite(q.rdPct) && Number.isFinite(q.sgaPct) ? Math.max(0, q.opexPct - q.rdPct - q.sgaPct) : 0);
+    const items = qs.map((q) => ({ label: qLabel(q), parts: parts.map(([k]) => (Number.isFinite(q[k]) ? Math.max(0, q[k]) : 0)).concat([other(q) > 0.2 ? other(q) : 0]) }));
+    const r = V.stacks(c, { x0: padL, x1: w - padR, yTop: padT, yBot: h - padB, hi: 100, fmt: (v) => v + '%', colors: parts.map(([, col]) => col).concat([V.T.neutral]), items });
+    const last = qs[qs.length - 1], lastItem = items[items.length - 1];
+    if (last && Number.isFinite(last.opMarginPct) && lastItem) { c.fillStyle = V.T.ink; c.font = V.T.fontBold; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText('op margin ' + last.opMarginPct.toFixed(0) + '%', padL + (items.length - 0.5) * r.slot, lastItem.top - 4); }
+    V.legend(c, padL, 7, parts.map(([, col, name]) => ({ name, color: col })).concat([{ name: 'other opex', color: V.T.neutral }]));
+    V.hover(cv, (px) => { const g = V.hitColumn(r.geoms, px); if (!g) return null; const q = qs[g.i]; const rows = parts.map(([k, col, name]) => ({ label: name, value: p0(q[k], 0), color: col })); if (other(q) > 0.2) rows.push({ label: 'other opex', value: p0(other(q), 0), color: V.T.neutral }); if (Number.isFinite(q.opMarginPct)) rows.push({ label: 'operating margin', value: p0(q.opMarginPct, 0), color: q.opMarginPct >= 0 ? V.T.up : V.T.down }); return { title: q.label + ' · share of revenue', rows }; });
   }
 
   function html(d) {
