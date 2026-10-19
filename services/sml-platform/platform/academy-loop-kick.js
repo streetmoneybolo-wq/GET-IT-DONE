@@ -104,7 +104,11 @@
     if (!S.frame || event.source !== S.frame.contentWindow) return;
     if (event.origin !== frameOrigin()) return;
     var d = event.data || {};
-    if (d && typeof d.type === 'string' && d.type.indexOf('sml-loop-kick:') === 0) S.heard = true;
+    if (d && typeof d.type === 'string' && d.type.indexOf('sml-loop-kick:') === 0 && !S.heard) {
+      S.heard = true;
+      /* the phone is awake: whatever the page wants it to carry (the Academy notifications feed) can be handed over now */
+      try { window.dispatchEvent(new CustomEvent('sml-loop-kick-frame', { detail: { ready: true } })); } catch (e) { /* old browser */ }
+    }
     if (d.type === 'sml-loop-kick:ready' || d.type === 'sml-loop-kick:auth-needed') {
       S.frameReady = true;
       var stale = !S.token || (S.expiresAt && S.expiresAt * 1000 <= Date.now() + 5000);
@@ -132,7 +136,12 @@
       /* the member closed the phone with its own ✕ (or Escape): hide the whole device, like the site does; the header button
          reopens it. The phone also reports 'closed' once while booting, before it has ever unfolded — that one is not a close. */
       if (d.surface === 'closed' && S.sawOpen && S.open && !STANDALONE && S.frame && S.frame.style.display !== 'none') closePanel();
+    } else if (typeof d.type === 'string' && d.type.indexOf('sml-loop-kick:academy-') === 0) {
+      /* the phone acting on an Academy notification it was handed (read, open, follow back, ack): the feed module answers */
+      try { window.dispatchEvent(new CustomEvent('sml-loop-kick-academy', { detail: d })); } catch (e) { /* old browser */ }
     } else if (d.type === 'sml-loop-kick:notifications') {
+      /* the phone counts the Academy notifications it was handed inside its own unread: the badge must not add them twice */
+      S.phoneHasAcademy = d.academyUnread != null;
       paintBadge(Number(d.unread) || 0);
     } else if (d.type === 'sml-loop-kick:external') {
       /* the phone cannot leave Discord's sandbox itself (e.g. phone-alert setup) */
@@ -147,7 +156,7 @@
   function paintBadge(unread) { S.phoneUnread = Number(unread) || 0; renderBadge(); }
   function renderBadge() {
     if (!S.badge) return;
-    var n = (S.phoneUnread || 0) + (S.academyUnread || 0);
+    var n = (S.phoneUnread || 0) + (S.phoneHasAcademy ? 0 : (S.academyUnread || 0));
     S.badge.textContent = n > 99 ? '99+' : String(n);
     S.badge.style.display = n > 0 ? '' : 'none';
   }
@@ -481,7 +490,13 @@
     open: openPanel, close: closePanel, toggle: toggle,
     isOpen: function () { return S.open; },
     panel: buildPanel, grip: function () { return S.grip; }, standalone: STANDALONE,
-    setAcademyUnread: function (n) { S.academyUnread = Math.max(0, Number(n) || 0); renderBadge(); }
+    setAcademyUnread: function (n) { S.academyUnread = Math.max(0, Number(n) || 0); renderBadge(); },
+    /* hand the phone something (the Academy notifications): true when it was sent to a loaded phone */
+    send: function (kind, payload) {
+      if (!S.frame || !S.frame.contentWindow || !S.heard) return false;
+      var origin = frameOrigin(); if (!origin) return false;
+      try { S.frame.contentWindow.postMessage(Object.assign({ type: 'sml-loop-kick:' + kind, version: 1 }, payload || {}), origin); return true; } catch (e) { return false; }
+    }
   };
 
   /* ---- entry points ---- */
