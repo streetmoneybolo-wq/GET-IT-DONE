@@ -1084,6 +1084,9 @@ test('the heat map route serves the order-flow service\'s book columns, gated li
   const { academyActivityHtml } = require('./server');
   const html = academyActivityHtml({ symbol: 'SPY', tf: '5m' });
   assert.match(html, /id = 'heat-toggle'/, 'the HEAT toggle script is on the page');
+  assert.match(html, /mem-scn-strip/, 'the scenario insight strip lives under the candles, not over them');
+  assert.match(html, /smlSnapshotBand/, 'the snapshot carries the scenario words as a band');
+  assert.doesNotMatch(html, /extra room on top for the title and insight cards/, 'no price room is taken for an on-chart card any more');
   assert.match(html, /academy-activity\/heatmap\?symbol=/);
 });
 
@@ -2045,4 +2048,33 @@ test('the free trial pages are served without a session and send the visitor to 
     const none = await fetch(`${base}/academy-activity/trial`);
     assert.notEqual(none.status, 200, 'without the trial module the path is not a trial page');
   });
+});
+
+test('the option-bars route serves one contract\'s candles to members only, with strict contract validation', async () => {
+  await withServer({}, async (base) => { assert.equal((await fetch(`${base}/academy-activity/option-bars?contract=SPY251219C00600000`)).status, 503); });
+  const academyOAuth = { verifySession: (auth) => (auth === 'Bearer member' ? { ok: true, tier: 'academy' } : auth === 'Bearer free' ? { ok: true, tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const { createMassiveOptionBars } = require('./market-data-service');
+  const optionBars = createMassiveOptionBars({ apiKey: 'k', fetchImpl: async () => new Response(JSON.stringify({ results: [{ t: 1000, o: 3, h: 3.5, l: 2.9, c: 3.4, v: 10 }] }), { status: 200 }) });
+  await withServer({ academyOAuth, optionBars }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/option-bars?contract=SPY251219C00600000`)).status, 401);
+    assert.equal((await fetch(`${base}/academy-activity/option-bars?contract=SPY251219C00600000`, { headers: { authorization: 'Bearer free' } })).status, 403);
+    const ok = await fetch(`${base}/academy-activity/option-bars?contract=spy251219c00600000&tf=1h`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(ok.status, 200); const body = await ok.json();
+    assert.equal(body.ok, true); assert.equal(body.contract, 'SPY251219C00600000'); assert.equal(body.tf, '1h'); assert.equal(body.bars[0].c, 3.4);
+    const bad = await fetch(`${base}/academy-activity/option-bars?contract=SPY`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(bad.status, 400); assert.equal((await bad.json()).error, 'invalid_contract');
+    assert.equal((await fetch(`${base}/academy-activity/option-bars?contract=SPY251219C00600000&tf=3m`, { headers: { authorization: 'Bearer member' } })).status, 400);
+  });
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m' });
+  assert.match(html, /id = 'chain-toggle'/, 'the CHAIN switch puts the options chain where the candles are');
+  assert.match(html, /id = 'opt-mini'/, 'the contract mini chart card is on the page');
+  assert.match(html, /academy-activity\/option-bars\?contract=/);
+  assert.match(html, /window\.SmlBuyPrefs=module\.exports/, 'the buy-button preferences core is on the page');
+  assert.match(html, /sml-settings-btn/, 'the Settings button sits beside Customize');
+  assert.match(html, /'sml-settings-btn', 'aa-btn'/, 'and docks in the top-bar rail with it');
+  assert.match(html, /data-leg-trade=/, 'hedge legs carry Buy / Sell buttons');
+  assert.match(html, /'#opt-mini'\]/, 'the chart dock can hold the mini chart');
+  assert.match(html, /Reset this paper account to ' \+ \(S\.account === 'challenge' \? '\$1,000' : '\$25,000'\)/, 'the paper trader starts members at $25,000');
+  assert.doesNotMatch(html, PAGE_BANNED);
 });

@@ -27,14 +27,21 @@
     try { const t = document.createElement('textarea'); t.value = text; t.style.cssText = 'position:fixed;left:-9999px;top:0'; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove(); return !!ok; } catch (_) { return false; }
   }
   function say(text, ok) { const h = bar.querySelector('.hint'); if (h) { h.textContent = text; h.className = 'hint' + (ok ? ' ok' : ''); } }
+  /* which brokers, and whether Sell shows beside Buy, follow Settings (window.smlBuyPrefs); without it every broker shows */
+  const NAMES = { moomoo: 'moomoo', webull: 'Webull', robinhood: 'Robinhood', etoro: 'eToro' };
+  const chosen = () => { const P = window.smlBuyPrefs; return P ? P.brokers().map((b) => b.key) : ['moomoo', 'webull', 'robinhood', 'etoro']; };
+  const sellOn = () => { const P = window.smlBuyPrefs; return P ? P.get().sell : false; };
   function render() {
-    const links = C ? OC.links(C) : [];
-    bar.innerHTML = '<h3>BUY THIS CONTRACT ON YOUR BROKER</h3>'
-      + (C ? '<div class="ct"><b>' + esc(OC.describe(C)) + '</b><button type="button" class="copy" data-copy="1" title="Copy the contract symbol">Copy symbol</button></div><div class="ct"><code>' + esc(OC.occSymbol(C)) + '</code></div>' : '<div class="ct"><b style="color:#7f97a4;font-weight:600">Click a contract in the options chain.</b></div>')
-      + '<div class="row">' + ['moomoo', 'webull', 'robinhood', 'etoro'].map((k) => { const l = links.find((x) => x.key === k); return '<button type="button" data-b="' + k + '"' + (l ? '' : ' disabled') + (l ? ' title="' + esc(l.note) + '"' : '') + '>' + (k === 'moomoo' ? 'moomoo' : k === 'webull' ? 'Webull' : k === 'robinhood' ? 'Robinhood' : 'eToro') + ' ↗</button>'; }).join('') + '</div>'
-      + '<p class="hint">' + (C ? 'Each button copies the contract symbol and opens the broker; paste the symbol into its search to land on this contract. Nothing is traded from the Academy.' : 'Quote pages only. Any order is reviewed and placed by you in your own broker.') + '</p>';
+    const links = C ? OC.links(C) : [], keys = chosen(), one = keys.length === 1;
+    const button = (k, side) => { const l = links.find((x) => x.key === k); return '<button type="button" data-b="' + k + '" data-side="' + side + '"' + (l ? '' : ' disabled') + (l ? ' title="' + esc(l.note) + '"' : '') + (side === 'sell' ? ' style="filter:saturate(.7) brightness(.92)"' : '') + '>' + (one ? (side === 'sell' ? 'SELL' : 'BUY') + ' on ' + esc(NAMES[k]) : (side === 'sell' ? 'Sell · ' : '') + esc(NAMES[k])) + ' ↗</button>'; };
+    bar.innerHTML = '<h3>' + (sellOn() ? 'BUY OR SELL THIS CONTRACT ON YOUR BROKER' : 'BUY THIS CONTRACT ON YOUR BROKER') + '</h3>'
+      + (C ? '<div class="ct"><b>' + esc(OC.describe(C)) + '</b><button type="button" class="copy" data-copy="1" title="Copy the contract symbol">Copy symbol</button></div><div class="ct"><code>' + esc(OC.occSymbol(C)) + '</code></div>' : '<div class="ct"><b style="color:#7f97a4;font-weight:600">Click a contract in the options chain. Double-click it for its own chart.</b></div>')
+      + '<div class="row">' + keys.map((k) => button(k, 'buy')).join('') + '</div>'
+      + (sellOn() ? '<div class="row" style="margin-top:5px">' + keys.map((k) => button(k, 'sell')).join('') + '</div>' : '')
+      + '<p class="hint">' + (C ? 'Each button copies the contract symbol and opens the broker; paste the symbol into its search to land on this contract and place the order there. Nothing is traded from the Academy.' : 'Quote pages only. Any order is reviewed and placed by you in your own broker. Choose your brokers under ⚙ Settings.') + '</p>';
   }
   render();
+  window.addEventListener('sml-buy-prefs', render);
 
   // the chain's rows are: call columns | strike (cell 10) | put columns. A click on either side picks that contract.
   grid.addEventListener('click', (e) => {
@@ -49,6 +56,8 @@
     if (!C) return;
     if (e.target.closest('[data-copy]')) { say((await copy(OC.occSymbol(C))) ? 'Copied ' + OC.occSymbol(C) + '.' : 'Select the symbol above and copy it.', true); return; }
     const b = e.target.closest('[data-b]'); if (!b) return;
+    const P = window.smlBuyPrefs;
+    if (P) { const out = await P.go(b.dataset.b, { contract: C, side: b.dataset.side || 'buy' }); if (out) say((out.copied ? 'Copied ' + OC.occSymbol(C) + '. ' : '') + out.note, out.copied); return; }
     const link = OC.links(C).find((x) => x.key === b.dataset.b); if (!link) return;
     const ok = await copy(OC.occSymbol(C));
     say((ok ? 'Copied ' + OC.occSymbol(C) + '. ' : '') + link.note, ok);

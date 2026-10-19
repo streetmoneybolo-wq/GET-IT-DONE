@@ -12,7 +12,8 @@
 
 const { etParts, marketState } = require('./market-clock');
 
-const RULES = Object.freeze({ startCash: 1000, stockFee: 0, optionFeePerContract: 0.65, slippageBps: 5, maxQty: 1e6, maxPositions: 60, maxTrades: 2000, maxEquityPoints: 3000 });
+/* every member's paper account starts with $25,000 (the owner's 1K -> 100K Challenge account is created with its own $1,000) */
+const RULES = Object.freeze({ startCash: 25_000, stockFee: 0, optionFeePerContract: 0.65, slippageBps: 5, maxQty: 1e6, maxPositions: 60, maxTrades: 2000, maxEquityPoints: 3000 });
 const MULT = 100;
 const num = (v, d = null) => { if (v == null || v === '') return d; const n = Number(v); return Number.isFinite(n) ? n : d; };
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -174,7 +175,11 @@ function createPaperService({ storeFor, quote, optionQuote = null, marketDay = n
     if (accounts.has(id)) return accounts.get(id);
     const saved = await storeOf(id).read();
     const acct = saved && saved.version === 1 ? saved : createAccount(id, { ...opts, now: now() });
-    accounts.set(id, acct); if (!saved) await storeOf(id).write(acct);
+    /* an account opened before the $25,000 start (at the old $1,000) is brought up to it once, as a deposit, so its P&L stays honest */
+    const want = Number(opts.cash) || rules.startCash;
+    const topUp = saved && acct.id !== 'challenge' && want > acct.startCash && !acct.deposits.some((d) => d.kind === 'start-adjust');
+    if (topUp) { deposit(acct, want - acct.startCash, now(), 'start-adjust'); acct.startCash = want; acct.log.push({ t: now(), text: `Starting balance raised to $${want.toLocaleString('en-US')}` }); }
+    accounts.set(id, acct); if (!saved || topUp) await storeOf(id).write(acct);
     return acct;
   }
   const persist = (acct) => storeOf(acct.id).write(acct);

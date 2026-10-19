@@ -123,6 +123,63 @@ function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, 
   return { enabled, get, trades, cache };
 }
 
+/* One options contract's own candles (the contract's premium, not the stock), for the mini chart that opens when a member
+ * double-clicks a row in the chain. Massive serves option aggregates under the "O:" prefix with the OCC symbol
+ * (O:SPY251219C00600000). The OCC symbol is validated strictly (root, yymmdd, C/P, 8-digit strike) so nothing else can be
+ * put in the path. Each contract:timeframe is cached briefly; at most OPTION_BARS_CACHE_MAX stay in memory. */
+const OCC_RE = /^[A-Z]{1,6}[0-9]{6}[CP][0-9]{8}$/;
+const OPTION_BAR_TIMEFRAMES = Object.freeze({
+  '1m': { multiplier: 1, timespan: 'minute', lookbackMs: 3 * 86400_000, ttlMs: 20_000 },
+  '5m': { multiplier: 5, timespan: 'minute', lookbackMs: 14 * 86400_000, ttlMs: 30_000 },
+  '15m': { multiplier: 15, timespan: 'minute', lookbackMs: 45 * 86400_000, ttlMs: 60_000 },
+  '1h': { multiplier: 1, timespan: 'hour', lookbackMs: 120 * 86400_000, ttlMs: 120_000 },
+  '1D': { multiplier: 1, timespan: 'day', lookbackMs: 2 * 365 * 86400_000, ttlMs: 5 * 60_000 }
+});
+const OPTION_BARS_CACHE_MAX = 60;
+function cleanOcc(value) {
+  const occ = String(value || '').trim().toUpperCase().replace(/^O:/, '');
+  if (!OCC_RE.test(occ)) throw new TypeError('invalid_contract');
+  return occ;
+}
+function createMassiveOptionBars({ apiKey = '', fetchImpl = fetch, now = Date.now, baseUrl = 'https://api.massive.com', maxEntries = OPTION_BARS_CACHE_MAX } = {}) {
+  const cache = new Map();
+  const inflight = new Map();
+  const enabled = Boolean(String(apiKey).trim());
+  async function get(occRaw, timeframeRaw = '5m') {
+    if (!enabled) return { ok: false, status: 503, code: 'massive_unconfigured' };
+    const occ = cleanOcc(occRaw);
+    const timeframe = String(timeframeRaw || '5m');
+    const config = OPTION_BAR_TIMEFRAMES[timeframe];
+    if (!config) throw new TypeError('invalid_timeframe');
+    const key = `${occ}:${timeframe}`, current = now(), hit = cache.get(key);
+    if (hit && hit.freshUntil > current) return { ok: true, status: 200, data: hit.data, cached: true };
+    if (inflight.has(key)) return inflight.get(key);
+    const pending = (async () => {
+      const from = new Date(current - config.lookbackMs).toISOString().slice(0, 10), to = new Date(current).toISOString().slice(0, 10);
+      const url = `${String(baseUrl).replace(/\/$/, '')}/v2/aggs/ticker/${encodeURIComponent('O:' + occ)}/range/${config.multiplier}/${config.timespan}/${from}/${to}?adjusted=true&sort=asc&limit=5000`;
+      try {
+        const response = await fetchImpl(url, { headers: { accept: 'application/json', authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(8_000) });
+        if (!response.ok) throw new Error(`massive_option_bars_${response.status}`);
+        const body = await response.json();
+        const bars = normalizeBars(body?.results).slice(-1500);
+        /* an empty answer is a real answer (a contract that has not traded yet): kept briefly so a mini chart left open does not hammer the provider */
+        const data = { contract: occ, ticker: 'O:' + occ, tf: timeframe, bars, asOf: current, lastBarAt: bars.length ? bars[bars.length - 1].t : null, source: 'massive-rest' };
+        cache.delete(key);
+        for (const [k, v] of cache) if (v.freshUntil <= current - 6 * 3600_000) cache.delete(k);
+        while (cache.size >= maxEntries) cache.delete(cache.keys().next().value);
+        cache.set(key, { freshUntil: current + (bars.length ? config.ttlMs : 60_000), data });
+        return { ok: true, status: 200, data, cached: false };
+      } catch (_) {
+        if (hit) return { ok: true, status: 200, data: { ...hit.data, stale: true }, cached: true };
+        return { ok: false, status: 503, code: 'massive_option_bars_unavailable' };
+      } finally { inflight.delete(key); }
+    })();
+    inflight.set(key, pending);
+    return pending;
+  }
+  return { enabled, get, cache, timeframes: Object.keys(OPTION_BAR_TIMEFRAMES) };
+}
+
 /* Optional provider adapter. It remains disabled until both the feature flag
  * and an entitled Massive Options plan are present. The raw provider payload
  * is preserved; missing quotes/Greeks are never synthesized. */
@@ -306,4 +363,4 @@ function resampleBars(bars, timeframe) {
   return out;
 }
 
-module.exports = { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol, cleanTimeframe, normalizeBars, allowedPublicOrigin, resampleBars, TIMEFRAMES, DERIVED_TIMEFRAMES, HISTORY_CACHE_MAX, QUEUED_CACHE_MAX };
+module.exports = { createMassiveHistory, createMassiveOptions, createMassiveOptionBars, createQueuedDataSource, cleanSymbol, cleanTimeframe, cleanOcc, normalizeBars, allowedPublicOrigin, resampleBars, TIMEFRAMES, DERIVED_TIMEFRAMES, OPTION_BAR_TIMEFRAMES, HISTORY_CACHE_MAX, QUEUED_CACHE_MAX, OPTION_BARS_CACHE_MAX };

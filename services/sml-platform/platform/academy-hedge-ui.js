@@ -26,6 +26,7 @@
     + '.ahg-t{display:flex;align-items:center;gap:6px}.ahg-t b{font:800 12.5px system-ui;color:#eaf5f8}.ahg-t em{font-style:normal;font:800 9px ui-monospace,monospace;letter-spacing:.06em;color:#7b93a0;text-transform:uppercase}'
     + '.ahg-score{margin-left:auto;padding:2px 8px;border-radius:999px;font:900 11px ui-monospace,monospace}.ahg-score.hi{background:#0d3a2a;color:#3ef0a8}.ahg-score.mid{background:#2e2410;color:#ffcf7a}.ahg-score.lo{background:#2a1a20;color:#ff9aa4}'
     + '.ahg-legs{font:600 11px ui-monospace,monospace;color:#cfe3ea}.ahg-legs div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ahg-legs .s{color:#ffb3bf}.ahg-legs .b{color:#9fe8c8}'
+    + '.ahg-act{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 4px}.ahg-act button{border:1px solid #2b5362;border-radius:5px;background:#0d1a24;color:#9ed3e6;font:800 10px system-ui;padding:3px 7px;cursor:pointer;white-space:nowrap}.ahg-act button:hover{filter:brightness(1.15)}.ahg-msg.ok{color:#a8ffd8}'
     + '.ahg-kv{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:11px}.ahg-kv span{color:#7f98a6}.ahg-kv b{font:800 11.5px ui-monospace,monospace;color:#eaf3f6;text-align:right}.ahg-kv b.pos{color:#3ef0a8}.ahg-kv b.neg{color:#ff8a9c}'
     + '.ahg-greeks{display:flex;flex-wrap:wrap;gap:4px;font:700 10px ui-monospace,monospace;color:#9fb3be}.ahg-greeks span{padding:2px 6px;border:1px solid #16303a;border-radius:5px;background:#07111a}'
     + '.ahg-liq{padding:2px 7px;border-radius:5px;font:800 10px ui-monospace,monospace}.ahg-liq.A{background:#0d3a2a;color:#3ef0a8}.ahg-liq.B{background:#16303a;color:#9fd3e8}.ahg-liq.C{background:#2e2410;color:#ffcf7a}'
@@ -75,6 +76,16 @@
       + (fin(P) ? '<circle cx="' + X(P).toFixed(1) + '" cy="' + Y(payoff(idea, P)).toFixed(1) + '" r="2.6" fill="#ffd166"/>' : '')
       + '</svg>';
   }
+  /* One click per leg: Chart opens the contract's own mini chart (academy-options-desk.js); the broker buttons open the member's
+     chosen brokers (⚙ Settings) on the contract, worded for the leg (BUY leg -> buy, SELL leg -> sell) and copy its OCC symbol.
+     Quote pages only: the order itself is placed by the member in the broker. */
+  const legContract = (l) => (window.SmlOptionContract ? window.SmlOptionContract.contract({ symbol: S.sym || chartSymbol(), expiry: l.expiry, strike: l.strike, side: l.type }) : null);
+  function legButtons(l, i, j) {
+    const P = window.smlBuyPrefs, brokers = P ? P.brokers() : [], side = l.action === 'sell' ? 'sell' : 'buy';
+    const mini = window.__smlOptionsDesk ? '<button type="button" data-leg-chart="' + i + ':' + j + '" title="This contract’s own chart">Chart</button>' : '';
+    const trade = brokers.map((b) => '<button type="button" data-leg-trade="' + i + ':' + j + '" data-b="' + esc(b.key) + '" data-side="' + side + '" style="color:' + b.color + ';background:' + b.bg + ';border-color:' + b.border + '" title="' + esc((side === 'sell' ? 'Sell on ' : 'Buy on ') + b.name) + '">' + (side === 'sell' ? 'Sell' : 'Buy') + (brokers.length === 1 ? ' on ' + esc(b.name) : ' · ' + esc(b.name)) + ' ↗</button>').join('');
+    return mini || trade ? '<div class="ahg-act">' + mini + trade + '</div>' : '';
+  }
   function card(idea, d, i) {
     const sc = idea.score >= 70 ? 'hi' : idea.score >= 45 ? 'mid' : 'lo';
     const net = idea.net || {}, credit = net.type === 'credit';
@@ -97,7 +108,7 @@
     if (fin(idea.thetaPerDay)) kv.push(['Theta / day', '<b class="' + (idea.thetaPerDay >= 0 ? 'pos' : 'neg') + '">' + usd(idea.thetaPerDay) + '</b>']);
     const g = idea.greeks || {}, l0 = idea.legs[0] || {};
     return '<article class="ahg-card' + (i === 0 ? ' top' : '') + '"><div class="ahg-t"><b>' + esc(idea.name) + '</b><em>' + esc(idea.group) + '</em><span class="ahg-score ' + sc + '" title="Fit score 0-100 for this position and MEM ALGO read">' + esc(idea.score) + '</span></div>'
-      + '<div class="ahg-legs">' + idea.legs.map((l) => '<div class="' + (l.action === 'sell' ? 's' : 'b') + '">' + esc(l.action === 'buy' ? 'BUY' : 'SELL') + ' ' + esc(l.contracts) + ' × ' + esc(dshort(l.expiry)) + ' ' + esc(px(l.strike)) + ' ' + esc(String(l.type).toUpperCase()) + ' · ' + esc(l.dte) + 'd · mid ' + esc(px(l.mid)) + '</div>').join('') + '</div>'
+      + '<div class="ahg-legs">' + idea.legs.map((l, j) => '<div class="' + (l.action === 'sell' ? 's' : 'b') + '">' + esc(l.action === 'buy' ? 'BUY' : 'SELL') + ' ' + esc(l.contracts) + ' × ' + esc(dshort(l.expiry)) + ' ' + esc(px(l.strike)) + ' ' + esc(String(l.type).toUpperCase()) + ' · ' + esc(l.dte) + 'd · mid ' + esc(px(l.mid)) + '</div>' + legButtons(l, i, j)).join('') + '</div>'
       + '<div class="ahg-kv">' + kv.map(([k, v]) => '<span>' + esc(k) + '</span>' + v).join('') + '</div>'
       + '<div class="ahg-greeks"><span>Δ ' + esc(fin(g.delta) ? g.delta : '–') + '</span><span>Γ ' + esc(fin(g.gamma) ? g.gamma : '–') + '</span><span>Θ ' + esc(fin(g.theta) ? g.theta : '–') + '</span><span>V ' + esc(fin(g.vega) ? g.vega : '–') + '</span>' + (fin(l0.iv) ? '<span>IV ' + esc((l0.iv * 100).toFixed(0)) + '%</span>' : '') + '<span class="ahg-liq ' + esc(idea.liquidity.grade) + '" title="Worst bid/ask spread ' + esc(pct(idea.liquidity.worstSpreadPct, 1)) + ', lowest open interest ' + esc(idea.liquidity.minOi) + '">' + esc(idea.liquidity.grade) + ' · ' + esc(idea.liquidity.label) + '</span></div>'
       + sketch(idea, d)
@@ -170,10 +181,22 @@
     root = document.createElement('section'); root.id = 'academy-hedge'; root.setAttribute('aria-label', 'Hedge and income ideas');
     body = document.createElement('div'); root.appendChild(body);
     const t = host.querySelector('.below-title'); host.insertBefore(root, t ? t.nextSibling : host.firstChild);
-    root.addEventListener('click', (e) => {
+    root.addEventListener('click', async (e) => {
+      const leg = e.target.closest('[data-leg-chart],[data-leg-trade]');
+      if (leg) {
+        const [ii, jj] = String(leg.dataset.legChart || leg.dataset.legTrade).split(':').map(Number);
+        const idea = S.data && S.data.ideas && S.data.ideas[ii], l = idea && idea.legs && idea.legs[jj]; if (!l) return;
+        const c = legContract(l); if (!c) return;
+        if (leg.dataset.legChart != null) { window.dispatchEvent(new CustomEvent('sml-option-mini', { detail: { symbol: c.symbol, expiry: l.expiry, strike: l.strike, side: l.type, mid: l.mid, iv: fin(l.iv) ? (l.iv * 100).toFixed(0) + '%' : null, delta: fin(l.delta) ? String(l.delta) : null, oi: l.oi != null ? String(l.oi) : null, volume: l.volume != null ? String(l.volume) : null } })); return; }
+        const P = window.smlBuyPrefs; if (!P) return;
+        const out = await P.go(leg.dataset.b, { contract: c, side: leg.dataset.side });
+        if (out) { const note = document.createElement('div'); note.className = 'ahg-msg' + (out.copied ? ' ok' : ''); note.textContent = (out.copied ? 'Copied ' + window.SmlOptionContract.occSymbol(c) + '. ' : '') + out.note; const old = root.querySelector('.ahg-msg.live'); if (old) old.remove(); note.classList.add('live'); const art = leg.closest('.ahg-card'); if (art) art.appendChild(note); }
+        return;
+      }
       const b = e.target.closest('[data-ahg="close"]'); if (!b) return;
       S.dismissed = true; S.forced = false; show();
     });
+    window.addEventListener('sml-buy-prefs', () => { if (S.data) paint(); });
     root.addEventListener('submit', (e) => {
       const f = e.target.closest('[data-ahg="form"]'); if (!f) return;
       e.preventDefault();
