@@ -18,7 +18,7 @@ const SNOWFLAKE = /^\d{15,25}$/;
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', store = null, days = 15, enabled = true, appName = 'Making Easy Money Academy',
-  fetchImpl = globalThis.fetch, now = Date.now, logger = () => {}, buyUrl = '' } = {}) {
+  fetchImpl = globalThis.fetch, now = Date.now, logger = () => {}, buyUrl = '', botToken = '' } = {}) {
   const origin = String(publicUrl || '').replace(/\/+$/, '');
   const configured = Boolean(enabled && clientId && clientSecret && /^https:\/\//.test(origin) && store && typeof store.add === 'function');
   const trialDays = Math.max(1, Math.min(90, Number(days) || 15));
@@ -40,7 +40,7 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
   function authorizeUrl(via = '') {
     const u = new URL(DISCORD + '/oauth2/authorize');
     u.searchParams.set('client_id', clientId); u.searchParams.set('response_type', 'code'); u.searchParams.set('scope', 'identify');
-    u.searchParams.set('redirect_uri', redirectUri); u.searchParams.set('prompt', 'none'); u.searchParams.set('state', sign({ t: now(), via: String(via || '').slice(0, 40) }));
+    u.searchParams.set('redirect_uri', redirectUri); u.searchParams.set('state', sign({ t: now(), via: String(via || '').slice(0, 40) }));
     return u.toString();
   }
 
@@ -121,6 +121,7 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
       try {
         const who = await exchange(q.get('code'));
         const r = await grant(who.id, state.via);
+        logger('info', 'academy_trial_callback', { userId: who.id, outcome: r.code, via: state.via });
         if (r.ok && r.code === 'started') { send(response, 200, started(who.name, r.pass)); return true; }
         if (r.ok && r.code === 'already_member') { send(response, 200, member(who.name)); return true; }
         if (r.code === 'trial_used') { send(response, 200, used(who.name, r)); return true; }
@@ -135,7 +136,22 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
     return true;
   }
 
-  return { configured, days: trialDays, link, redirectUri, activityUrl, authorizeUrl, grant, handle, openState: open, signState: sign };
+  /* Ground truth from Discord about the app's own setup (its bot token may read the application): is the callback registered, is user
+     install on. Logged at start so a trial that cannot work says why before anyone clicks. */
+  async function inspect() {
+    if (!botToken || typeof fetchImpl !== 'function') return { checked: false };
+    try {
+      const res = await fetchImpl(DISCORD + '/api/v10/applications/@me', { headers: { authorization: 'Bot ' + botToken, accept: 'application/json' }, signal: AbortSignal.timeout(8_000) });
+      if (!res.ok) return { checked: false, status: res.status };
+      const app = await res.json();
+      const uris = Array.isArray(app.redirect_uris) ? app.redirect_uris : [];
+      const types = app.integration_types_config && typeof app.integration_types_config === 'object' ? Object.keys(app.integration_types_config) : [];
+      const flags = Number(app.flags) || 0;
+      return { checked: true, redirectRegistered: uris.includes(redirectUri), redirectUris: uris.length, userInstall: types.includes('1'), guildInstall: types.includes('0'), embedded: Boolean(flags & (1 << 17)), name: String(app.name || '') };
+    } catch (error) { return { checked: false, error: String(error && error.message || error) }; }
+  }
+
+  return { configured, days: trialDays, link, redirectUri, activityUrl, authorizeUrl, grant, handle, inspect, openState: open, signState: sign };
 }
 
 module.exports = { createAcademyTrial };

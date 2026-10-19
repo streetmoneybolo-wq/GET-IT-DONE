@@ -4043,9 +4043,10 @@ async function main() {
   const academyTrial = createAcademyTrial({
     clientId: config.academyAppId, clientSecret: config.academyClientSecret, publicUrl: config.academyTrialPublicUrl, store: academyPassStore,
     days: config.academyTrialDays, enabled: config.academyTrialEnabled, logger: log,
-    buyUrl: config.academyBillingPublicUrl ? config.academyBillingPublicUrl + '/v1/academy/billing/start?purpose=buy' : ''
+    buyUrl: config.academyBillingPublicUrl ? config.academyBillingPublicUrl + '/v1/academy/billing/start?purpose=buy' : '', botToken: config.academyBotToken
   });
   log('info', 'academy_trial_runtime', { configured: academyTrial.configured, days: academyTrial.days, link: academyTrial.configured ? academyTrial.link : '', redirectUri: academyTrial.configured ? academyTrial.redirectUri : '' });
+  if (academyTrial.configured) academyTrial.inspect().then((d) => log(d.checked && (!d.redirectRegistered || !d.userInstall) ? 'warn' : 'info', 'academy_trial_discord_check', d)).catch(() => {});
   /* Click-to-Alert paid with Loop Bucks: its own prices (SML_CLICK_ALERT_LB_PRICES), the same wallet. SML_CLICK_ALERT_SUBSCRIBE_URL adds a "subscribe with a card" button. */
   const academyClickAlertPasses = process.env.ACADEMY_LB_PASSES === 'off' ? null : createPassService({
     store: createPassStore({ pool: database.pool }), wallet: createWalletClient({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret }),

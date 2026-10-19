@@ -37,6 +37,7 @@ test('the trial link: landing, Discord sign-in with a signed state, a 15-day pas
   assert.equal(auth.origin + auth.pathname, 'https://discord.com/oauth2/authorize');
   assert.equal(auth.searchParams.get('scope'), 'identify'); assert.equal(auth.searchParams.get('client_id'), APP);
   assert.equal(auth.searchParams.get('redirect_uri'), 'https://academy.example/academy-activity/trial/callback');
+  assert.equal(auth.searchParams.get('prompt'), null, 'the default consent screen: a first-time visitor must be able to authorise');
   const state = auth.searchParams.get('state');
   assert.deepEqual(trial.openState(state).via, 'tiktok');
   assert.equal(trial.openState(state.slice(0, -2) + 'xx'), null, 'a tampered state is refused');
@@ -83,4 +84,18 @@ test('the trial refuses what it should: expired state, a cancelled sign-in, Disc
   assert.deepEqual(await trial.grant('nope'), { ok: false, code: 'invalid_user' });
   await store.add({ discordId: '100000000000000001', plan: 'monthly', amount: 50, ref: 'acad-lb:1:k', startsAt: new Date(T0).toISOString(), expiresAt: new Date(T0 + 30 * 86_400_000).toISOString() });
   assert.equal((await trial.grant('100000000000000001')).code, 'already_member');
+});
+
+
+test('the Discord check reads the app with its bot token and says whether the callback and user install are set', async () => {
+  const store = createPassStore();
+  const seen = [];
+  const mk = (app) => createAcademyTrial({ clientId: APP, clientSecret: 's', publicUrl: 'https://academy.example', store, botToken: 'bot-token', fetchImpl: async (url, options) => { seen.push(options.headers.authorization); return { ok: true, json: async () => app }; } });
+  const good = await mk({ name: 'Academy', redirect_uris: ['https://academy.example/academy-activity/trial/callback'], integration_types_config: { 0: {}, 1: {} }, flags: 1 << 17 }).inspect();
+  assert.deepEqual(good, { checked: true, redirectRegistered: true, redirectUris: 1, userInstall: true, guildInstall: true, embedded: true, name: 'Academy' });
+  assert.equal(seen[0], 'Bot bot-token');
+  const bad = await mk({ name: 'Academy', redirect_uris: ['https://other.example/cb'], integration_types_config: { 0: {} }, flags: 0 }).inspect();
+  assert.equal(bad.redirectRegistered, false); assert.equal(bad.userInstall, false);
+  const none = await createAcademyTrial({ clientId: APP, clientSecret: 's', publicUrl: 'https://academy.example', store }).inspect();
+  assert.deepEqual(none, { checked: false });
 });
