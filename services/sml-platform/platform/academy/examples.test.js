@@ -485,7 +485,7 @@ test('the slide designer sends the shared parts and the example sentences with a
   });
   const result = await designer.getLessonDesign({ moduleId: 9, lessonId: 1, userId: 'member' });
   assert.equal(result.design.slides.length, 6);
-  assert.equal(calls[0].max_tokens, 4000);
+  assert.equal(calls[0].max_tokens, 8000);
   const source = JSON.parse(calls[0].messages[0].content);
   assert.deepEqual(source.narrationParts, lesson.parts);
   assert.deepEqual(source.workedExample, { partIndex: 1, title: lesson.example.title, say: lesson.example.say });
