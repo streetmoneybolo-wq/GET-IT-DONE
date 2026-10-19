@@ -4096,9 +4096,9 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const gate = academyDataLimit.take(request);
       if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
       const pq = new URL(request.url || '/', 'http://localhost').searchParams;
-      const type = String(pq.get('type') || '').toLowerCase().replace(/[^a-z_]/g, '').slice(0, 40), tf = String(pq.get('tf') || '5m').slice(0, 4), exclude = String(pq.get('exclude') || '').toUpperCase().slice(0, 10), dir = String(pq.get('dir') || '').slice(0, 7);
+      const type = String(pq.get('type') || '').toLowerCase().replace(/[^a-z_]/g, '').slice(0, 40), tf = String(pq.get('tf') || '5m').slice(0, 4), exclude = String(pq.get('exclude') || '').toUpperCase().slice(0, 10), dir = String(pq.get('dir') || '').slice(0, 7), kind = String(pq.get('kind') || 'chart').slice(0, 6);
       if (!type) { sendJson(response, 400, { ok: false, error: 'invalid_pattern' }); return; }
-      try { sendJson(response, 200, await patternLive.examples({ type, tf, exclude, dir, limit: Math.min(8, Number(pq.get('limit')) || 6) })); }
+      try { sendJson(response, 200, await patternLive.examples({ kind, type, tf, exclude, dir, limit: Math.min(8, Number(pq.get('limit')) || 6) })); }
       catch (error) { logger('warn', 'academy_pattern_live_failed', { type, tf, error: String(error && error.message || error) }); sendJson(response, 503, { ok: false, error: 'pattern_live_unavailable' }); }
       return;
     }

@@ -16,9 +16,13 @@ test('rankExamples prefers a confident, still-forming, recent pattern of the sam
     { symbol: 'BEAR', last: 99, result: { charts: [pat({ dir: 'bear', confidence: 0.72, status: 'forming', endIdx: 97 })] } }
   ];
   const r = PL.rankExamples(found, { type: 'ascending_triangle', dir: 'bull' });
-  assert.deepEqual(r.map((x) => x.symbol), ['LIVE', 'BEAR', 'OLD', 'FAM']);
-  assert.equal(r[0].exact, true); assert.equal(r[3].exact, false);
-  assert.ok(r[0].score > r[2].score, 'a live forming pattern beats one that broke 57 bars ago');
+  assert.deepEqual(r.map((x) => x.symbol), ['LIVE', 'BEAR', 'FAM'], 'OLD broke out 57 bars ago: not forming now');
+  assert.equal(r[0].exact, true); assert.equal(r[2].exact, false);
+  // just broke out counts as now; an expired or stale forming one does not
+  assert.equal(PL.isLive('chart', pat({ status: 'confirmed', endIdx: 90, breakIdx: 97 }), 99), true);
+  assert.equal(PL.isLive('chart', pat({ status: 'confirmed', endIdx: 90, breakIdx: 90 }), 99), false);
+  assert.equal(PL.isLive('chart', pat({ status: 'forming', endIdx: 92 }), 99), false);
+  assert.equal(PL.isLive('chart', pat({ status: 'expired', endIdx: 99 }), 99), false);
 });
 
 test('the service scans the universe once per interval with bounded concurrency, caches it, and frames each example', async () => {
@@ -63,4 +67,30 @@ test('a slow scan answers within the wait with a partial result and finishes on 
   await new Promise((r) => setTimeout(r, 20));
   const r2 = await svc.examples({ type: 'ascending_triangle', tf: '5m' });
   assert.equal(r2.partial, false); assert.equal(r2.cached, true); assert.deepEqual(r2.examples.map((e) => e.symbol).sort(), ['FAST', 'SLOW']);
+});
+
+test('candle patterns, levels and gaps are examples too, only when they are on the last candles', () => {
+  const found = [
+    { symbol: 'NOW', last: 99, result: { candles: [{ i: 99, name: 'hammer', label: 'Hammer', dir: 'bull', strength: 0.8, bars: [99, 99] }], levels: [{ p: 50, touches: 4, kind: 'support', firstIdx: 20, lastIdx: 98 }], gaps: [{ i: 96, dir: 'bull', from: 49, to: 50, filled: false }] } },
+    { symbol: 'STALE', last: 99, result: { candles: [{ i: 90, name: 'hammer', label: 'Hammer', dir: 'bull', strength: 0.95, bars: [90, 90] }], levels: [{ p: 50, touches: 9, kind: 'support', firstIdx: 20, lastIdx: 80 }], gaps: [{ i: 96, dir: 'bull', from: 49, to: 50, filled: true }] } },
+    { symbol: 'OTHER', last: 99, result: { candles: [{ i: 99, name: 'doji', dir: 'neutral', strength: 0.9, bars: [99, 99] }], levels: [{ p: 60, touches: 3, kind: 'resistance', firstIdx: 10, lastIdx: 99 }], gaps: [{ i: 99, dir: 'bear', from: 50, to: 49, filled: false }] } }
+  ];
+  assert.deepEqual(PL.rankExamples(found, { type: 'hammer', kind: 'candle' }).map((x) => x.symbol), ['NOW']);
+  assert.deepEqual(PL.rankExamples(found, { type: 'doji', kind: 'candle' }).map((x) => x.symbol), ['OTHER']);
+  assert.deepEqual(PL.rankExamples(found, { type: 'support', kind: 'level' }).map((x) => x.symbol), ['NOW']);
+  assert.deepEqual(PL.rankExamples(found, { type: 'resistance', kind: 'level' }).map((x) => x.symbol), ['OTHER']);
+  assert.deepEqual(PL.rankExamples(found, { type: 'gap_up', kind: 'gap' }).map((x) => x.symbol), ['NOW']);
+  assert.deepEqual(PL.rankExamples(found, { type: 'gap_down', kind: 'gap' }).map((x) => x.symbol), ['OTHER']);
+});
+
+test('examples() describes a candle example with its bar window and a level with its line', async () => {
+  const candles = async () => ({ bars: bars(100) });
+  const scanner = async () => ({ rows: [{ symbol: 'AAA', name: 'Aaa' }] });
+  const detect = () => ({ ok: true, charts: [], candles: [{ i: 99, name: 'hammer', label: 'Hammer', dir: 'bull', strength: 0.8, bars: [99, 99], note: 'buyers stepped in' }], levels: [{ p: 10.2, touches: 4, kind: 'resistance', firstIdx: 30, lastIdx: 99 }], gaps: [] });
+  const svc = PL.createPatternLive({ candles, scanner, patterns: { detect }, extra: [] });
+  const c = await svc.examples({ kind: 'candle', type: 'hammer', tf: '5m' });
+  assert.equal(c.kind, 'candle'); assert.equal(c.examples.length, 1); assert.equal(c.examples[0].pattern.name, 'Hammer'); assert.equal(c.examples[0].pattern.kind, 'candle'); assert.ok(c.examples[0].bars.length <= 40);
+  const l = await svc.examples({ kind: 'level', type: 'resistance', tf: '5m' });
+  assert.equal(l.examples[0].pattern.kind, 'level'); assert.equal(l.examples[0].pattern.level, 10.2); assert.match(l.examples[0].pattern.name, /Resistance 10.20/);
+  assert.equal((await svc.examples({ kind: 'gap', type: 'gap_up', tf: '5m' })).examples.length, 0);
 });
