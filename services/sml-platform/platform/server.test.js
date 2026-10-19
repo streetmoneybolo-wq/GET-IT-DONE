@@ -2122,6 +2122,11 @@ test('the option-bars route serves one contract\'s candles to members only, with
   assert.match(html, /'#opt-mini'\]/, 'the chart dock can hold the mini chart');
   assert.match(html, /#intent-layer\{[^}]*background:none/, 'the intent layer must not inherit the opaque canvas gradient that would cover the candles');
   assert.match(html, /window\.smlChartLock = \{/, 'the chart lock (nothing moves or shrinks the live chart) ships with the chart page');
+  assert.match(html, /window\.smlLoopKick = \{/, 'LOOP-KICK exposes its panel, grip and badge to the Academy notifications feed');
+  assert.match(html, /window\.smlAcademyNotify = \{/, 'the Academy notifications feed (followers, wall comments, posts by followed traders, likes) ships inside LOOP-KICK');
+  assert.ok(html.indexOf('window.smlLoopKick = {') < html.indexOf('window.__smlSocialNotifyUi'), 'the feed loads after the LOOP-KICK module it attaches to');
+  assert.match(html, /data-like="' \+ esc\(c\.id\)/, 'Ticker Talk comments carry a like button');
+  assert.match(html, /data-pv="walllike"/, 'Trading Wall comments carry a like button');
   assert.ok(html.indexOf('window.smlChartLock = {') < html.indexOf('const DOCKABLE = ['), 'the chart lock is defined before the chart dock reads it');
   assert.match(html, /Reset this paper account to ' \+ \(S\.account === 'challenge' \? '\$1,000' : '\$25,000'\)/, 'the paper trader starts members at $25,000');
   assert.doesNotMatch(html, PAGE_BANNED);
@@ -2151,6 +2156,48 @@ test('the Ticker Talk routes use the service createServer is given (and say so w
     assert.equal(count.count, 1);
     const list = await (await fetch(`${base}/academy-activity/talk/spy`, { headers: { authorization: 'Bearer member' } })).json();
     assert.equal(list.comments.length, 1); assert.equal(list.viewer.id, '100000000000000001');
+  });
+});
+
+test('social notifications reach LOOP-KICK: a follow, a wall comment, a followed trader\'s post, a reply and a like each land in the inbox; likes ride with the Ticker Talk page', async () => {
+  const ME = '100000000000000001', ACE = '100000000000000002';
+  const sess = (id, name) => ({ ok: true, tier: 'academy', userId: id, displayName: name });
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer me' ? sess(ME, 'Me') : a === 'Bearer ace' ? sess(ACE, 'Ace') : { ok: false, status: 401, code: 'authorization_required' }) };
+  const talk = require('./academy-ticker-talk').createTickerTalk({});
+  const wall = require('./academy-profile-wall').createProfileWall({});
+  const profiles = require('./academy-profile-pages').createProfilePages({ wall, talk: () => talk });
+  const notify = require('./academy-social-notify').createSocialNotify({ profiles, talk, wall, names: async (id) => (id === ACE ? 'Ace' : id === ME ? 'Me' : '') });
+  await withServer({ academyOAuth }, async (base) => { assert.equal((await fetch(`${base}/academy-activity/notify`, { headers: { authorization: 'Bearer me' } })).status, 503, 'no service: a clean 503'); });
+  await withServer({ academyOAuth, tickerTalk: talk, academyProfilePages: profiles, academyProfileWall: wall, academySocialNotify: notify }, async (base) => {
+    const me = { authorization: 'Bearer me' }, ace = { authorization: 'Bearer ace' }, json = { 'content-type': 'application/json' };
+    assert.equal((await fetch(`${base}/academy-activity/notify`)).status, 401);
+    assert.deepEqual((await (await fetch(`${base}/academy-activity/notify`, { headers: me })).json()).items, []);
+    // Ace follows me, writes on my wall; I follow Ace, Ace posts on SPY and replies to my comment; Ace likes my comment
+    assert.equal((await fetch(`${base}/academy-activity/profiles/${ME}/follow`, { method: 'POST', headers: ace })).status, 200);
+    assert.equal((await fetch(`${base}/academy-activity/profiles/${ME}/wall`, { method: 'POST', headers: { ...ace, ...json }, body: JSON.stringify({ body: 'great calls' }) })).status, 200);
+    assert.equal((await fetch(`${base}/academy-activity/profiles/${ACE}/follow`, { method: 'POST', headers: me })).status, 200);
+    const mine = (await (await fetch(`${base}/academy-activity/talk/SPY`, { method: 'POST', headers: { ...me, ...json }, body: JSON.stringify({ body: 'SPY holding 600' }) })).json()).comment;
+    assert.equal((await fetch(`${base}/academy-activity/talk/SPY`, { method: 'POST', headers: { ...ace, ...json }, body: JSON.stringify({ body: 'Ace on SPY' }) })).status, 200);
+    assert.equal((await fetch(`${base}/academy-activity/talk/SPY`, { method: 'POST', headers: { ...ace, ...json }, body: JSON.stringify({ body: 'agreed', parentId: mine.id }) })).status, 200);
+    const liked = await (await fetch(`${base}/academy-activity/likes`, { method: 'POST', headers: { ...ace, ...json }, body: JSON.stringify({ kind: 'talk', id: mine.id, on: true }) })).json();
+    assert.equal(liked.ok, true); assert.equal(liked.likes, 1); assert.equal(liked.liked, true);
+    assert.equal((await fetch(`${base}/academy-activity/likes`, { method: 'POST', headers: { ...ace, ...json }, body: JSON.stringify({ kind: 'talk', id: '999', on: true }) })).status, 404);
+    await new Promise((r) => setTimeout(r, 60)); // the notifications are written off the request path
+    const box = await (await fetch(`${base}/academy-activity/notify`, { headers: me })).json();
+    assert.equal(box.ok, true); assert.equal(box.unread, 5);
+    assert.deepEqual(box.items.map((x) => x.kind), ['like', 'reply', 'post', 'wall_comment', 'follow']);
+    assert.ok(box.items.every((x) => x.actorId === ACE && x.actorName === 'Ace'), JSON.stringify(box.items));
+    assert.equal(box.items[2].ref.symbol, 'SPY'); assert.equal(box.items[2].body, 'Ace on SPY'); assert.equal(box.items[3].body, 'great calls'); assert.equal(box.items[1].ref.rootId, mine.id);
+    const aces = await (await fetch(`${base}/academy-activity/notify`, { headers: ace })).json();
+    assert.deepEqual(aces.items.map((x) => x.kind + ':' + x.actorName), ['post:Me', 'follow:Me'], 'Ace hears about my follow and my SPY comment, nothing about Ace');
+    // the Ticker Talk page carries the like counts, and the wall counts come from the likes route
+    const page = await (await fetch(`${base}/academy-activity/talk/SPY`, { headers: me })).json();
+    const row = page.comments.find((c) => c.id === mine.id); assert.equal(row.likes, 1); assert.equal(row.liked, false);
+    const wl = await (await fetch(`${base}/academy-activity/likes?kind=wall&ids=1`, { headers: me })).json(); assert.deepEqual(wl.likes, { 1: { likes: 0, liked: false } });
+    const read = await (await fetch(`${base}/academy-activity/notify/read`, { method: 'POST', headers: { ...me, ...json }, body: JSON.stringify({ ids: [box.items[0].id] }) })).json();
+    assert.equal(read.unread, 4);
+    assert.equal((await (await fetch(`${base}/academy-activity/notify/read`, { method: 'POST', headers: { ...me, ...json }, body: JSON.stringify({ all: true }) })).json()).unread, 0);
+    assert.equal((await fetch(`${base}/academy-activity/notify`, { method: 'DELETE', headers: me })).status, 405);
   });
 });
 

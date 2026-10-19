@@ -274,7 +274,17 @@ function createTickerTalk({ pool = null, now = Date.now, logger = () => {}, link
     const mine = new Set(mem.filter((m) => m.authorId === who).map((m) => String(m.id)));
     return mem.filter((m) => m.parentId != null && mine.has(String(m.parentId)) && m.authorId !== who && !m.deletedAt && tsOf(m.createdAt) > since.getTime()).sort((a, b) => b.id - a.id).slice(0, n).map(memOut);
   }
-  return { configured: !!db, ensureSchema, post, list, count, byAuthor, byAuthors, recentAuthors, repliesTo, remove, storeImage, image, MAX_BODY, MAX_IMAGE_BYTES, MAX_IMAGES };
+  /* one live comment by id (likes and notifications look the author up) */
+  async function get(id) {
+    const cid = String(id || ''); if (!/^\d+$/.test(cid)) return null;
+    if (db) {
+      try { const r = await db.query('SELECT * FROM academy_ticker_talk WHERE id = $1 AND deleted_at IS NULL', [cid]); return r.rows[0] ? out(r.rows[0]) : null; }
+      catch (error) { logger('warn', 'academy_ticker_talk_read_failed', { error: String(error && error.message || error) }); return null; }
+    }
+    const m = mem.find((x) => String(x.id) === cid && !x.deletedAt);
+    return m ? memOut(m) : null;
+  }
+  return { configured: !!db, ensureSchema, post, list, count, byAuthor, byAuthors, recentAuthors, repliesTo, get, remove, storeImage, image, MAX_BODY, MAX_IMAGE_BYTES, MAX_IMAGES };
 }
 
 module.exports = { createTickerTalk, classifyLink, isDiscordLink, extractLinks, extractCashtags, youtubeId, sniffImage, cleanSymbol, MAX_BODY, MAX_IMAGE_BYTES, MAX_IMAGES };

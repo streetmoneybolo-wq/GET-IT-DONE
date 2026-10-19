@@ -142,11 +142,16 @@
     }
   });
 
-  function paintBadge(unread) {
+  /* the header badge counts the phone's unread (what the phone reports) together with the Academy's own notifications
+     (academy-social-notify-ui.js: followers, wall comments, posts by followed traders, likes) */
+  function paintBadge(unread) { S.phoneUnread = Number(unread) || 0; renderBadge(); }
+  function renderBadge() {
     if (!S.badge) return;
-    S.badge.textContent = unread > 99 ? '99+' : String(unread);
-    S.badge.style.display = unread > 0 ? '' : 'none';
+    var n = (S.phoneUnread || 0) + (S.academyUnread || 0);
+    S.badge.textContent = n > 99 ? '99+' : String(n);
+    S.badge.style.display = n > 0 ? '' : 'none';
   }
+  function announce(open) { try { window.dispatchEvent(new CustomEvent('sml-loop-kick-panel', { detail: { open: !!open } })); } catch (e) { /* old browser */ } }
 
   /* ---- panel: a transparent floating window; only the phone's own surfaces catch the pointer ---- */
   var css = document.createElement('style');
@@ -441,6 +446,7 @@
     if (S.panel) S.panel.classList.remove('on');
     if (S.button) { S.button.classList.remove('on'); S.button.setAttribute('aria-expanded', 'false'); }
     tellFrame('close');
+    announce(false);
   }
 
   function openPanel() {
@@ -449,6 +455,7 @@
     buildPanel().classList.add('on');
     if (S.button) { S.button.classList.add('on'); S.button.setAttribute('aria-expanded', 'true'); }
     applyPosition();
+    announce(true);
     mint(false).then(function (res) {
       if (!res || !res.j) { showCard('LOOP-KICK is unavailable', 'The connection could not be made. Try again in a moment.', 'Retry', '#'); return; }
       var j = res.j;
@@ -467,6 +474,15 @@
   }
 
   function toggle() { if (S.open) closePanel(); else openPanel(); }
+
+  /* what the Academy notifications feed (academy-social-notify-ui.js) needs: the panel to sit in, the grip for its bell,
+     whether the phone is open, and a way to add its unread count to the header badge */
+  window.smlLoopKick = {
+    open: openPanel, close: closePanel, toggle: toggle,
+    isOpen: function () { return S.open; },
+    panel: buildPanel, grip: function () { return S.grip; }, standalone: STANDALONE,
+    setAcademyUnread: function (n) { S.academyUnread = Math.max(0, Number(n) || 0); renderBadge(); }
+  };
 
   /* ---- entry points ---- */
   if (STANDALONE) {

@@ -136,7 +136,7 @@ function createChatStore({ pool = null } = {}) {
 
 /* verifySession: the same shape as academyOAuth.verifySession — (authorizationHeaderString) => { ok, userId, tier } | { ok:false, ... }
    mentions (optional): an academy-mentions.js service — { search, resolve, notify }; without it messages carry no tags and the picker is empty. */
-function createChatHub({ store, verifySession, mentions = null, logger = () => {}, now = Date.now, rateLimit = RATE_LIMIT, rateWindowMs = RATE_WINDOW_MS } = {}) {
+function createChatHub({ store, verifySession, mentions = null, onPost = null, logger = () => {}, now = Date.now, rateLimit = RATE_LIMIT, rateWindowMs = RATE_WINDOW_MS } = {}) {
   const byChannel = new Map(CHANNELS.map((c) => [c.key, new Set()])); // channel -> Set(conn)
   const hits = new Map(); // discordId -> [timestamps within the window]
 
@@ -204,6 +204,10 @@ function createChatHub({ store, verifySession, mentions = null, logger = () => {
       }
       const row = await store.add({ channel, discordId: identity.userId, authorName, body: clean, parentId: parent ? parent.id : null, mentions: tagged });
       broadcast(channel, { type: 'message', channel, message: row });
+      if (typeof onPost === 'function') {
+        // the room already has the message; whatever listens (the followers' LOOP-KICK feed) never holds a sender up
+        Promise.resolve().then(() => onPost(row, { userId: identity.userId, displayName: authorName, channel })).catch((error) => logger('warn', 'academy_chat_on_post_failed', { error: String(error && error.message || error) }));
+      }
       if (tagged.length && mentions && typeof mentions.notify === 'function') {
         // the DM is delivery, not part of posting: the room already has the message, so a slow or failed DM never holds a sender up
         Promise.resolve().then(() => mentions.notify({ sender: { userId: identity.userId, displayName: authorName }, mentions: tagged, message: row, channel }))

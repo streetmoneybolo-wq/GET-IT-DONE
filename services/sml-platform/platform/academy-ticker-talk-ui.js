@@ -58,7 +58,7 @@
 .tk-card .th{flex:none;width:84px;height:56px;border-radius:6px;background:#0d1f33;display:grid;place-items:center;color:#9cc8ff;font-size:18px;overflow:hidden}.tk-card .th img{width:100%;height:100%;object-fit:cover;display:block}
 .tk-card .tt{min-width:0}.tk-card .tt b{display:-webkit-box;font:800 .68rem system-ui;color:#fff;overflow:hidden;-webkit-line-clamp:2;-webkit-box-orient:vertical}.tk-card .tt small{display:block;margin-top:2px;color:#7f98a6;font:700 .56rem ui-monospace,monospace;letter-spacing:.04em}
 .tk-card .kind{display:inline-block;margin-right:5px;padding:1px 5px;border-radius:4px;background:#1b4a6e;color:#fff;font:800 .52rem ui-monospace,monospace}.tk-card .kind.live{background:#7a1230}.tk-card .kind.youtube{background:#8a1010}.tk-card .kind.watch,.tk-card .kind.channel{background:#12513a}
-.tk-acts{display:flex;gap:10px;margin:6px 0 0}.tk-acts button{background:none;border:0;padding:0;color:#7f98a6;font:800 .6rem ui-monospace,monospace;cursor:pointer}.tk-acts button:hover{color:#fff}
+.tk-acts{display:flex;gap:10px;margin:6px 0 0}.tk-acts button{background:none;border:0;padding:0;color:#7f98a6;font:800 .6rem ui-monospace,monospace;cursor:pointer}.tk-acts button:hover{color:#fff}.tk-acts .tk-like.on{color:#ff6b8a}.tk-acts .tk-like:hover{color:#ff8fa8}
 .tk-r{margin:6px 0 0 12px;padding:6px 8px;border-left:2px solid #1d3550;background:#070d14;border-radius:0 8px 8px 0}
 #talk-panel .tk-more-r{display:block;margin:5px 0 0 12px;background:none;border:0;padding:0;color:#9cc8ff;font:800 .6rem ui-monospace,monospace;cursor:pointer}
 /* the editor and the reader: pop-outs over the page */
@@ -122,6 +122,18 @@
 
   /* ---- the list: reset, page back, pick up new ---- */
   function remember(c) { S.index.set(String(c.id), c); for (const r of (c.replies || [])) S.index.set(String(r.id), c); }
+  /* ♥ on a comment or reply: one tap likes, another unlikes; the author hears about a like in their LOOP-KICK (academy-social-notify.js) */
+  function findComment(id) { const root = S.index.get(String(id)); if (!root) return null; if (String(root.id) === String(id)) return root; return (root.replies || []).find((r) => String(r.id) === String(id)) || null; }
+  async function toggleLike(id, btn) {
+    const c = findComment(id); if (!c || !token()) return;
+    const on = !c.liked; if (btn) btn.disabled = true;
+    let r = { ok: false };
+    try { const res = await fetch('/academy-activity/likes', { method: 'POST', headers: { authorization: 'Bearer ' + token(), 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'talk', id: String(id), on }), cache: 'no-store' }); r = (await res.json().catch(() => null)) || { ok: false }; } catch (_) { r = { ok: false }; }
+    if (btn) btn.disabled = false;
+    if (!r.ok) { say(r.error === 'not_found' ? 'That comment is gone.' : 'Could not like that right now.'); return; }
+    c.liked = !!r.liked; c.likes = Number(r.likes) || 0;
+    panel.querySelectorAll('[data-like="' + CSS.escape(String(id)) + '"]').forEach((b) => { b.classList.toggle('on', c.liked); b.textContent = '♥' + (c.likes ? ' ' + c.likes : ''); b.title = c.liked ? 'Unlike' : 'Like'; });
+  }
   async function load(reset) {
     if (S.busy) return; S.busy = true;
     const sym = S.symbol;
@@ -218,6 +230,7 @@
     const mine = S.viewer && String(c.authorId) === String(S.viewer.id), canDel = mine || (S.viewer && S.viewer.elevated);
     const quiet = !isReply && !(c.replies && c.replies.length) && !mine && S.viewer;
     return '<div class="tk-acts">' + (isReply ? '' : '<button type="button" data-reply="' + esc(c.id) + '" data-name="' + esc(c.authorName || '') + '">Reply' + (c.replies && c.replies.length ? ' · ' + c.replies.length : '') + '</button>' + (quiet ? '<span class="cm-nudge">be the first to reply</span>' : ''))
+      + '<button type="button" class="tk-like' + (c.liked ? ' on' : '') + '" data-like="' + esc(c.id) + '" title="' + (c.liked ? 'Unlike' : 'Like') + '">♥' + (c.likes ? ' ' + c.likes : '') + '</button>'
       + '<button type="button" data-view="' + esc(isReply ? S.index.get(String(c.id)) && S.index.get(String(c.id)).id || c.id : c.id) + '" data-focus="' + esc(c.id) + '" title="Open full size">Expand ⤢</button>'
       + (canDel ? '<button type="button" data-del="' + esc(c.id) + '">Delete</button>' : '') + '</div>';
   }
@@ -364,7 +377,7 @@
   function closePanel() { S.open = false; closeMenu(); closeEditor(); closeView(); mount(); paintButton(); }
   btn.addEventListener('click', () => { if (S.open) closePanel(); else openPanel(); });
   function onClick(e) {
-    const t = e.target.closest ? e.target.closest('[data-close],[data-editor],[data-close-editor],[data-close-view],[data-reply],[data-cancel-reply],[data-del],[data-ins],[data-pic],[data-send],[data-unpic],[data-sym],[data-ext],[data-view],[data-zoom]') : null;
+    const t = e.target.closest ? e.target.closest('[data-close],[data-editor],[data-close-editor],[data-close-view],[data-reply],[data-cancel-reply],[data-del],[data-like],[data-ins],[data-pic],[data-send],[data-unpic],[data-sym],[data-ext],[data-view],[data-zoom]') : null;
     if (!t) { if (e.target.classList && e.target.classList.contains('tk-modal')) { if (e.target.id === 'talk-view') closeView(); else closeEditor(); } return; }
     const d = t.dataset;
     if (d.close) { closePanel(); return; }
@@ -374,6 +387,7 @@
     if (d.reply) { startReply(d.reply, d.name); return; }
     if (d.cancelReply) { S.replyTo = null; paintEditor(); return; }
     if (d.del) { remove(d.del); return; }
+    if (d.like) { void toggleLike(d.like, t); return; }
     if (d.ins) { insert(d.ins); return; }
     if (d.pic) { file.value = ''; file.click(); return; }
     if (d.send) { send(); return; }

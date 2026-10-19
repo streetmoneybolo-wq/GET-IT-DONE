@@ -113,7 +113,7 @@
     + '.pv-alerts-wrap{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:0 16px 14px}.pv-alerts-wrap .pv-sec{margin:0}'
     + '.pv-wall-wrap{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:0 16px 60px}.pv-wall .pv-cmp{display:flex;gap:8px;align-items:flex-end}.pv-wall textarea{flex:1;min-height:58px;max-height:160px;resize:vertical;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.04);color:#e6eef2;padding:8px 10px;font:500 .74rem/1.4 system-ui,sans-serif}'
     + '.pv-wall .pv-cnote{margin:4px 0 10px;color:#7f95a1;font:600 .6rem ui-monospace,monospace}.pv-wall-list{display:flex;flex-direction:column;gap:8px}.pv-wc{border:1px solid rgba(255,255,255,.07);border-radius:10px;background:rgba(255,255,255,.03);padding:8px 10px}'
-    + '.pv-wc .m{display:flex;gap:8px;align-items:center;font:700 .58rem ui-monospace,monospace;color:#86a2b0}.pv-wc .m button.who{border:0;background:none;color:var(--acc,#00c47d);font:800 .62rem system-ui,sans-serif;cursor:pointer;padding:0}.pv-wc .m .sp{flex:1}.pv-wc .m button.del{border:1px solid #3a2a2a;border-radius:6px;background:#1a0d0d;color:#ff9f9f;font:700 .56rem system-ui,sans-serif;padding:2px 6px;cursor:pointer}'
+    + '.pv-wc .m{display:flex;gap:8px;align-items:center;font:700 .58rem ui-monospace,monospace;color:#86a2b0}.pv-wc .m button.who{border:0;background:none;color:var(--acc,#00c47d);font:800 .62rem system-ui,sans-serif;cursor:pointer;padding:0}.pv-wc .m .sp{flex:1}.pv-wc .m button.like{border:0;background:none;color:#86a2b0;font:800 .6rem ui-monospace,monospace;cursor:pointer;padding:0}.pv-wc .m button.like.on{color:#ff6b8a}.pv-wc .m button.like:hover{color:#ff8fa8}.pv-wc .m button.del{border:1px solid #3a2a2a;border-radius:6px;background:#1a0d0d;color:#ff9f9f;font:700 .56rem system-ui,sans-serif;padding:2px 6px;cursor:pointer}'
     + '.pv-wc p{margin:5px 0 0;white-space:pre-wrap;word-break:break-word;color:#e6eef2}.pv-wall .pv-more{margin-top:8px}.pv-wall .pv-empty{color:#7f95a1;font:600 .66rem system-ui,sans-serif}.pv-wall .pv-closed{color:#7f95a1;font:600 .66rem system-ui,sans-serif}'
     + '#pv-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147482700;padding:9px 14px;border:1px solid #1f8a5f;border-radius:9px;background:#071a13;color:#c9f6e2;font:700 .7rem system-ui,sans-serif;display:none;max-width:min(560px,92vw)}'
     + '#academy-profile-btn{position:fixed;right:10px;bottom:48px;z-index:2147483199;border:1px solid #2a4a58;border-radius:999px;background:#0d1a24;color:#e6eef2;padding:7px 12px;font:800 .7rem system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.5)}#academy-profile-btn:hover{border-color:#00c47d;color:#7ef0bd}body.sml-mobile #academy-profile-btn{bottom:56px}'
@@ -182,13 +182,23 @@
     if (!w) return d.own ? '<section class="pv-sec wall pv-wall"><h6>Trading Wall</h6><div class="pv-closed">Your Trading Wall is switched off. Turn it on under Customize → Show on my page.</div></section>' : '';
     const items = w.items || [];
     const row = (c) => '<div class="pv-wc" data-wc="' + esc(c.id) + '"><div class="m"><button type="button" class="who" data-pv="profile" data-user="' + esc(c.authorId) + '">' + esc(c.authorName || 'Member') + '</button><span>' + esc(ago(c.createdAt)) + '</span><span class="sp"></span>'
+      + '<button type="button" class="like' + (c.liked ? ' on' : '') + '" data-pv="walllike" data-id="' + esc(c.id) + '" title="' + (c.liked ? 'Unlike' : 'Like') + '">♥' + (c.likes ? ' ' + c.likes : '') + '</button>'
       + (d.own || c.authorId === me ? '<button type="button" class="del" data-pv="walldel" data-id="' + esc(c.id) + '">remove</button>' : '') + '</div><p>' + esc(c.body) + '</p></div>';
     return '<section class="pv-sec wall pv-wall"><h6>Trading Wall · ' + (w.count || 0) + '</h6>'
       + '<div class="pv-cmp"><textarea maxlength="500" data-wall="body" placeholder="' + esc(d.own ? 'Post on your own wall…' : 'Leave a note on this trader\'s wall…') + '"></textarea><button type="button" class="pv-btn acc" data-pv="wallpost">Post</button></div><div class="pv-cnote">Up to 500 characters. Plain text. Members see it on this page; the author, this page\'s owner and the Academy owners can remove it.</div>'
       + '<div class="pv-wall-list">' + (items.length ? items.map(row).join('') : '<div class="pv-empty">No comments yet. Be the first.</div>') + '</div>'
       + (w.more ? '<button type="button" class="pv-btn pv-more" data-pv="wallmore">Load older comments</button>' : '') + '</section>';
   }
-  function paintWall() { const d = S.data, host = view.querySelector('.pv-wall-wrap'); if (d && host) host.innerHTML = wallHtml(d); }
+  function paintWall() { const d = S.data, host = view.querySelector('.pv-wall-wrap'); if (d && host) { host.innerHTML = wallHtml(d); void wallLikes(d); } }
+  /* like counts for the wall comments on screen (academy-social-notify.js); a missing count is zero */
+  async function wallLikes(d) {
+    const items = d && d.wall && d.wall.items ? d.wall.items.filter((c) => c.likes == null) : []; if (!items.length || !token()) return;
+    try {
+      const r = await fetch('/academy-activity/likes?kind=wall&ids=' + encodeURIComponent(items.map((c) => c.id).join(',')), { headers: auth(), cache: 'no-store' });
+      const j = await r.json().catch(() => null); if (!j || !j.ok) return;
+      for (const c of items) { const l = j.likes && j.likes[String(c.id)]; c.likes = l ? l.likes : 0; c.liked = !!(l && l.liked); const b = view.querySelector('[data-pv="walllike"][data-id="' + CSS.escape(String(c.id)) + '"]'); if (b) { b.classList.toggle('on', c.liked); b.textContent = '♥' + (c.likes ? ' ' + c.likes : ''); b.title = c.liked ? 'Unlike' : 'Like'; } }
+    } catch (_) { /* counts are decoration */ }
+  }
   /* ---------- ACTIVITY: the member's last Ticker Talk comments (the comment section on every chart), their Academy chat posts, and
      their recent activity on stockmarketloop.com (posts, comments, their social feed; the site answers through the LOOP-KICK bridge for a
      member who connected their site account). Every item opens where it lives: a Ticker Talk comment opens that chart with the
@@ -479,6 +489,15 @@
       d.wall = d.wall || { items: [], count: 0, more: false };
       if (!r.duplicate) { d.wall.items.unshift(r.item); d.wall.count = (d.wall.count || 0) + 1; }
       paintWall();
+    }
+    else if (a === 'walllike' && b.dataset.id) {
+      const d = S.data; const c = d && d.wall && d.wall.items ? d.wall.items.find((x) => String(x.id) === String(b.dataset.id)) : null; if (!c) return;
+      const on = !c.liked; b.disabled = true;
+      let r = { ok: false };
+      try { const res = await fetch('/academy-activity/likes', { method: 'POST', headers: auth({ 'content-type': 'application/json' }), body: JSON.stringify({ kind: 'wall', id: String(c.id), on }), cache: 'no-store' }); r = (await res.json().catch(() => null)) || { ok: false }; } catch (_) { r = { ok: false }; }
+      b.disabled = false;
+      if (!r.ok) { toast('Could not like that right now.'); return; }
+      c.liked = !!r.liked; c.likes = Number(r.likes) || 0; b.classList.toggle('on', c.liked); b.textContent = '♥' + (c.likes ? ' ' + c.likes : ''); b.title = c.liked ? 'Unlike' : 'Like';
     }
     else if (a === 'walldel' && b.dataset.id) {
       const d = S.data; if (!d || !d.wall) return;
