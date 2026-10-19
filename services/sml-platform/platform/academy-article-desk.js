@@ -368,9 +368,16 @@ const glanceHeight = (names) => names.reduce((sum, n) => sum + (GLANCE_H[n] || 0
 function compactLetterBlocks(blocks) {
   if (!Array.isArray(blocks)) return null;
   const by = (id) => blocks.find((b) => b && b.id === id);
+  const g = by('mod-glance');
+  if (g) {
+    /* an earlier rebuild left the old wrapper inside the new one and the css of that day: unwrap, and bring the css up to date */
+    const html = String(g.html || '').replace(/^(<div class="mem-article mem-letter mem-glance"(?: data-theme="dark")?>)<div class="mem-article mem-letter"(?: data-theme="dark")?>([\s\S]*)<\/div><\/div>$/, '$1$2</div>');
+    const css = CSS + '\n' + GLANCE_CSS + (/\.mem-track-bar i\{left:[\d.]+%\}/.exec(g.css || '') || [''])[0];
+    if (html === g.html && css === g.css) return null;
+    return blocks.map((b) => (b === g ? { ...g, html, css } : b));
+  }
   if (!by('mod-board') && !by('card1')) return null;
-  if (by('mod-glance')) return null;
-  const wrap = (h) => String(h || '').replace(/^<div class="mem-article mem-letter[^"]*" data-theme="dark">/, '').replace(/<\/div>$/, '');
+  const wrap = (h) => String(h || '').replace(/^<div class="mem-article mem-letter[^"]*"(?: data-theme="dark")?>/, '').replace(/<\/div>$/, '');
   const hasGif = blocks.some((b) => b && b.id === 'gif1' && b.type === 'image');
   const parts = [['board', by('mod-board')], ['countdown', by('mod-countdown')], ['tracker', by('mod-tracker')]].filter(([, b]) => b && b.html);
   const trackCss = (/\.mem-track-bar i\{left:[\d.]+%\}/.exec((by('mod-tracker') || {}).css || '') || [''])[0];
@@ -452,6 +459,8 @@ const CSS = [
   '.mem-disclosure{margin-top:34px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card);font:400 13.5px/1.55 system-ui,sans-serif;color:var(--mut)}',
   '@media(max-width:620px){.mem-article{padding:0 14px 60px;font-size:17px}.mem-vs{grid-template-columns:1fr}.mem-by .mem-chip-live{margin-left:0}.mem-tabs>label{padding:9px 10px;font-size:11px}}',
   '@media(prefers-color-scheme:light){.mem-article:not([data-theme="dark"]){--bg:#fbfbf8;--ink:#14181d;--mut:#5b6773;--line:#e4e6e0;--card:#fff;--acc:#00a56a;--hl:#d8f7e8}.mem-article:not([data-theme="dark"]) h1,.mem-article:not([data-theme="dark"]) .mem-chip b,.mem-article:not([data-theme="dark"]) .mem-count b,.mem-article:not([data-theme="dark"]) .mem-track-head b{color:var(--ink)}}',
+  /* the letters sanitizer strips data-theme, which would turn a letter frame light for a reader whose browser prefers light: the letter variant is always dark */
+  '.mem-article.mem-letter{--bg:#0b1119;--ink:#e8eff4;--mut:#8fa3b0;--line:rgba(255,255,255,.1);--card:#101a25;--acc:#19c37d;--acc2:#ff5c7a;--gold:#ffb04a;--hl:rgba(25,195,125,.12)}',
   '@media print{.mem-article{background:#fff;color:#000}.mem-progress,.mem-share,.mem-poll{display:none}}'
 ].join('\n');
 

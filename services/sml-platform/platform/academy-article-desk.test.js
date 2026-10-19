@@ -138,3 +138,18 @@ test('an old letter is rebuilt in the compact layout from its stored blocks, and
   assert.ok(!D.compactLetterBlocks([...old.slice(0, 2), { id: 'gif1', type: 'image', url: 'u', alt: 'a', caption: '' }, ...old.slice(2)]).some((b) => b.id === 'img-chart'));
   assert.equal(D.compactLetterBlocks(out), null, 'already compact'); assert.equal(D.compactLetterBlocks([{ id: 'p1', type: 'paragraph', spans: [] }]), null, 'a hand-written letter'); assert.equal(D.compactLetterBlocks(null), null);
 });
+
+test('the letter frames are always dark whatever the reader prefers, and a glance block from an earlier rebuild is unwrapped and refreshed', () => {
+  assert.match(D.CSS, /\.mem-article\.mem-letter\{--bg:#0b1119;--ink:#e8eff4/, 'the sanitizer strips data-theme, so the letter variant sets its own dark variables');
+  /* the sanitized form of an old letter: no data-theme anywhere */
+  const wrap = (h) => `<div class="mem-article mem-letter">${h}</div>`;
+  const old = [{ id: 'mod-board', type: 'custom_code', html: wrap('<div class="mem-board"><div><span>PRICE</span><b>$1.00</b></div></div>'), css: 'x', height: 170 }, { id: 'mod-tracker', type: 'custom_code', html: wrap('<div class="mem-track"><div class="mem-track-bar"><i></i></div></div>'), css: 'x\n.mem-track-bar i{left:30%}', height: 320 }];
+  const out = D.compactLetterBlocks(old);
+  assert.equal(out.length, 1); assert.ok(out[0].html.startsWith('<div class="mem-article mem-letter mem-glance"'));
+  assert.equal((out[0].html.match(/class="mem-article/g) || []).length, 1, 'one wrapper, not the old one inside the new one');
+  /* an earlier rebuild's glance block: nested wrapper, old css */
+  const earlier = [{ id: 'mod-glance', type: 'custom_code', html: '<div class="mem-article mem-letter mem-glance"><div class="mem-article mem-letter"><div class="mem-board"></div><div class="mem-track"></div></div></div>', css: 'OLD\n.mem-track-bar i{left:41.5%}', height: 320 }, { id: 'p1', type: 'paragraph', spans: [] }];
+  const fixed = D.compactLetterBlocks(earlier);
+  assert.equal((fixed[0].html.match(/class="mem-article/g) || []).length, 1); assert.ok(fixed[0].css.startsWith(D.CSS) && fixed[0].css.includes('.mem-track-bar i{left:41.5%}') && fixed[0].css.includes('.mem-glance'));
+  assert.equal(D.compactLetterBlocks(fixed), null, 'once fixed it is left alone');
+});
