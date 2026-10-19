@@ -25,3 +25,14 @@ test('a session read from the trade record: share, blocks, hourly profile, level
   assert.equal(sessionDarkPool(rows.slice(0, 10), { price: p }).reason, 'too_few_prints');
   assert.equal(sessionDarkPool(rows, { price: p, sessionOpenMs: T0 }).window.full, true, 'first print within a minute of the open: the whole session');
 });
+
+test('a 50,000-print record is read in well under a second (the hour label is worked out once per hour, not per print)', () => {
+  const t0 = Date.UTC(2026, 9, 19, 13, 30, 0);
+  const rows = Array.from({ length: 50_000 }, (_, i) => [t0 + i * 400, 100 + Math.sin(i / 50), 100 + (i % 7) * 50, i % 3 === 0]);
+  const started = Date.now();
+  const out = sessionDarkPool(rows, { now: t0 + 50_000 * 400 });
+  const took = Date.now() - started;
+  assert.ok(took < 800, 'took ' + took + ' ms');
+  assert.ok(out.byHour.length >= 5 && out.byHour.length <= 7, JSON.stringify(out.byHour.map((h) => h.hour)));
+  assert.equal(out.byHour[0].hour, '09:00 ET');
+});

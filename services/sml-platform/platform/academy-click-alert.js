@@ -373,7 +373,18 @@ function createClickAlertStore({ pool = null } = {}) {
 }
 
 function createClickAlertService({ getBars, chain = null, chainExpiry = null, expirations = null, chainDetail = null, catalysts = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
-  limits = {} } = {}) {
+  limits = {}, waits = {} } = {}) {
+  /* ---------- reliability: every input a read waits on has a budget ----------
+     A read used to wait as long as its slowest input took (a stuck candle feed, a slow Discord role lookup, a database that was
+     busy), and the route watchdog cut it at 20 s with nothing to show. Now the two series the read needs most (5m and daily) get
+     WAIT.bars, the two it can do without (15m, weekly) get WAIT.extra, Discord gets WAIT.discord, the database WAIT.db; past the
+     budget the read goes on without that piece and says so (degraded). */
+  const WAIT = { bars: Number(waits.bars) || 7_000, extra: Number(waits.extra) || 4_000, discord: Number(waits.discord) || 6_000, db: Number(waits.db) || 3_000 };
+  const budget = (p, ms, onLate = null) => new Promise((resolve) => {
+    let done = false;
+    const t = setTimeout(() => { if (!done) { done = true; if (onLate) onLate(); resolve(undefined); } }, ms);
+    Promise.resolve(p).then((v) => { if (!done) { done = true; clearTimeout(t); resolve(v); } }, () => { if (!done) { done = true; clearTimeout(t); resolve(undefined); } });
+  });
   const roles = new Set((roleIds || []).map(String).filter((id) => SNOWFLAKE.test(id)));
   /* How many alerts may be posted: per member per hour and per day, and per Discord channel per hour (every member
      combined). A value of 0 means no cap on that one. */
@@ -412,7 +423,17 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   /* Is this member subscribed to the add-on right now? Asked of Discord live (no cache). */
   /* a subscription is remembered for 45 s; a "no" is never remembered, so a member who has just subscribed or bought a pass is let in at once */
   const entitledMemo = memo(async (userId) => entitlementLive(userId), { ttl: 45_000, max: 2000 });
-  const entitlement = async (userId) => { const r = await entitledMemo(userId); if (!r.entitled) entitledMemo.forget(userId); return r; };
+  /* a "yes" is also remembered for ten minutes on its own: when Discord is slow or down the member who was subscribed a moment
+     ago is still let in, instead of being told to subscribe */
+  const lastYes = new Map(); const LAST_YES_MS = 10 * 60_000;
+  const entitlement = async (userId) => {
+    const r = await entitledMemo(userId);
+    if (r.entitled) { lastYes.set(String(userId), now()); if (lastYes.size > 3000) lastYes.delete(lastYes.keys().next().value); return r; }
+    entitledMemo.forget(userId);
+    const seen = lastYes.get(String(userId));
+    if ((r.reason === 'lookup_failed' || r.reason === 'timeout' || r.reason === 'directory_unavailable') && seen && now() - seen < LAST_YES_MS) return { configured: true, entitled: true, via: 'remembered', reason: r.reason };
+    return r;
+  };
   async function entitlementLive(userId) {
     if (!configured) return { configured: false, entitled: false };
     if (free.has(String(userId))) return { configured: true, entitled: true, via: 'owner' };
@@ -420,17 +441,24 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     if (byPass && await passes.hasActive(userId).catch(() => false)) return { configured: true, entitled: true, via: 'loopbucks' };
     if (!byRole) return { configured: true, entitled: false };
     if (!directory || typeof directory.memberRolesLive !== 'function') return { configured: true, entitled: false, reason: 'directory_unavailable' };
-    let held; try { held = await directory.memberRolesLive(String(academyGuildId), String(userId)); } catch (error) { logger('warn', 'click_alert_entitlement_failed', { error: String(error.message || error) }); return { configured: true, entitled: false, reason: 'lookup_failed' }; }
+    let held, late = false;
+    try { held = await budget(directory.memberRolesLive(String(academyGuildId), String(userId)), WAIT.discord, () => { late = true; }); } catch (error) { logger('warn', 'click_alert_entitlement_failed', { error: String(error.message || error) }); return { configured: true, entitled: false, reason: 'lookup_failed' }; }
+    if (late) { logger('warn', 'click_alert_entitlement_slow', { waitMs: WAIT.discord }); return { configured: true, entitled: false, reason: 'timeout' }; }
+    if (held === undefined) return { configured: true, entitled: false, reason: 'lookup_failed' };
     return { configured: true, entitled: !!(held && held.some((id) => roles.has(id))) };
   }
 
   const loadBars = memo(async (symbol) => {
     const sym = String(symbol || '').toUpperCase();
-    const get = async (tf) => { try { return cleanBars(await getBars(sym, tf)); } catch (_) { return []; } };
-    const [m5, m15, daily, weekly] = await Promise.all([get('5m'), get('15m'), get('1D'), get('1W')]);
+    const degraded = [];
+    const get = async (tf, ms) => { const v = await budget((async () => { try { return cleanBars(await getBars(sym, tf)); } catch (_) { return []; } })(), ms, () => degraded.push(tf)); return Array.isArray(v) ? v : []; };
+    const [m5, m15, daily, weekly] = await Promise.all([get('5m', WAIT.bars), get('15m', WAIT.extra), get('1D', WAIT.bars), get('1W', WAIT.extra)]);
+    if (degraded.length) logger('warn', 'click_alert_bars_slow', { symbol: sym, timeframes: degraded });
     const last = m5.length ? m5[m5.length - 1] : daily.length ? daily[daily.length - 1] : null;
-    return { sym, last, set: { m5, m15, daily, weekly, fresh: !!(last && now() - last.t < 4 * 86_400_000) } };
-  }, { ttl: 4_000, stale: 6_000, max: 60 });
+    const out = { sym, last, degraded, set: { m5, m15, daily, weekly, fresh: !!(last && now() - last.t < 4 * 86_400_000) } };
+    if (!m5.length && !daily.length) { const e = new Error('no_bars'); e.code = 'no_bars'; throw e; } // never remembered: the next click asks again
+    return out;
+  }, { ttl: 4_000, stale: 60_000, max: 60 });
   /* the live price alone (the contract picker): one candle series, not four */
   const loadPrice = memo(async (symbol) => {
     const sym = String(symbol || '').toUpperCase();
@@ -438,9 +466,11 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     return null;
   }, { ttl: 4_000, stale: 6_000, max: 120 });
   async function gather(symbol, target) {
-    const { sym, last, set } = await loadBars(symbol);
+    let loaded; try { loaded = await loadBars(symbol); } catch (_) { loaded = { sym: String(symbol || '').toUpperCase(), last: null, degraded: ['5m', '1D'], set: { m5: [], m15: [], daily: [], weekly: [], fresh: false } }; }
+    const { sym, last, set } = loaded;
     const analysis = classify({ symbol: sym, target, price: last ? last.c : null, bars: set });
     analysis.__bars = set;
+    if (loaded.degraded && loaded.degraded.length) analysis.degraded = loaded.degraded.slice();
     return analysis;
   }
 
@@ -462,7 +492,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     // The candles and the chain are asked for at the same moment, not one after the other.
     let rows = givenRows && givenRows.length ? givenRows : null;
     const rowsP = rows ? null : Promise.resolve().then(() => chainC(sym)).catch(() => null);
-    const loaded = await loadBars(sym);
+    let loaded; try { loaded = await loadBars(sym); } catch (_) { loaded = { last: null, degraded: ['5m', '1D'] }; }
     const price = loaded.last ? loaded.last.c : null;
     if (!(price > 0)) { if (rowsP) rowsP.catch(() => {}); return err(422, 'no_live_price'); }
     if (rowsP) rows = await rowsP;
@@ -614,7 +644,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   /* Did this member already alert this ticker, and has price since reached that alert's target? Then a higher target is a PT SMASHED update.
      The update carries where that earlier alert lives (guild, channel, message) so it can go to the same channel as a reply to it. */
   const SMASH_WINDOW_MS = 21 * 86_400_000;
-  const previousAlert = (userId, symbol) => (store.last ? store.last({ userId, symbol: String(symbol || '').toUpperCase(), sinceMs: SMASH_WINDOW_MS }).catch(() => null) : Promise.resolve(null));
+  const previousAlert = (userId, symbol) => (store.last ? budget(store.last({ userId, symbol: String(symbol || '').toUpperCase(), sinceMs: SMASH_WINDOW_MS }).catch(() => null), WAIT.db).then((v) => v || null) : Promise.resolve(null));
   const whereOf = (prev) => (prev ? { prevGuildId: prev.guildId || '', prevChannelId: prev.channelId || '', prevMessageId: prev.messageId || '' } : { prevGuildId: '', prevChannelId: '', prevMessageId: '' });
   async function detectSmashed(userId, analysis, mode, contract) {
     if (contract || mode === 'new') return null;
@@ -638,6 +668,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   const textFor = (analysis, opt, mention) => (analysis.smashed && !(opt && opt.oa) ? format.formatPtSmashed({ ticker: analysis.symbol, newPt: analysis.target, plus: true, side: analysis.side, mention, ...wideStop(analysis), ...Object.fromEntries(Object.entries(analysis.insight || {}).filter(([, v]) => v != null && v !== '')) }) : opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
 
   async function preview(userId, { symbol, target, contract = null, mode = 'auto', autoTarget = false, premiumTarget = null } = {}) {
+    const t0 = now();
     /* the read starts at once and runs while the subscription is checked; an unsubscribed member never receives any of it */
     const pre = prefetchCatalysts(String(symbol || '').toUpperCase());
     const gotP = analysisFor({ symbol, target, contract, autoTarget, premiumTarget, anyExpiry: true });
@@ -656,7 +687,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     const cat = await catalystsFor(analysis, opt && opt.oa, pre);
     const pics = scenariosFor(analysis, { options: opt && opt.oa }).map((im) => ({ which: im.which, name: im.name, alt: im.alt, svg: im.svg }));
     delete analysis.__bars;
-    return { ok: true, entitlement: ent, scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, options: opt ? opt.oa : null, catalysts: cat, analysis: { ...analysis, alertText: textFor(analysis, opt, false), alertTextWithMention: textFor(analysis, opt, true) } };
+    return { ok: true, entitlement: ent, tookMs: now() - t0, degraded: analysis.degraded || [], scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, options: opt ? opt.oa : null, catalysts: cat, analysis: { ...analysis, alertText: textFor(analysis, opt, false), alertTextWithMention: textFor(analysis, opt, true) } };
   }
 
   /* stockmarketloop.com analyst dashboard (signed /v1/group-tools/contract-alert-preview): the same contract analysis as an options-chain
@@ -682,7 +713,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   }
 
   async function overLimit(userId, channelId) {
-    const [uh, ud, ch] = await Promise.all([store.count({ userId, sinceMs: 3_600_000 }), store.count({ userId, sinceMs: 86_400_000 }), store.count({ channelId, sinceMs: 3_600_000 })]);
+    const [uh, ud, ch] = await Promise.all([store.count({ userId, sinceMs: 3_600_000 }), store.count({ userId, sinceMs: 86_400_000 }), store.count({ channelId, sinceMs: 3_600_000 })].map((p) => budget(p, WAIT.db).then((v) => Number(v) || 0)));
     if (lim.userHour && uh >= lim.userHour) return `You have reached the hourly limit for alerts (${lim.userHour} an hour). Try again later.`;
     if (lim.userDay && ud >= lim.userDay) return `You have reached the daily limit for alerts (${lim.userDay} a day).`;
     if (lim.channelHour && ch >= lim.channelHour) return `This channel has reached its hourly limit for alerts (${lim.channelHour} an hour).`;
@@ -692,7 +723,9 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   /* guilds the member shares with an Academy bot, and the channels in one of them where both can post */
   /* Called the moment a member picks a ticker (or arms the ALERT mode): loads what the next read needs (candles, options chain,
      expirations, earnings and news) so the read itself finds it ready. Never throws, never waits for the answers. */
-  function warm(symbol) {
+  function warm(symbol, userId = '') {
+    /* the subscription check is the one input that can take Discord seconds; warmed here it is already answered when the member clicks */
+    if (userId && SNOWFLAKE.test(String(userId))) { try { entitlement(String(userId)).catch(() => {}); } catch (_) { /* best effort */ } }
     const sym = String(symbol || '').toUpperCase();
     if (!/^[A-Z0-9.:-]{1,10}$/.test(sym)) return false;
     for (const fn of [() => loadBars(sym), () => chainC && chainC(sym), () => expirationsC && expirationsC(sym), () => earningsC && earningsC(sym), () => newsC && newsC(sym)]) {
@@ -775,7 +808,15 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     }
     if (!posted) {
       if (footer && (viaWebhook || persona)) msgBody.content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
-      posted = await directory.post(String(channelId), reply.asReply(msgBody), files);
+      /* a post that fails on Discord's side (a 5xx, a dropped connection) is tried once more after a short pause; a refusal (4xx) is not */
+      try { posted = await directory.post(String(channelId), reply.asReply(msgBody), files); }
+      catch (error) {
+        const st = Number(error && (error.status || error.statusCode)) || 0;
+        if (st >= 400 && st < 500) throw error;
+        logger('warn', 'click_alert_post_retry', { error: String(error && error.message || error) });
+        await new Promise((r) => setTimeout(r, 800));
+        posted = await directory.post(String(channelId), reply.asReply(msgBody), files);
+      }
     }
     await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     logger('info', 'click_alert_sent', { symbol: analysis.symbol, horizon: analysis.horizon, guildId: where.guildId });

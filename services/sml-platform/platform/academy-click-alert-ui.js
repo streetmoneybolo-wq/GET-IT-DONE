@@ -51,19 +51,27 @@
     }
     return renewing;
   }
-  async function raw(path, body) {
+  /* a read never hangs on a dead connection: it is cut at timeoutMs and answered as a network error, which api() retries once */
+  async function raw(path, body, timeoutMs = 16_000) {
     const t = token();
-    const res = await fetch('/academy-activity/click-alert/' + path, { method: body ? 'POST' : 'GET', headers: Object.assign({ authorization: 'Bearer ' + t }, body ? { 'content-type': 'application/json' } : {}), body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null; const h = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : 0;
+    let res;
+    try { res = await fetch('/academy-activity/click-alert/' + path, { method: body ? 'POST' : 'GET', headers: Object.assign({ authorization: 'Bearer ' + t }, body ? { 'content-type': 'application/json' } : {}), body: body ? JSON.stringify(body) : undefined, cache: 'no-store', signal: ctl ? ctl.signal : undefined }); }
+    catch (error) { clearTimeout(h); return { ok: false, status: 0, error: error && error.name === 'AbortError' ? 'timeout' : 'network' }; }
+    clearTimeout(h);
     let json = null; try { json = await res.json(); } catch (_) { json = null; }
     return Object.assign({ status: res.status }, json || { ok: false, error: 'bad_response' });
   }
-  async function api(path, body) {
+  /* a transient failure (the connection, a timeout, a 5xx) is tried once more after a short pause; a refusal is not */
+  const transient = (r) => !r.ok && (r.status === 0 || r.status >= 500 || r.error === 'timeout' || r.error === 'network' || r.error === 'bad_response');
+  async function api(path, body, { retry = true, timeoutMs } = {}) {
     if (!token()) { await renew(); if (!token()) return { ok: false, status: 401, error: 'authorization_required' }; }
-    let r = await raw(path, body);
+    let r = await raw(path, body, timeoutMs);
     if (r.status === 401) {
       const fresh = await renew();
-      if (fresh || token()) r = await raw(path, body);
+      if (fresh || token()) r = await raw(path, body, timeoutMs);
     }
+    if (retry && transient(r)) { await new Promise((res) => setTimeout(res, 1200)); r = await raw(path, body, timeoutMs); r.retried = true; }
     return r;
   }
   /* coming back to the window: renew an old session before anything is asked of it */
@@ -337,14 +345,17 @@
   async function reading() {
     S.busy = true; S.data = null; S.scn = null; S.msg = ''; S.sent = false; render();
     const auto = !!(S.autoTarget && S.contract);
+    const slow = setTimeout(() => { if (S.busy) { S.msg = 'Taking longer than usual: the candles or the chain are slow. Still reading…'; S.msgTone = 'info'; render(); } }, 4_000);
     const r = await api('preview', Object.assign({ symbol: S.symbol, mode: S.mode }, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}, auto && S.premiumTarget > 0 ? { premiumTarget: S.premiumTarget } : {}));
-    S.busy = false; S.opt = r.ok ? (r.options || null) : null; S.cat = r.ok ? (r.catalysts || null) : null;
+    clearTimeout(slow);
+    S.busy = false; S.opt = r.ok ? (r.options || null) : null; S.cat = r.ok ? (r.catalysts || null) : null; S.msg = '';
     if (S.queued) { S.queued = false; void reading(); return; } // a newer contract was double-clicked while this one was being read
     if (auto && r.ok && r.analysis) S.target = r.analysis.target;
     if (!r.ok && auto) { S.msg = explainErr(r); S.msgTone = 'err'; if (r.entitlement) S.status = Object.assign({ ok: true }, r.entitlement, { guilds: S.guilds }); S.data = null; S.entry = null; render(); draw(); return; }
     if (!r.ok && S.contract && /^(contract_|options_)/.test(String(r.error || r.code || ''))) { const why = explainErr(r); S.contract = null; await reading(); S.msg = why; S.msgTone = 'err'; render(); return; }
     if (!r.ok) { S.msg = explainErr(r); S.msgTone = 'err'; if (r.entitlement) S.status = Object.assign({ ok: true }, r.entitlement, { guilds: S.guilds }); S.data = null; S.entry = null; render(); draw(); return; }
     S.data = r.analysis; S.scn = r.scenarios && r.scenarios.available ? r.scenarios : null; S.entry = r.analysis.entry; S.side = r.analysis.side; S.msg = '';
+    if (Array.isArray(r.degraded) && r.degraded.length) { S.msg = 'Read without the ' + r.degraded.map((t) => (t === '1W' ? 'weekly' : t === '1D' ? 'daily' : t)).join(' and ') + ' candles (slow feed); the horizon may be rougher.'; S.msgTone = 'info'; }
     await routeToEarlier(r.analysis);
     render(); draw();
   }
@@ -408,10 +419,14 @@
       if (S.busy || !S.channelId || !S.data) return;
       S.busy = true; S.msg = ''; render();
       const auto = !!(S.autoTarget && S.contract);
-      const r = await api('send', Object.assign({ symbol: S.symbol, mode: S.mode, channelId: S.channelId, mention: !!pingOn(), images: !!S.images, asMe: !!S.asMe }, routeOn() && S.route.messageId ? { replyTo: S.route.messageId } : {}, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}, auto && S.premiumTarget > 0 ? { premiumTarget: S.premiumTarget } : {}));
+      /* a send is tried once more only when the first attempt never got an answer; the server's duplicate check (5 minutes) means a
+         retry of a post that did land comes back as duplicate_alert, which is then the confirmation */
+      const sendBody = Object.assign({ symbol: S.symbol, mode: S.mode, channelId: S.channelId, mention: !!pingOn(), images: !!S.images, asMe: !!S.asMe }, routeOn() && S.route.messageId ? { replyTo: S.route.messageId } : {}, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}, auto && S.premiumTarget > 0 ? { premiumTarget: S.premiumTarget } : {});
+      let r = await api('send', sendBody, { retry: false, timeoutMs: 25_000 });
+      if (transient(r)) { S.msg = 'No answer yet; trying once more…'; S.msgTone = 'info'; render(); await new Promise((res) => setTimeout(res, 1500)); const again = await api('send', sendBody, { retry: false, timeoutMs: 25_000 }); r = again.status === 409 && (again.error === 'duplicate_alert' || again.code === 'duplicate_alert') ? { ok: true, postedAs: 'app', confirmed: true } : again; }
       S.busy = false;
       if (r.ok && auto && r.analysis && Number.isFinite(+r.analysis.target) && +r.analysis.target !== +S.target) { S.target = +r.analysis.target; draw(); }
-      if (r.ok) { S.sent = true; S.msg = (r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.repliedTo ? ' as a reply to your earlier alert' : '') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
+      if (r.ok) { S.sent = true; S.msg = (r.confirmed ? 'Posted (the first attempt had landed)' : r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.repliedTo ? ' as a reply to your earlier alert' : '') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
       else { S.msg = explainErr(r); S.msgTone = 'err'; }
       render();
     }

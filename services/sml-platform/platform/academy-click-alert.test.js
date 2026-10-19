@@ -123,6 +123,68 @@ test('an unsubscribed member can preview nothing useful to send and cannot send'
   assert.equal(posts.length, 0);
 });
 
+test('budgets: a stuck weekly feed does not hold the read, a stuck daily feed is tolerated when 5m is there, and the read says what it lacked', async () => {
+  const slow = { '1W': true };
+  const { svc } = fake({ extra: { waits: { bars: 200, extra: 60 }, getBars: async (sym, tf) => { if (slow[tf]) return new Promise(() => {}); FIX.m5 = FIX.m5 || intraday(200, lastClose); FIX.m15 = FIX.m15 || intraday(200, lastClose, 9e5); return { bars: tf === '1D' ? D : tf === '15m' ? FIX.m15 : FIX.m5 }; } } });
+  const t = Date.now();
+  const out = await svc.preview(USER, body());
+  assert.equal(out.ok, true); assert.ok(Date.now() - t < 1500, 'answered inside the budget');
+  assert.deepEqual(out.degraded, ['1W']); assert.ok(out.tookMs >= 0);
+  slow['1D'] = true;
+  const svc2 = fake({ extra: { waits: { bars: 200, extra: 60 }, getBars: async (sym, tf) => { if (slow[tf]) return new Promise(() => {}); return { bars: tf === '15m' ? FIX.m15 : FIX.m5 }; } } }).svc;
+  const out2 = await svc2.preview(USER, body({ symbol: 'TEST2' }));
+  assert.equal(out2.ok, true, JSON.stringify(out2)); assert.deepEqual(out2.degraded.sort(), ['1D', '1W']);
+  /* nothing at all: refused, and never remembered (the next click asks the feed again) */
+  let calls = 0;
+  const svc3 = fake({ extra: { waits: { bars: 60, extra: 30 }, getBars: async () => { calls += 1; return new Promise(() => {}); } } }).svc;
+  const out3 = await svc3.preview(USER, body({ symbol: 'TEST3' }));
+  assert.equal(out3.ok, false); assert.ok(calls >= 4);
+  await svc3.preview(USER, body({ symbol: 'TEST3' })); assert.ok(calls >= 8, 'asked again, not served from memory');
+});
+
+test('a slow or broken Discord role lookup keeps a member who was subscribed a moment ago; a stranger is still refused', async () => {
+  let mode = 'ok';
+  const { svc } = fake({ extra: { waits: { discord: 50 } } });
+  svc.__dir = null;
+  const dirSlow = { memberRolesLive: async () => (mode === 'hang' ? new Promise(() => {}) : mode === 'throw' ? Promise.reject(new Error('discord 502')) : [ROLE]) };
+  const s2 = CA.createClickAlertService({ getBars: async () => ({ bars: D }), directory: dirSlow, academyGuildId: GUILD, roleIds: [ROLE], waits: { discord: 50 } });
+  assert.equal((await s2.entitlement(USER)).entitled, true);
+  mode = 'hang';
+  const s3 = CA.createClickAlertService({ getBars: async () => ({ bars: D }), directory: dirSlow, academyGuildId: GUILD, roleIds: [ROLE], waits: { discord: 50 } });
+  const cold = await s3.entitlement('999999999999999999');
+  assert.equal(cold.entitled, false); assert.equal(cold.reason, 'timeout');
+  /* s2 remembers its yes for ten minutes: the hung lookup does not lock the member out */
+  mode = 'hang';
+  const warmUser = await s2.entitlement(USER); assert.equal(warmUser.entitled, true); // still inside the 45 s memo
+  mode = 'throw';
+  const s4 = CA.createClickAlertService({ getBars: async () => ({ bars: D }), directory: dirSlow, academyGuildId: GUILD, roleIds: [ROLE], waits: { discord: 50 } });
+  assert.equal((await s4.entitlement(USER)).reason, 'lookup_failed');
+  void svc;
+});
+
+test('a post that fails on Discord\'s side is tried once more; a refusal is not', async () => {
+  let n = 0;
+  const { svc, posts } = fake();
+  const dir = svc.__directory; void dir;
+  const f2 = fake();
+  f2.svc.__x = 1;
+  const posts2 = [];
+  const directory = {
+    memberRolesLive: async () => [ROLE], guildsFor: async () => [], sendableChannels: async () => [],
+    postingIn: async () => ({ guildId: GUILD, name: 'alerts', userCanSend: true, botCanSend: true, mentionEveryone: true, botCanWebhook: false }),
+    post: async (channelId, body) => { n += 1; if (n === 1) { const e = new Error('bad gateway'); e.status = 502; throw e; } posts2.push({ channelId, body }); return { id: '555555555555555555', channelId }; }
+  };
+  const s2 = CA.createClickAlertService({ getBars: async (sym, tf) => ({ bars: tf === '1D' ? D : tf === '1W' ? D.filter((_, i) => i % 5 === 4) : tf === '15m' ? (FIX.m15 || intraday(200, lastClose, 9e5)) : (FIX.m5 || intraday(200, lastClose)) }), directory, academyGuildId: GUILD, roleIds: [ROLE] });
+  const out = await s2.send({ userId: USER, displayName: 'Ana' }, body());
+  assert.equal(out.ok, true); assert.equal(n, 2); assert.equal(posts2.length, 1);
+  n = 0;
+  const refusing = { ...directory, post: async () => { n += 1; const e = new Error('forbidden'); e.status = 403; throw e; } };
+  const s3 = CA.createClickAlertService({ getBars: async (sym, tf) => ({ bars: tf === '1D' ? D : FIX.m5 }), directory: refusing, academyGuildId: GUILD, roleIds: [ROLE] });
+  await assert.rejects(() => s3.send({ userId: USER, displayName: 'Ana' }, body({ symbol: 'TEST9' })), /forbidden/);
+  assert.equal(n, 1, 'a refusal is not retried');
+  void svc; void posts;
+});
+
 test('the add-on is off until a role is configured', async () => {
   const svc = CA.createClickAlertService({ getBars: async () => ({ bars: [] }), directory: {}, academyGuildId: '', roleIds: [] });
   assert.equal(svc.configured, false);

@@ -15,7 +15,16 @@ const { darkPoolSummary } = require('./academy-dark-pool-summary');
 const BLOCK_SHARES = 10_000, BLOCK_NOTIONAL = 1_000_000;
 const fin = Number.isFinite;
 const r2 = (v) => Math.round(v * 100) / 100;
-const hourKey = (t) => { const d = new Date(t); return d.toLocaleTimeString('en-US', { hour: '2-digit', hour12: false, timeZone: 'America/New_York' }).slice(0, 2); };
+/* the clock hour in New York. The locale formatter is slow (about 0.2 ms a call): over a 50,000-print record that was ten
+   seconds with the whole server stopped, so the label is worked out once per clock hour and remembered. */
+const HOUR_FMT = new Intl.DateTimeFormat('en-US', { hour: '2-digit', hour12: false, timeZone: 'America/New_York' });
+const hourCache = new Map();
+const hourKey = (t) => {
+  const bucket = Math.floor(t / 3_600_000);
+  let h = hourCache.get(bucket);
+  if (h === undefined) { h = HOUR_FMT.format(new Date(bucket * 3_600_000)).slice(0, 2); if (h === '24') h = '00'; hourCache.set(bucket, h); if (hourCache.size > 2000) hourCache.clear(); }
+  return h;
+};
 
 function sessionDarkPool(rows, { price = null, now = Date.now(), sessionOpenMs = null } = {}) {
   const list = (Array.isArray(rows) ? rows : []).filter((r) => Array.isArray(r) && fin(r[0]) && r[1] > 0 && r[2] >= 0);

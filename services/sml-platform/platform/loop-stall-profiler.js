@@ -11,7 +11,7 @@
  * window whenever the loop is reported slow. Overhead is a few percent while a window is open; nothing outside it.
  * SML_LOOP_PROFILE=off removes it. */
 
-function createLoopStallProfiler({ logger = () => {}, thresholdMs = 3_000, windowMs = 15 * 60_000, samplingUs = 5_000, now = Date.now, inspector = null } = {}) {
+function createLoopStallProfiler({ logger = () => {}, thresholdMs = 3_000, windowMs = 6 * 60_000, samplingUs = 20_000, now = Date.now, inspector = null } = {}) {
   let session = null, until = 0, running = false, windows = 0;
   const insp = inspector || (() => { try { return require('node:inspector'); } catch (_) { return null; } })();
   const post = (method, params) => new Promise((resolve, reject) => { if (!session) return reject(new Error('no_session')); session.post(method, params || {}, (error, result) => (error ? reject(error) : resolve(result))); });

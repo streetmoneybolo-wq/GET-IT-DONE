@@ -3193,7 +3193,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       try {
         /* the member just picked a ticker or armed ALERT: load what the next read needs so it finds it ready (never waits for it) */
         if (request.method === 'GET' && path === '/academy-activity/click-alert/warm') {
-          sendJson(response, 200, { ok: true, warming: academyClickAlert.warm(params.get('symbol') || '') }); return;
+          sendJson(response, 200, { ok: true, warming: academyClickAlert.warm(params.get('symbol') || '', session.userId) }); return;
         }
         if (request.method === 'GET' && path === '/academy-activity/click-alert/status') {
           /* the subscription check and the server list are asked at the same moment; the list is dropped for a member who is not subscribed */
