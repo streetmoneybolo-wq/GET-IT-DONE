@@ -197,6 +197,8 @@ const academyCurriculumPayloadGzip = zlib.gzipSync(Buffer.from(academyCurriculum
   level: zlib.constants.Z_BEST_SPEED
 });
 
+/* the value of a settleWithin race, or null when it timed out or rejected */
+async function settledValue(promise, timeoutMs) { const s = await settleWithin(promise, timeoutMs).catch(() => null); return s && s.status === 'fulfilled' ? s.value : null; }
 async function settleWithin(promise, timeoutMs) {
   let timer;
   const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ status: 'timeout' }), timeoutMs); });
@@ -770,6 +772,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const darkPool = fs.readFileSync(pathModule.join(__dirname, 'academy-dark-pool.js'), 'utf8');
     const shortSale = fs.readFileSync(pathModule.join(__dirname, 'academy-short-sale.js'), 'utf8');
     const squeezeListUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-squeeze-list-ui.js'), 'utf8'); } catch (_) { return ''; } })();
+    const articleDeskUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-article-desk-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const evolveUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-evolve-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const alertChartUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-alert-chart-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const communityUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-community-ui.js'), 'utf8'); } catch (_) { return ''; } })();
@@ -798,7 +801,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -1912,6 +1915,8 @@ async function handleNewsWebhook(request, response, options) {
 let streamClients = 0;
 const darkPoolCache = new Map(); // symbol -> { until, payload } for /academy-activity/dark-pool
 const smartIntentCache = new Map(); // symbol|tf -> { until, payload } for /academy-activity/intent
+const articleChartCache = new Map(); // symbol -> { until, payload } for the public /academy-activity/article-chart feed
+const SITE_ORIGIN = String(process.env.SML_WORDPRESS_URL || 'https://stockmarketloop.com').replace(/\/$/, '');
 /* Live pattern examples (academy-pattern-live.js): which other stocks are forming the same formation on the same interval right now */
 const patternLive = createPatternLive({ candles: (sym, tf) => getAcademyCandles(sym, tf), scanner: () => getAcademyScanner(), patterns: (() => { try { return require('./academy-patterns'); } catch (_) { return null; } })(), logger: (level, event, data) => { try { console.log(JSON.stringify({ level, event, ...(data || {}) })); } catch (_) { /* ignore */ } } });
 /* 4:00 AM ET of the market clock's date as a timestamp: the start of today's prints (academy-dark-pool-memory.js sessionView) */
@@ -3783,9 +3788,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         if (request.method === 'POST' && (path === '/academy-activity/story/write' || path === '/academy-activity/articles/write')) {
           const raw = await readRequestBody(request, 2_048).catch(() => null);
           let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
-          const symbol = String(body.symbol || '').toUpperCase();
-          if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
-          sendJson(response, 200, await desk.write(symbol, { publish: body.publish === true }));
+          /* a ticker ("NVDA") or a market topic ("oil", "the fed") the desk maps to its proxy; file:false composes the
+             copy-and-paste package (HTML, CSS, head) without filing a letter */
+          const subject = String(body.symbol || body.topic || '').trim().slice(0, 40);
+          if (!subject) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+          const out = await desk.write(subject, { publish: body.publish === true, file: body.file !== false });
+          sendJson(response, out.ok ? 200 : (out.error === 'invalid_symbol' ? 400 : 200), out);
           return;
         }
         sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
@@ -4399,6 +4407,38 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     /* Smart-money intent (academy-smart-intent.js): the Massive tape, the moomoo book, the dark-pool prints, the gamma walls, the SMC
        map and the volume profile fused into one read: what the big money is doing and where it is placed. Members only; 15 s cache. */
+    /* The Article Desk's live chart feed (academy-article-desk.js): a published piece on stockmarketloop.com polls this for
+       the last price and the recent candles, so its chart and price chips move. Public by design (the article is public),
+       one symbol per call, rate-limited, cached 30 s, and answered with CORS for the site's origin only. */
+    if (request.method === 'GET' && path === '/academy-activity/article-chart') {
+      const origin = String(request.headers.origin || '');
+      const allowed = origin && (origin === SITE_ORIGIN || /^https:\/\/([a-z0-9-]+\.)*stockmarketloop\.com$/i.test(origin) || /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin));
+      const cors = allowed ? corsHeaders(origin) : {};
+      const send = (status, body) => { const payload = JSON.stringify(body); response.writeHead(status, { ...cors, 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(payload), 'cache-control': 'public, max-age=20', 'x-content-type-options': 'nosniff' }); response.end(payload); };
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); send(429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const cq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(cq.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { send(400, { ok: false, error: 'invalid_symbol' }); return; }
+      const hit = articleChartCache.get(symbol);
+      if (hit && hit.until > Date.now()) { send(200, hit.payload); return; }
+      try {
+        const candlesOf = async (tf) => { if (marketHistory && marketHistory.enabled) { const r = await marketHistory.get(symbol, tf); if (r && r.ok) return r.data; } return getAcademyCandles(symbol, tf); };
+        const [dailyP, intraP] = await Promise.all([settledValue(candlesOf('1D'), 4_000), settledValue(candlesOf('5m'), 4_000)]);
+        const pack = (r, n) => (r && Array.isArray(r.bars) ? r.bars.slice(-n).map((b) => [Number(b.t), Number(b.o), Number(b.h), Number(b.l), Number(b.c), Number(b.v) || 0]) : []);
+        const daily = pack(dailyP, 80), intraday = pack(intraP, 160);
+        const peek = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(symbol) : null;
+        const lastBar = intraday.length ? intraday[intraday.length - 1] : (daily.length ? daily[daily.length - 1] : null);
+        const last = peek && Number(peek.last) > 0 ? Number(peek.last) : (lastBar ? lastBar[4] : null);
+        const prevClose = daily.length >= 2 ? daily[daily.length - 2][4] : null;
+        if (last == null) { send(503, { ok: false, error: 'no_data' }); return; }
+        const payload = { ok: true, symbol, asOf: Date.now(), quote: { last, prevClose, changePct: prevClose ? Math.round((last / prevClose - 1) * 10000) / 100 : null, source: peek && Number(peek.last) > 0 ? 'live' : 'bars' }, daily, intraday };
+        articleChartCache.set(symbol, { until: Date.now() + 30_000, payload });
+        if (articleChartCache.size > 300) articleChartCache.delete(articleChartCache.keys().next().value);
+        send(200, payload);
+      } catch (error) { logger('warn', 'academy_article_chart_failed', { symbol, error: String(error && error.message || error) }); send(503, { ok: false, error: 'temporary_unavailable' }); }
+      return;
+    }
     if (request.method === 'GET' && path === '/academy-activity/intent') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -4414,9 +4454,9 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       try {
         if (academyMassive && typeof academyMassive.watch === 'function') academyMassive.watch(symbol);
         const [barsP, dailyP, gammaP] = await Promise.all([
-          settleWithin(getAcademyCandles(symbol, tf), 2_500).catch(() => null),
-          settleWithin(getAcademyCandles(symbol, '1D'), 2_500).catch(() => null),
-          academyGamma ? settleWithin(academyGamma.get(symbol), 2_000).catch(() => null) : Promise.resolve(null)
+          settledValue(getAcademyCandles(symbol, tf), 2_500),
+          settledValue(getAcademyCandles(symbol, '1D'), 2_500),
+          academyGamma ? settledValue(academyGamma.get(symbol), 2_000) : Promise.resolve(null)
         ]);
         const bars = barsP && Array.isArray(barsP.bars) ? barsP.bars : [];
         const adv = dailyP && Array.isArray(dailyP.bars) ? averageDailyVolume(dailyP.bars, 20) : null;
@@ -5038,6 +5078,19 @@ async function main() {
     return earningsInsight;
   };
   /* Short-sale insight (academy-short-insight.js): the short feed read with the Level 3 book, the Massive tape, the flow ledger and the chain. Built on first use. */
+  /* the smart-money intent read for the squeeze model (academy-smart-intent.js over the signed tape, the full book, the gamma walls and the volume profile) */
+  const smartIntentFor = async (sym) => {
+    if (academyMassive && typeof academyMassive.watch === 'function') academyMassive.watch(sym);
+    const [barsP, gammaP] = await Promise.all([settledValue(getAcademyCandles(sym, '5m'), 2_500), academyGamma ? settledValue(academyGamma.get(sym), 2_000) : Promise.resolve(null)]);
+    const bars = barsP && Array.isArray(barsP.bars) ? barsP.bars : [];
+    const peek = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(sym) : null;
+    const ticks = academyMassive && typeof academyMassive.ticks === 'function' ? academyMassive.ticks(sym, 6000) : [];
+    const deep = academyOrderFlow && typeof academyOrderFlow.deep === 'function' ? academyOrderFlow.deep(sym) : null;
+    const price = peek && Number(peek.last) > 0 ? Number(peek.last) : (bars.length ? Number(bars[bars.length - 1].c) : null);
+    let smc = null; try { smc = bars.length >= 20 ? require('./academy-smart-money').analyze(bars) : null; } catch (_) { smc = null; }
+    let darkPool = null; if (peek && peek.stats) { try { const sum = liveDarkPoolSummary(peek.stats, { price }); darkPool = sum && sum.available ? sum : null; } catch (_) { darkPool = null; } }
+    return analyzeSmartIntent({ symbol: sym, ticks, prints: deep ? deep.prints : [], snaps: deep ? deep.snaps : [], bars, smc, darkPool, gamma: gammaP && gammaP.available ? gammaP : null, stats: peek ? peek.stats : null, price, tick: price && price < 1 ? 0.0001 : 0.01, now: Date.now() });
+  };
   let shortInsight = null;
   const getShortInsight = () => {
     if (shortInsight || process.env.SML_ACADEMY_SHORT_INSIGHT === 'off' || !academyAlerts) return shortInsight;
@@ -5052,25 +5105,12 @@ async function main() {
       /* a Massive-only row (or no row) has no float: the company record's shares outstanding stand in, so the squeeze
          model's supply math (float size, cover ratio, float turnover) still has a number to work with */
       try {
-        const co = await settleWithin(academyAlerts.company(sym), 3_000).catch(() => null);
+        const co = await settledValue(academyAlerts.company(sym), 3_000);
         const c = co && typeof co === 'object' ? (co.results || co.company || co) : null;
         const shares = c ? Number(c.share_class_shares_outstanding ?? c.weighted_shares_outstanding ?? c.sharesOutstanding ?? c.shares_outstanding) : NaN;
         if (Number.isFinite(shares) && shares > 0) return { ...(row || { symbol: sym }), sharesOutstanding: shares, marketCap: Number(c.market_cap ?? c.marketCap) || (row && row.marketCap) || null };
       } catch (_) { /* no company record */ }
       return row;
-    };
-    /* the smart-money intent read for the squeeze model (academy-smart-intent.js over the signed tape, the full book, the gamma walls and the volume profile) */
-    const smartIntentFor = async (sym) => {
-      if (academyMassive && typeof academyMassive.watch === 'function') academyMassive.watch(sym);
-      const [barsP, gammaP] = await Promise.all([settleWithin(getAcademyCandles(sym, '5m'), 2_500).catch(() => null), academyGamma ? settleWithin(academyGamma.get(sym), 2_000).catch(() => null) : Promise.resolve(null)]);
-      const bars = barsP && Array.isArray(barsP.bars) ? barsP.bars : [];
-      const peek = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(sym) : null;
-      const ticks = academyMassive && typeof academyMassive.ticks === 'function' ? academyMassive.ticks(sym, 6000) : [];
-      const deep = academyOrderFlow && typeof academyOrderFlow.deep === 'function' ? academyOrderFlow.deep(sym) : null;
-      const price = peek && Number(peek.last) > 0 ? Number(peek.last) : (bars.length ? Number(bars[bars.length - 1].c) : null);
-      let smc = null; try { smc = bars.length >= 20 ? require('./academy-smart-money').analyze(bars) : null; } catch (_) { smc = null; }
-      let darkPool = null; if (peek && peek.stats) { try { const sum = liveDarkPoolSummary(peek.stats, { price }); darkPool = sum && sum.available ? sum : null; } catch (_) { darkPool = null; } }
-      return analyzeSmartIntent({ symbol: sym, ticks, prints: deep ? deep.prints : [], snaps: deep ? deep.snaps : [], bars, smc, darkPool, gamma: gammaP && gammaP.available ? gammaP : null, stats: peek ? peek.stats : null, price, tick: price && price < 1 ? 0.0001 : 0.01, now: Date.now() });
     };
     shortInsight = createShortInsight({
       shortData: (s) => academyAlerts.shortData(s), candles: (s, tf) => sentimentCandles(s, tf),
@@ -5480,7 +5520,30 @@ async function main() {
     polisher: createPolisher({ apiKey: String(process.env.SML_STORY_LLM || '').toLowerCase() === 'on' ? config.openaiApiKey : '', model: config.openaiModel, logger: log }),
     dm: discordDm, ownerIds: [...OWNER_IDS],
     store: createPgStateStore({ pool: database.pool, key: 'story-desk', defaultValue: () => ({ written: {}, log: [], day: '', count: 0 }), logger: log }),
-    marketState: (t) => marketState(t), autopublish: String(process.env.SML_STORY_AUTOPUBLISH || '').toLowerCase() === 'on', logger: log
+    marketState: (t) => marketState(t), autopublish: String(process.env.SML_STORY_AUTOPUBLISH || '').toLowerCase() === 'on', logger: log,
+    /* the dossier: every insight the Academy has on the name, for the article composer (academy-article-desk.js) */
+    insights: {
+      shortInsight: (s) => { const si = getShortInsight(); return si ? si.insight(s) : null; },
+      earningsInsight: (s) => { const e = getEarningsInsight(); return e ? e.insight(s) : null; },
+      intent: smartIntentFor,
+      darkPool: async (sym) => {
+        const rows = await marketHistory.trades(sym, 50_000);
+        const live = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(sym) : null;
+        const st = marketState(), price = live && Number(live.last) > 0 ? Number(live.last) : null;
+        let summary = sessionDarkPool(rows, { price, now: Date.now() });
+        if (darkPoolMemory && summary.available) { try { summary = await darkPoolMemory.annotate(sym, summary, { date: String(st.et || '').slice(0, 10), price, sinceMs: etDayStartMs(st) }); } catch (_) { /* the summary stands */ } }
+        return summary;
+      },
+      sentiment: academySentiment ? (s) => academySentiment.get(s) : null,
+      filings: academyFilings ? (s) => academyFilings.get(s) : null,
+      company: academyAlerts && typeof academyAlerts.company === 'function' ? (s) => academyAlerts.company(s) : null,
+      news: academyAlerts && typeof academyAlerts.newsFor === 'function' ? (s) => academyAlerts.newsFor(s) : null,
+      alerts: academyAlerts ? async () => academyAlerts.active() : null,
+      patterns: async (s) => { const r = await sentimentCandles(s, '1D'); return r && Array.isArray(r.bars) && r.bars.length >= 30 ? require('./academy-patterns').detect(r.bars.slice(-160)) : null; },
+      memAlgo: async (s) => { const r = await sentimentCandles(s, '1D'); return r && Array.isArray(r.bars) && r.bars.length >= 60 ? require('./academy-mem-algo').analyze(r.bars, 'swing', {}, '1D', {}) : null; }
+    },
+    chartEndpoint: config.academyTrialPublicUrl ? config.academyTrialPublicUrl + '/academy-activity/article-chart' : '',
+    discordUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || '')
   }) : null;
   const getStoryDesk = () => storyDesk;
   if (storyDesk) {

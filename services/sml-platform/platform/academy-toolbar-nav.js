@@ -23,7 +23,7 @@
     { key: 'chart', label: 'CHART', hint: 'Drawn on the candles', ids: ['depth-walls', 'depth-cost', 'heat-toggle', 'smc-toggle', 'intent-btn'] },
     { key: 'flow', label: 'FLOW', hint: 'Who is buying and selling', ids: ['buysell-toggle', 'darkpool-toggle', 'shortsale-toggle', 'sentiment-toggle', 'squeeze-btn'] },
     { key: 'desk', label: 'DESK', hint: 'Panels that take the lower deck', ids: ['chain-toggle', 'mem-algo-toggle', 'sire-toggle', 'earnings-toggle', 'catalysts-toggle', 'paper-toggle', 'challenge-toggle'] },
-    { key: 'share', label: 'SHARE', hint: 'Talk about it, post it, be told', ids: ['talk-btn', 'snap-toggle', 'click-alert-toggle'] }
+    { key: 'share', label: 'SHARE', hint: 'Talk about it, post it, be told', ids: ['talk-btn', 'snap-toggle', 'click-alert-toggle', 'article-btn'] }
   ];
   const FLOW_BOXES = ['buysell-toggle', 'darkpool-toggle', 'shortsale-toggle', 'sentiment-toggle'];
   const ALL_IDS = GROUPS.flatMap((g) => g.ids);

@@ -48,7 +48,9 @@ test('a tick scans the universe, writes the strongest uncovered angle as a draft
   assert.ok(created.l.tags.includes('ABCD')); assert.match(created.l.html, /What the data says/);
   assert.ok(created.l.blocks.some((b) => b.type === 'heading' && b.text === 'What the data says') && created.l.blocks.some((b) => b.type === 'paragraph'), 'reader blocks');
   assert.equal(created.l.blocks[0].type, 'custom_code', 'the styled card leads'); assert.match(created.l.blocks[0].html, /Key takeaways/); assert.match(created.l.blocks[0].css, /\.ad-t/); assert.ok(created.l.blocks[0].height >= 420);
-  assert.ok(created.l.blocks.some((b) => b.type === 'heading' && /Why it matters/.test(b.text)) && created.l.blocks.some((b) => b.type === 'heading' && /The case against/.test(b.text)));
+  assert.ok(created.l.blocks.some((b) => b.type === 'heading' && /Why it matters/.test(b.text)) && created.l.blocks.some((b) => b.type === 'heading' && /The bull case and the bear case/.test(b.text)));
+  assert.ok(created.l.blocks.some((b) => b.id === 'mod-chart' && b.type === 'custom_code' && /<svg class="mem-chart"/.test(b.html)), 'the live chart module is a custom-code block');
+  assert.match(created.l.html, /class="mem-article"/); assert.match(created.l.html, /sec\.gov/);
   assert.ok(created.l.subtitle.length > 20 && created.l.subtitle.length <= 160);
   assert.equal(created.l.blocks[created.l.blocks.length - 1].type, 'disclosure');
   const seo = h.posts.find((p) => p.kind === 'seo'); assert.ok(seo, 'SEO store written'); assert.equal(seo.seo.schema, 'NewsArticle'); assert.ok(seo.seo.meta_title.length <= 60, seo.seo.meta_title); assert.equal(typeof seo.seo.tags, 'string');
@@ -77,7 +79,22 @@ test('write(symbol) drafts one piece on demand', async () => {
   const h = harness();
   const r = await h.desk.write('ABCD');
   assert.equal(r.ok, true); assert.ok(r.story.rank > 0); assert.match(r.draft.title, /\$ABCD/); assert.equal(r.filed.letterId, 123);
-  assert.match(r.draft.document, /^<!doctype html>/); assert.match(r.draft.document, /<style>/); assert.match(r.draft.document, /"@type":"NewsArticle"/); assert.match(r.draft.document, /itemprop="articleBody"/); assert.equal((r.draft.document.match(/<script/g) || []).length, 1, 'only the JSON-LD script'); assert.ok(r.draft.seo.meta_title.length <= 60);
+  assert.match(r.draft.document, /^<!doctype html>/); assert.match(r.draft.document, /<style>/); assert.match(r.draft.document, /"@type":"NewsArticle"/); assert.match(r.draft.document, /itemprop="articleBody"/); assert.equal((r.draft.document.match(/<script/g) || []).length, 2, 'the JSON-LD and the enhancement script'); assert.ok(r.draft.seo.meta_title.length <= 60);
+  assert.equal(r.article.url, 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/x/'); assert.match(r.article.head, /<link rel="canonical" href="https:\/\/stockmarketloop\.com\/n\/vaughn-mcnair-grandmaster-obi\/x\/">/);
+  assert.ok(r.article.html.startsWith('<article class="mem-article"') && r.article.css.includes('.mem-article{') && Array.isArray(r.article.blocks));
+});
+
+test('write(subject, { file: false }) composes the package without touching the site, and a topic maps to its proxy', async () => {
+  const h = harness({ deps: { insights: { intent: async () => ({ ok: true, intent: { phase: 'markup', side: 'buyers', strength: 55, evidence: [{ w: 1, text: 'Structure: last BOS was up.' }], read: 'Markup: the positioned side is now paying up.' }, formulas: {}, map: { levels: [] }, glossary: {} }), shortInsight: async () => ({ ok: true, available: true, model: { score: 66 }, pressing: { score: 20 }, interest: { daysToCover: 4.2 }, verdict: { long: { call: 'squeeze candidate' } } }) }, chartEndpoint: 'https://api.example/academy-activity/article-chart' } });
+  const r = await h.desk.write('abcd', { file: false });
+  assert.equal(r.ok, true); assert.equal(r.filed, null); assert.equal(h.posts.length, 0, 'nothing filed'); assert.equal(h.media.length, 0, 'nothing uploaded'); assert.equal(h.dms.length, 0);
+  assert.deepEqual(r.subject, { symbol: 'ABCD', topic: null, label: '$ABCD' }); assert.equal(r.dossier.intent, true); assert.equal(r.dossier.shortInsight, true); assert.equal(r.dossier.sentiment, false);
+  assert.ok(r.draft.sections.includes('What the smart money is doing') && r.draft.sections.includes("The short seller's problem")); assert.ok(r.draft.modules.includes('meters'));
+  assert.match(r.article.html, /data-live-endpoint="https:\/\/api\.example\/academy-activity\/article-chart"/); assert.match(r.article.html, /Markup: the positioned side/);
+  assert.equal(r.article.url, ''); assert.ok(!/rel="canonical"/.test(r.article.head), 'no canonical before the piece has a URL');
+  assert.ok(!Object.keys(h.saved() || {}).length || !(h.saved().written || {})['ABCD:' + r.story.angle], 'an unfiled piece is not marked written');
+  const bad = await h.desk.write('???', { file: false }); assert.equal(bad.error, 'invalid_symbol');
+  const topic = await h.desk.write('quiet', { file: false }); assert.equal(topic.error, 'no_angle');
 });
 
 test('the polisher refuses output that invents a number or breaks the structure', async () => {

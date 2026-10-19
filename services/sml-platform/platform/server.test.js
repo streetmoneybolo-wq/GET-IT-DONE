@@ -2476,3 +2476,35 @@ test('Community routes: suggestions, the Following stream, the inbox and one Fol
   const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
   assert.match(html, /window\.smlCommunity = \{ strip/); assert.match(html, /tk-cm-strip/); assert.match(html, /data-cm-tab="following"/); assert.match(html, /be the first to reply/); assert.match(html, /cm-toasts/);
 });
+
+test('Article Desk: the public live-chart feed answers bars and a quote with CORS for the site only; the owner panel and the write route take a ticker or a topic and file:false', async () => {
+  const bars = (n, ms) => Array.from({ length: n }, (_, i) => ({ t: 1_700_000_000_000 - (n - i) * ms, o: 10 + i * 0.01, h: 10.2 + i * 0.01, l: 9.9, c: 10.1 + i * 0.01, v: 1000 + i }));
+  const marketHistory = { enabled: true, get: async (symbol, tf) => ({ ok: true, data: { symbol, tf, bars: bars(tf === '1D' ? 120 : 200, tf === '1D' ? 86_400_000 : 300_000), asOf: Date.now(), source: 'massive-rest' } }), trades: async () => [] };
+  await withServer({ marketHistory }, async (base) => {
+    const ok = await fetch(`${base}/academy-activity/article-chart?symbol=abcd`, { headers: { origin: 'https://stockmarketloop.com' } });
+    assert.equal(ok.status, 200); assert.equal(ok.headers.get('access-control-allow-origin'), 'https://stockmarketloop.com'); assert.match(ok.headers.get('cache-control'), /max-age/);
+    const body = await ok.json();
+    assert.equal(body.symbol, 'ABCD'); assert.equal(body.daily.length, 80); assert.equal(body.intraday.length, 160); assert.equal(body.daily[0].length, 6); assert.ok(body.quote.last > 0 && body.quote.prevClose > 0 && typeof body.quote.changePct === 'number'); assert.equal(body.quote.source, 'bars');
+    const foreign = await fetch(`${base}/academy-activity/article-chart?symbol=ABCD`, { headers: { origin: 'https://evil.example' } });
+    assert.equal(foreign.status, 200); assert.equal(foreign.headers.get('access-control-allow-origin'), null, 'no CORS for other origins');
+    assert.equal((await fetch(`${base}/academy-activity/article-chart?symbol=bad%20sym`)).status, 400);
+  });
+  const { OWNER_IDS } = require('./academy-free-users');
+  const owner = OWNER_IDS[0] || '100000000000000009';
+  const academyOAuth = { verifySession: (auth) => (auth === 'Bearer owner' ? { ok: true, tier: 'academy', userId: owner } : auth === 'Bearer member' ? { ok: true, tier: 'academy', userId: '100000000000000001' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const calls = [];
+  const desk = { status: async () => ({ day: '2026-10-19', count: 1, written: 1, log: [] }), write: async (subject, opts) => { calls.push({ subject, opts }); return subject === '???' ? { ok: false, error: 'invalid_symbol' } : { ok: true, subject: { symbol: 'USO', topic: 'crude oil' }, article: { title: 'x', html: '<article class="mem-article"></article>', css: '.mem-article{}', head: '<title>x</title>', document: '<!doctype html>', modules: ['chart'], links: [] }, filed: null }; } };
+  await withServer({ academyOAuth, getStoryDesk: () => desk }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/articles`, { headers: { authorization: 'Bearer member' } })).status, 403);
+    const st = await fetch(`${base}/academy-activity/articles`, { headers: { authorization: 'Bearer owner' } }); assert.equal(st.status, 200); assert.equal((await st.json()).count, 1);
+    const w = await fetch(`${base}/academy-activity/articles/write`, { method: 'POST', headers: { authorization: 'Bearer owner', 'content-type': 'application/json' }, body: JSON.stringify({ symbol: 'oil', file: false }) });
+    assert.equal(w.status, 200); const out = await w.json(); assert.equal(out.subject.symbol, 'USO'); assert.equal(out.article.css, '.mem-article{}');
+    assert.deepEqual(calls[0], { subject: 'oil', opts: { publish: false, file: false } });
+    const bad = await fetch(`${base}/academy-activity/articles/write`, { method: 'POST', headers: { authorization: 'Bearer owner', 'content-type': 'application/json' }, body: JSON.stringify({ symbol: '???' }) });
+    assert.equal(bad.status, 400); assert.deepEqual(calls[1].opts, { publish: false, file: true });
+    assert.equal((await fetch(`${base}/academy-activity/articles/write`, { method: 'POST', headers: { authorization: 'Bearer owner', 'content-type': 'application/json' }, body: '{}' })).status, 400);
+  });
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', tf: '5m' });
+  assert.match(html, /id = 'article-btn'/); assert.match(html, /academy-activity\/articles/); assert.match(html, /COPY HTML/); assert.match(html, /COPY CSS/); assert.match(html, /COPY HEAD/); assert.match(html, /'article-btn'\] \}/, 'the button sits in the SHARE group');
+  assert.doesNotMatch(html, PAGE_BANNED);
+});

@@ -8,10 +8,9 @@
  * signed-in WordPress account really is the byline's account. The owner gets a DM with every result. */
 
 const engine = require('./academy-story-engine');
-const { htmlToBlocks } = require('./academy-letter-blocks');
 const articleHtml = require('./academy-article-html');
-const { seoFor } = require('./academy-article-seo');
 const gifs = require('./academy-scenario-gif');
+const desk2 = require('./academy-article-desk');
 
 const num = (v, d = null) => { if (v == null || v === '') return d; const n = Number(v); return Number.isFinite(n) ? n : d; };
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -90,8 +89,10 @@ function createPolisher({ apiKey = '', model = 'gpt-5-mini', fetchImpl = fetch, 
 function createStoryDesk({
   universe, candles, gamma = null, shortData = null, finra = null, institutional = null, darkPool = null, smc = null, sentiment = null, earnings = null, playbook = null, direction = null, runner = null, company = null,
   heat = null, publisher = null, polisher = null, dm = null, ownerIds = [], store = null, marketState = null, now = Date.now, logger = () => {},
-  perTick = 18, maxPerTick = 3, maxPerDay = 12, dedupeDays = 3, autopublish = false, windowFrom = 420, windowTo = 990, siteUrl = 'https://stockmarketloop.com', byline = 'Vaughn McNair', publication = 'Making Easy Money'
+  perTick = 18, maxPerTick = 3, maxPerDay = 12, dedupeDays = 3, autopublish = false, windowFrom = 420, windowTo = 990, siteUrl = 'https://stockmarketloop.com', byline = 'Vaughn McNair', publication = 'Making Easy Money',
+  insights = {}, chartEndpoint = '', discordUrl = '', authorPath = '/n/grandmasterobi/'
 } = {}) {
+  const authorUrl = siteUrl + authorPath;
   let state = null, busy = false, cursor = 0;
   async function load() { if (!state) { try { state = (store && await store.read()) || null; } catch (_) { state = null; } if (!state || !state.written) state = { written: {}, log: [], day: '', count: 0 }; } return state; }
   const save = async () => { if (store) { try { await store.write(state); } catch (error) { logger('warn', 'story_state_save_failed', { error: String(error && error.message || error) }); } } };
@@ -136,34 +137,46 @@ function createStoryDesk({
     return { symbol, name, price, changePct: num(row.changePct), relVol: relVol != null ? r2(relVol) : null, adv, marketCap: co ? num(co.market_cap) : null, daily, gamma: gx && gx.available ? gx : null, short, tape, smc: m, earnings: earningsIn, sentiment: sentIn, institutional: inst && inst.available ? { bias: num(inst.bias), label: inst.label } : null, runner: run, direction: dir && dir.ok ? { bias: dir.bias, label: dir.label } : null, heat: h || null };
   }
 
-  async function produce(story, c) {
-    const draft = engine.draftArticle(story, c, { asOf: now(), author: byline, publication });
-    let html = draft.html;
-    if (polisher && polisher.enabled) { const polished = await polisher.polish(html, story.facts); if (polished) html = polished; }
-    // the GIF: the last 40 daily candles, then the path (trigger, confirmation, target)
-    let media = null, gifInfo = null, posterMedia = null;
-    try {
-      const gifOpts = { symbol: c.symbol, bars: c.daily.slice(-40), last: c.price, target: story.pt, stop: story.stop, levels: (c.gamma && c.gamma.callWall ? [{ label: 'Call wall', price: c.gamma.callWall.strike }] : []).concat(c.smc && c.smc.range ? [{ label: 'Range high', price: c.smc.range.hi }] : []), waypoints: story.path || [], count: 16, lean: story.lean, title: `$${c.symbol}: the path to $${story.pt}`, subtitle: `${engine.ANGLES[story.angle].label} scenario. Speculative, not advice.` };
-      gifInfo = await gifs.gifAsync(gifOpts);
-      if (gifInfo && gifInfo.gif && publisher && publisher.configured()) media = await publisher.uploadMedia({ bytes: gifInfo.gif, filename: `${c.symbol.toLowerCase()}-path-to-${String(story.pt).replace('.', '-')}.gif`, contentType: 'image/gif', title: `$${c.symbol} path to $${story.pt}`, alt: `${c.symbol} price-action scenario: real candles, then the move to $${story.pt}`, caption: 'Speculative scenario built from the Academy data desk. Not advice.' });
-      if (publisher && publisher.configured() && typeof gifs.poster === 'function') {
-        // the still the search engines and social cards use: a 1200 pixel PNG of the finished scenario
-        const poster = gifs.poster(gifOpts, 1200);
-        if (poster && poster.png) posterMedia = await publisher.uploadMedia({ bytes: poster.png, filename: `${c.symbol.toLowerCase()}-scenario-poster.png`, contentType: 'image/png', title: `$${c.symbol} scenario: the path to $${story.pt}`, alt: `${c.symbol} price-action scenario to $${story.pt}`, caption: 'Speculative scenario from the Academy data desk. Not advice.' });
-      }
-    } catch (error) { logger('warn', 'story_gif_failed', { symbol: c.symbol, error: String(error && error.message || error) }); }
+  /* the piece: the dossier (every insight the Academy has on the name) and, when the piece is being filed, the GIF and the
+     poster uploaded first so the social image is known; then the composer (academy-article-desk.js) writes the article with
+     its modules, backlinks, stylesheet and head. compose() is pure, so the package is re-made with the final letter URL. */
+  async function produce(story, c, { file = true, topic = null } = {}) {
+    const asOf = now();
+    const upload = file && publisher && publisher.configured();
+    const [dossier, gif] = await Promise.all([
+      desk2.buildDossier(c.symbol, insights).catch((error) => { logger('warn', 'story_dossier_failed', { symbol: c.symbol, error: String(error && error.message || error) }); return {}; }),
+      (async () => {
+        // the GIF: the last 40 daily candles, then the path (trigger, confirmation, target)
+        let media = null, gifInfo = null, posterMedia = null;
+        if (!upload) return { media, gifInfo, posterMedia };
+        try {
+          const gifOpts = { symbol: c.symbol, bars: c.daily.slice(-40), last: c.price, target: story.pt, stop: story.stop, levels: (c.gamma && c.gamma.callWall ? [{ label: 'Call wall', price: c.gamma.callWall.strike }] : []).concat(c.smc && c.smc.range ? [{ label: 'Range high', price: c.smc.range.hi }] : []), waypoints: story.path || [], count: 16, lean: story.lean, title: `$${c.symbol}: the path to $${story.pt}`, subtitle: `${engine.ANGLES[story.angle].label} scenario. Speculative, not advice.` };
+          gifInfo = await gifs.gifAsync(gifOpts);
+          if (gifInfo && gifInfo.gif) media = await publisher.uploadMedia({ bytes: gifInfo.gif, filename: `${c.symbol.toLowerCase()}-path-to-${String(story.pt).replace('.', '-')}.gif`, contentType: 'image/gif', title: `$${c.symbol} path to $${story.pt}`, alt: `${c.symbol} price-action scenario: real candles, then the move to $${story.pt}`, caption: 'Speculative scenario built from the Academy data desk. Not advice.' });
+          if (typeof gifs.poster === 'function') {
+            // the still the search engines and social cards use: a 1200 pixel PNG of the finished scenario
+            const poster = gifs.poster(gifOpts, 1200);
+            if (poster && poster.png) posterMedia = await publisher.uploadMedia({ bytes: poster.png, filename: `${c.symbol.toLowerCase()}-scenario-poster.png`, contentType: 'image/png', title: `$${c.symbol} scenario: the path to $${story.pt}`, alt: `${c.symbol} price-action scenario to $${story.pt}`, caption: 'Speculative scenario from the Academy data desk. Not advice.' });
+          }
+        } catch (error) { logger('warn', 'story_gif_failed', { symbol: c.symbol, error: String(error && error.message || error) }); }
+        return { media, gifInfo, posterMedia };
+      })()
+    ]);
+    const { media, gifInfo, posterMedia } = gif;
+    const coverUrl = posterMedia && posterMedia.url ? posterMedia.url : (media && media.url ? media.url : '');
+    const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author: byline, publication, siteUrl, authorUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic });
+    const guess = compose('');
+    const pkg = file ? compose(`${siteUrl}${authorPath}${guess.slug}/`) : guess;
     const symLine = `${c.symbol} price-action scenario to $${story.pt}`;
-    const card = articleHtml.card(draft.parts);
-    const body = htmlToBlocks(html, { tickers: [c.symbol], disclosure: { position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' } });
-    // the styled card leads; the animated path sits right after the opening two paragraphs
+    const card = articleHtml.card(pkg.parts);
+    const body = [...pkg.blocks, { id: 'd1', type: 'disclosure', position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' }];
+    // the styled card leads; the animated path sits right after the opening paragraphs
     let at = 0, seen = 0;
     for (let i = 0; i < body.length; i++) { if (body[i].type === 'paragraph') { seen += 1; if (seen === 2) { at = i + 1; break; } } }
     if (media && media.url) body.splice(at, 0, { id: 'gif1', type: 'image', url: media.url, alt: symLine, caption: 'Speculative scenario: real candles, then the path the setup needs. Not a forecast.' });
     const blocks = [{ id: 'card1', type: 'custom_code', html: card.html, css: card.css, height: card.height }, ...body];
-    const coverUrl = posterMedia && posterMedia.url ? posterMedia.url : (media && media.url ? media.url : '');
-    const seo = seoFor({ story, c, headline: draft.title, tags: draft.tags, publication, posterUrl: coverUrl, asOf: now() });
-    const letter = { title: draft.title, subtitle: draft.dek, tldr: draft.tldr, html, blocks, content_type: 'Analysis', tags: draft.tags, cover_url: coverUrl || undefined, visibility: 'public', slug: draft.slug };
-    return { draft, html, letter, media, posterMedia, seo, gifFrames: gifInfo ? gifInfo.frames : 0 };
+    const letter = { title: pkg.title, subtitle: pkg.dek, tldr: pkg.tldr, html: pkg.bodyHtml, blocks, content_type: 'Analysis', tags: pkg.tags, cover_url: coverUrl || undefined, visibility: 'public', slug: pkg.slug };
+    return { draft: { ...pkg, html: pkg.bodyHtml, parts: pkg.parts, asOfIso: pkg.asOfIso }, pkg, compose, html: pkg.bodyHtml, letter, media, posterMedia, seo: pkg.seo, dossier, gifFrames: gifInfo ? gifInfo.frames : 0 };
   }
 
   async function file(story, c, built) {
@@ -183,14 +196,11 @@ function createStoryDesk({
     return out;
   }
 
-  /* the whole article as one self-contained HTML page with its CSS and metadata (the owner's review copy, and syndication) */
-  function documentFor(built, c, url = '') {
-    const d = built.draft;
-    return articleHtml.document({
-      headline: d.title, metaTitle: built.seo.meta_title, dek: d.dek, kicker: d.parts.kicker, bodyHtml: built.html, parts: d.parts, byline, publication, url,
-      imageUrl: built.seo.social_image, gifUrl: built.media ? built.media.url : '', datePublished: d.asOfIso, dateModified: d.asOfIso, tags: d.tags, keyword: built.seo.keyword,
-      description: built.seo.meta_desc, section: 'Markets', siteUrl, authorUrl: siteUrl + '/grandmasterobi/'
-    });
+  /* the package the owner copies from: re-made with the final letter URL once the piece is filed (compose is pure) */
+  function packageFor(built, url = '') {
+    const pkg = url ? built.compose(url) : built.pkg;
+    return { title: pkg.title, dek: pkg.dek, slug: pkg.slug, tags: pkg.tags, keyword: pkg.keyword, lean: pkg.lean, pt: pkg.pt, ptPct: pkg.ptPct, angle: pkg.angle, wordCount: pkg.wordCount, readMinutes: pkg.readMinutes,
+      modules: pkg.modules, sections: pkg.sections, links: pkg.links, faq: pkg.faq, seo: pkg.seo, html: pkg.bodyHtml, css: pkg.css, js: pkg.js, head: pkg.headHtml, document: pkg.document, blocks: pkg.blocks, url };
   }
 
   async function tell(results) {
@@ -246,18 +256,29 @@ function createStoryDesk({
     } catch (error) { logger('error', 'story_tick_failed', { error: String(error && error.message || error) }); return null; }
     finally { busy = false; }
   }
-  /* one symbol on demand (the owner's "write about X"): the best angle, drafted and filed */
-  async function write(symbol, { publish = false } = {}) {
+  /* one subject on demand (the owner's "write about X": a ticker, or a topic the market trades through a proxy): the best
+     angle, written in full. file:false composes the package to copy from without touching the site; file:true (the
+     default) also files it as a Loop Letter draft (publish:true publishes it when the signed-in account is the byline). */
+  async function write(input, { publish = false, file: doFile = true } = {}) {
     await load();
-    const c = await candidate({ symbol: String(symbol).toUpperCase() });
-    if (!c) return { ok: false, error: 'no_data' };
+    const subject = desk2.resolveSubject(input);
+    if (!subject) return { ok: false, error: 'invalid_symbol' };
+    const c = await candidate({ symbol: subject.symbol });
+    if (!c) return { ok: false, error: 'no_data', subject };
     const ranked = engine.rankStories([c]);
-    if (!ranked.length) return { ok: false, error: 'no_angle', heat: c.heat };
-    const built = await produce(ranked[0], c);
-    const filed = await file(ranked[0], c, built);
-    if (publish && filed.letterId && publisher && !filed.published) { try { const pub = await publisher.publishLetter(filed.letterId); filed.published = true; if (pub && pub.url) filed.url = pub.url; } catch (error) { filed.error = String(error && error.message || error); } }
-    state.written[c.symbol + ':' + ranked[0].angle] = now(); await save(); await tell([filed]);
-    return { ok: true, story: { ...ranked[0], facts: ranked[0].facts }, draft: { title: built.draft.title, dek: built.draft.dek, meta: built.seo.meta_desc, tags: built.draft.tags, wordCount: built.draft.wordCount, seo: built.seo, document: documentFor(built, c, filed.url) }, filed };
+    if (!ranked.length) return { ok: false, error: 'no_angle', heat: c.heat, subject };
+    const built = await produce(ranked[0], c, { file: doFile, topic: subject.topic });
+    let filed = null;
+    if (doFile) {
+      filed = await file(ranked[0], c, built);
+      if (publish && filed.letterId && publisher && !filed.published) { try { const pub = await publisher.publishLetter(filed.letterId); filed.published = true; if (pub && pub.url) filed.url = pub.url; } catch (error) { filed.error = String(error && error.message || error); } }
+      if (!filed.error) { state.written[c.symbol + ':' + ranked[0].angle] = now(); await save(); }
+      await tell([filed]);
+    }
+    const article = packageFor(built, filed && filed.url ? filed.url : '');
+    return { ok: true, subject, story: { ...ranked[0], facts: ranked[0].facts }, dossier: Object.fromEntries(Object.entries(built.dossier || {}).map(([k, v]) => [k, !!(v && (Array.isArray(v) ? v.length : true))])),
+      draft: { title: article.title, dek: article.dek, meta: article.seo.meta_desc, tags: article.tags, wordCount: article.wordCount, readMinutes: article.readMinutes, seo: article.seo, document: article.document, modules: article.modules, sections: article.sections, links: article.links },
+      article, filed };
   }
   async function status() { await load(); return { day: state.day, count: state.count, written: Object.keys(state.written).length, log: state.log.slice(-20).reverse() }; }
   return { tick, write, status, candidate, load };
