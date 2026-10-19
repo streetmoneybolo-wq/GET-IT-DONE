@@ -2242,3 +2242,18 @@ test('Activity navigation: one grouped tool rail (CHART, FLOW, DESK, SHARE) with
   assert.match(html, /narrowed to a phone width: the pills go back to floating/);
   assert.match(html, /#sml-settings-btn\{right:auto;left:10px;bottom:48px\}/, 'Settings no longer sits on the Loop Bucks pill on phones');
 });
+
+test('an Academy data route that never answers is cut with a 503 at the route budget, and a stream is untouched', async () => {
+  const { OWNER_IDS } = require('./academy-free-users');
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer owner' ? { ok: true, userId: OWNER_IDS[0], tier: 'academy' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const logs = [];
+  await withServer({ academyOAuth, routeBudgetMs: 300, getShortInsight: () => ({ insight: (symbol) => (symbol === 'HANG' ? new Promise(() => {}) : Promise.resolve({ ok: true, symbol })) }), logger: (l, e, x) => logs.push([e, x]) }, async (base) => {
+    const t0 = Date.now();
+    const res = await fetch(`${base}/academy-activity/short-insight?symbol=HANG`, { headers: { authorization: 'Bearer owner' } });
+    assert.equal(res.status, 503); assert.deepEqual(await res.json(), { ok: false, error: 'timeout' });
+    assert.ok(Date.now() - t0 < 5000);
+    assert.ok(logs.some((l) => l[0] === 'academy_route_timeout' && l[1].path === '/academy-activity/short-insight'));
+    const quick = await fetch(`${base}/academy-activity/short-insight?symbol=SPY`, { headers: { authorization: 'Bearer owner' } });
+    assert.equal(quick.status, 200, 'a route that answers in time is unaffected');
+  });
+});

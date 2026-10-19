@@ -32,3 +32,10 @@ test('a failing API returns null and backs off two minutes, then recovers', asyn
   t += 3 * 60_000;
   const r = await c.classify([{ id: 'a', text: 'ABC news' }]); assert.equal(r.get('a').score, 0.3); assert.equal(calls, 2);
 });
+
+test('reads an array wrapped in a code fence, inside an object, or cut off mid-list', () => {
+  assert.deepEqual(parseArray('```json\n[{"id":"a","score":0.2}]\n```'), [{ id: 'a', score: 0.2 }]);
+  assert.deepEqual(parseArray('{"results":[{"id":"b","score":-0.4}]}'), [{ id: 'b', score: -0.4 }]);
+  assert.deepEqual(parseArray('[{"id":"c","score":0.1,"event":"earnings"},{"id":"d","sco'), [{ id: 'c', score: 0.1, event: 'earnings' }], 'the complete rows before the cut survive');
+  assert.equal(parseArray('[nothing complete'), null);
+});

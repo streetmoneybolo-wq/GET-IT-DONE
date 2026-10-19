@@ -41,7 +41,9 @@ function describeFailure(error) {
 function createAcademyDataBridge({ baseUrl = '', secret = '', fetchImpl = fetch, now = Date.now, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const root = String(baseUrl || '').replace(/\/$/, '');
   const configured = /^https:\/\//i.test(root) && String(secret).length >= 32;
-  const timeout = Math.max(1_000, Math.min(120_000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS));
+  const timeout = Math.max(1_000, Math.min(45_000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS));
+  /* a 429 from the site pauses every bridge call for its retry-after (20 s unless it says otherwise, a minute at most) */
+  let pausedUntil = 0, pausedSec = 0;
 
   /* one request per kind/symbol at a time, and a failed one is remembered briefly so a
    * thin ticker (or a site that is cooling down) is not hit again by every viewer */
@@ -70,6 +72,7 @@ function createAcademyDataBridge({ baseUrl = '', secret = '', fetchImpl = fetch,
 
   async function fetchOnce(kind, symbol, params = {}) {
     if (!configured) return { ok: false, status: 503, code: 'academy_data_unconfigured' };
+    if (pausedUntil > now()) return { ok: false, status: 429, code: 'academy_data_unavailable', detail: 'The site is rate limiting the Academy bridge; it retries shortly.', retryAfterSec: Math.max(1, Math.ceil((pausedUntil - now()) / 1000)) };
     if (!ALLOWED_KINDS.has(kind)) return { ok: false, status: 404, code: 'not_found' };
     const safeSymbol = cleanSymbol(symbol);
     const expiration = kind === 'options' || kind === 'calendar' ? cleanExpiration(params.expiration) : '';
@@ -94,6 +97,12 @@ function createAcademyDataBridge({ baseUrl = '', secret = '', fetchImpl = fetch,
       let detail = '';
       try { const body = await response.json(); detail = String((body && (body.message || body.detail)) || '').replace(/\s+/g, ' ').trim().slice(0, 200); } catch (_) { detail = ''; }
       if (!detail) detail = response.status === 401 || response.status === 403 ? 'The site refused the Academy bridge signature.' : `The site answered ${response.status}.`;
+      if (response.status === 429) {
+        const hinted = Number(response.headers && typeof response.headers.get === 'function' ? response.headers.get('retry-after') : 0);
+        pausedSec = Math.min(60, Math.max(5, Number.isFinite(hinted) && hinted > 0 ? hinted : 20));
+        pausedUntil = now() + pausedSec * 1000;
+        return { ok: false, status: 429, code: 'academy_data_unavailable', detail, retryAfterSec: pausedSec };
+      }
       return { ok: false, status: response.status === 401 || response.status === 403 ? 503 : response.status, code: 'academy_data_unavailable', detail };
     }
     let data;
@@ -101,7 +110,7 @@ function createAcademyDataBridge({ baseUrl = '', secret = '', fetchImpl = fetch,
     return { ok: true, status: 200, data };
   }
 
-  return { configured, get, timeoutMs: timeout };
+  return { configured, get, timeoutMs: timeout, paused: () => (pausedUntil > now() ? Math.ceil((pausedUntil - now()) / 1000) : 0) };
 }
 
 module.exports = { createAcademyDataBridge, cleanSymbol, cleanExpiration };

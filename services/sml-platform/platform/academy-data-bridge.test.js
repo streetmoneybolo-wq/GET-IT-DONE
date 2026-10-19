@@ -72,3 +72,20 @@ test('data bridge shares one in-flight request per symbol and remembers a failur
   await bridge.get('earnings', 'XHG'); assert.equal(calls, 2, 'other kinds are unaffected');
   t += 16_000; await bridge.get('options', 'XHG'); assert.equal(calls, 3, 'retried after the memory window');
 });
+
+test('a 429 from the site pauses every bridge call for its retry-after, and a bridge call never waits longer than forty-five seconds', async () => {
+  let clock = 1_700_000_000_000; const calls = [];
+  const bridge = createAcademyDataBridge({
+    baseUrl: 'https://stockmarketloop.com', secret: 'a'.repeat(32), now: () => clock, timeoutMs: 120_000,
+    fetchImpl: async (url) => { calls.push(url); return new Response(JSON.stringify({ message: 'Too many requests' }), { status: 429, headers: { 'retry-after': '7' } }); }
+  });
+  assert.equal(bridge.timeoutMs, 45_000, 'capped: a member has given up long before two minutes');
+  const first = await bridge.get('earnings', 'TSLG');
+  assert.equal(first.status, 429); assert.equal(first.retryAfterSec, 7); assert.equal(bridge.paused(), 7);
+  const second = await bridge.get('earnings', 'NVDA');
+  assert.equal(second.status, 429); assert.match(second.detail, /rate limiting/); assert.equal(calls.length, 1, 'nothing else goes to the site while paused');
+  clock += 8_000;
+  assert.equal(bridge.paused(), 0);
+  await bridge.get('earnings', 'AMD');
+  assert.equal(calls.length, 2, 'after the pause the bridge tries again');
+});

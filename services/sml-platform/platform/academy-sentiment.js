@@ -228,7 +228,7 @@ function createSentimentMemory({ store = null, now = Date.now, logger = () => {}
 }
 
 /* ------------------------------------------------------------------ service */
-function createSentimentService({ news, social, chain, market, quote, classifier = null, memory = createSentimentMemory(), now = Date.now, ttlMs = 60_000, logger = () => {} } = {}) {
+function createSentimentService({ news, social, chain, market, quote, classifier = null, memory = createSentimentMemory(), now = Date.now, ttlMs = 60_000, inputTimeoutMs = 12_000, logger = () => {} } = {}) {
   /* Claude reads the headlines and the untagged social posts before the lexicon would; whatever it does not answer keeps the word-list score. */
   async function aiTag(symbol, newsItems, social_) {
     if (!classifier || typeof classifier.classify !== 'function') return null;
@@ -248,8 +248,12 @@ function createSentimentService({ news, social, chain, market, quote, classifier
   const cache = new Map(), inflight = new Map();
   async function safe(name, fn, fallback) {
     if (typeof fn !== 'function') return { available: false, reason: 'not_configured' };
-    try { const r = await fn(); return r === undefined ? fallback : r; }
-    catch (error) { logger('warn', 'sentiment_input_failed', { input: name, error }); return { available: false, reason: 'provider_error' }; }
+    let timer = null;
+    try {
+      const r = await Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('input_timeout')), inputTimeoutMs); })]);
+      return r === undefined ? fallback : r;
+    } catch (error) { logger('warn', 'sentiment_input_failed', { input: name, error: String((error && error.message) || error) }); return { available: false, reason: String(error && error.message) === 'input_timeout' ? 'timeout' : 'provider_error' }; }
+    finally { clearTimeout(timer); }
   }
   async function compute(symbol) {
     await memory.load();

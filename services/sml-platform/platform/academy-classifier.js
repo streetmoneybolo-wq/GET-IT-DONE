@@ -19,10 +19,19 @@ const clamp = (v, lo = -1, hi = 1) => Math.max(lo, Math.min(hi, v));
 const hash = (s) => crypto.createHash('sha1').update(String(s)).digest('hex');
 
 function parseArray(text) {
-  const s = String(text || '').trim();
+  const s = String(text || '').replace(/```(?:json)?/gi, '').trim();
+  const tryParse = (chunk) => { try { return JSON.parse(chunk); } catch (_) { return undefined; } };
+  const whole = tryParse(s);
+  if (Array.isArray(whole)) return whole;
+  if (whole && typeof whole === 'object') { const arr = Object.values(whole).find(Array.isArray); if (arr) return arr; }
   const start = s.indexOf('['), end = s.lastIndexOf(']');
-  if (start < 0 || end <= start) return null;
-  try { const v = JSON.parse(s.slice(start, end + 1)); return Array.isArray(v) ? v : null; } catch (_) { return null; }
+  if (start < 0) return null;
+  const inner = end > start ? tryParse(s.slice(start, end + 1)) : undefined;
+  if (Array.isArray(inner)) return inner;
+  /* a truncated answer: keep the complete rows before the cut */
+  const rows = [];
+  for (const m of s.slice(start + 1).matchAll(/\{[^{}]*\}/g)) { const r = tryParse(m[0]); if (r && typeof r === 'object') rows.push(r); }
+  return rows.length ? rows : null;
 }
 
 function createClassifier({ apiKey = '', model = 'claude-haiku-5-5', fetchImpl = fetch, now = Date.now, ttlMs = 24 * 3_600_000, maxBatch = 40, timeoutMs = 12_000, logger = () => {} } = {}) {

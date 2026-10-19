@@ -154,3 +154,18 @@ test('memory load is shared: a concurrent observation is not lost when the store
   m.observeRate('NEW', 5);
   assert.ok(m.baseline('OLD') && m.baseline('NEW'));
 });
+
+test('an input that hangs cannot hold the read: it times out and the rest of the composite still answers', async () => {
+  const logs = [];
+  const svc = S.createSentimentService({
+    news: async () => [{ title: 'Acme beats estimates and raises guidance', publishedAt: new Date().toISOString() }],
+    social: () => new Promise(() => {}), chain: async () => [], market: async () => ({}), quote: async () => ({ price: 10, changePct: 1 }),
+    inputTimeoutMs: 30, logger: (l, e, x) => logs.push([e, x])
+  });
+  const t0 = Date.now();
+  const out = await svc.get('ACME');
+  assert.ok(Date.now() - t0 < 2000, 'answered promptly');
+  assert.equal(out.ok, true);
+  assert.equal(out.components.social.available, false); assert.equal(out.components.social.reason, 'timeout');
+  assert.ok(logs.some((l) => l[0] === 'sentiment_input_failed' && l[1].input === 'social' && /input_timeout/.test(l[1].error)));
+});

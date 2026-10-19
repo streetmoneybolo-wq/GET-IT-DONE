@@ -42,7 +42,7 @@ function mergeSocial(stocktwits, reddit) {
 function createRedditService({ fetchImpl = fetch, clientId = '', clientSecret = '', userAgent = 'web:stockmarketloop-academy:1.0 (by /u/stockmarketloop)', now = Date.now, ttlMs = 10 * 60_000, subreddits = SUBS, logger = () => {}, enabled = true } = {}) {
   const cache = new Map(), inflight = new Map();
   const oauth = Boolean(clientId && clientSecret);
-  let token = null, tokenUntil = 0, lastReq = 0, backoffUntil = 0;
+  let token = null, tokenUntil = 0, lastReq = 0, backoffUntil = 0, quietUntil = 0;
   async function bearer() {
     if (token && tokenUntil > now() + 60_000) return token;
     const res = await fetchImpl(TOKEN_URL, { method: 'POST', headers: { authorization: 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64'), 'content-type': 'application/x-www-form-urlencoded', 'user-agent': userAgent }, body: 'grant_type=client_credentials', signal: AbortSignal.timeout(8_000) });
@@ -58,7 +58,8 @@ function createRedditService({ fetchImpl = fetch, clientId = '', clientSecret = 
     const url = `${base}/r/${subs}/search${oauth ? '' : '.json'}?q=${q}&restrict_sr=1&sort=new&t=week&limit=100&raw_json=1`;
     const headers = { 'user-agent': userAgent, accept: 'application/json' }; if (oauth) headers.authorization = `Bearer ${await bearer()}`;
     const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(8_000) });
-    if (res.status === 429 || res.status === 403) { backoffUntil = now() + 5 * 60_000; throw new Error(`reddit_${res.status}`); }
+    /* 429 is a rate limit (five minutes); 403 is a block (half an hour): hammering a block only lengthens it */
+    if (res.status === 429 || res.status === 403) { backoffUntil = now() + (res.status === 403 ? 30 : 5) * 60_000; throw new Error(`reddit_${res.status}`); }
     if (!res.ok) throw new Error(`reddit_${res.status}`);
     const j = await res.json();
     return (j && j.data && Array.isArray(j.data.children)) ? j.data.children : [];
@@ -77,7 +78,12 @@ function createRedditService({ fetchImpl = fetch, clientId = '', clientSecret = 
     const key = String(symbol || '').toUpperCase();
     const hit = cache.get(key); if (hit && hit.until > now()) return hit.value;
     if (inflight.has(key)) return inflight.get(key);
-    const p = compute(key).catch((error) => { logger('warn', 'reddit_failed', { symbol: key, error: String(error && error.message || error) }); return null; })
+    const p = compute(key).catch((error) => {
+      const message = String(error && error.message || error);
+      /* while backing off, every symbol fails the same way: one line a minute says so, not one per symbol */
+      if (message !== 'reddit_backoff' || now() >= quietUntil) { if (message === 'reddit_backoff') quietUntil = now() + 60_000; logger('warn', 'reddit_failed', { symbol: key, error: message, ...(message === 'reddit_backoff' ? { untilMs: Math.max(0, backoffUntil - now()) } : {}) }); }
+      return null;
+    })
       .then((v) => { cache.set(key, { until: now() + (v ? ttlMs : 2 * 60_000), value: v }); if (cache.size > 300) cache.delete(cache.keys().next().value); return v; }).finally(() => inflight.delete(key));
     inflight.set(key, p); return p;
   }

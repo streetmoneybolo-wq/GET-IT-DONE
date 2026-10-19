@@ -4,6 +4,9 @@ const http = require('node:http');
 const fs = require('node:fs');
 const zlib = require('node:zlib');
 const crypto = require('node:crypto');
+const { monitorEventLoopDelay } = require('node:perf_hooks');
+/* event-loop lag histogram, enabled by main() beside the memory telemetry: a stalled loop is what makes a synchronous route take seconds */
+let loopMonitor = null;
 const pathModule = require('node:path');
 const { getConfig } = require('./config');
 const { createDatabase } = require('./database');
@@ -474,6 +477,7 @@ async function handleAlertRequest(request, response, options, action) {
 }
 
 function sendJson(response, status, body) {
+  if (response.headersSent || response.writableEnded) return;
   const payload = JSON.stringify(body);
   const req = response.req;
   const acceptGzip = req && /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
@@ -1910,6 +1914,9 @@ function mergeLive(base, massive, symbolRaw) {
   return out;
 }
 
+/* a streaming route sends its headers at once and is untouched; a data route that has not answered by then is cut with a 503 */
+const ACADEMY_ROUTE_BUDGET_MS = Number(process.env.SML_ACADEMY_ROUTE_BUDGET_MS) || 20_000;
+
 function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSecret = '',
   acceptStripeEvent, stripeWebhookSecret = '', billingApiSecret = '', stripe = null,
   pool = null, upgradeChat = null, upgradeChatPlanMap = {},
@@ -1930,7 +1937,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getSqueezeList = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null,
-  pageAssets = null,
+  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -2044,6 +2051,15 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   };
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
+    if (path.startsWith('/academy-activity/') && path !== '/academy-activity/') {
+      const watchdog = setTimeout(() => {
+        if (response.headersSent || response.writableEnded) return;
+        logger('warn', 'academy_route_timeout', { path: path.slice(0, 80), method: request.method });
+        try { sendJson(response, 503, { ok: false, error: 'timeout' }); } catch (_) { try { response.destroy(); } catch (__) {} }
+      }, routeBudgetMs);
+      if (watchdog.unref) watchdog.unref();
+      response.once('close', () => clearTimeout(watchdog));
+    }
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
     const connectOptions = { billingApiSecret, pool, logger, now };
 
@@ -4440,7 +4456,13 @@ function memorySample() {
   const mb = (n) => Math.round(n / 1048576);
   let heapLimit = null;
   try { heapLimit = mb(require('v8').getHeapStatistics().heap_size_limit); } catch (_) { heapLimit = null; }
-  return { rss: mb(m.rss), heapTotal: mb(m.heapTotal), heapUsed: mb(m.heapUsed), external: mb(m.external), arrayBuffers: mb(m.arrayBuffers || 0), heapLimit, uptimeS: Math.round(process.uptime()) };
+  const out = { rss: mb(m.rss), heapTotal: mb(m.heapTotal), heapUsed: mb(m.heapUsed), external: mb(m.external), arrayBuffers: mb(m.arrayBuffers || 0), heapLimit, uptimeS: Math.round(process.uptime()) };
+  if (loopMonitor) {
+    const ns = (v) => Math.round(Number(v) / 1e6);
+    out.loopP50 = ns(loopMonitor.percentile(50)); out.loopP99 = ns(loopMonitor.percentile(99)); out.loopMax = ns(loopMonitor.max);
+    loopMonitor.reset();
+  }
+  return out;
 }
 
 function dataStatusSummary() {
@@ -5391,7 +5413,8 @@ async function main() {
   server.listen(config.port, () => {
     log('info', 'api_started', { port: config.port, memory: memorySample() });
     /* one line a minute on what the process weighs, so a climb toward the 512 MB kill line is visible in the log before it happens */
-    const memoryTimer = setInterval(() => { const m = memorySample(); log(m.rss >= 440 ? 'warn' : 'info', 'memory_sample', m); }, 60_000);
+    try { loopMonitor = monitorEventLoopDelay({ resolution: 20 }); loopMonitor.enable(); } catch (_) { loopMonitor = null; }
+    const memoryTimer = setInterval(() => { const m = memorySample(); log(m.rss >= 440 || (m.loopP99 || 0) >= 500 ? 'warn' : 'info', 'memory_sample', m); }, 60_000);
     if (memoryTimer.unref) memoryTimer.unref();
     startAcademyChartWarmers(log, marketHistory);
     if (academyOrderFlow) {

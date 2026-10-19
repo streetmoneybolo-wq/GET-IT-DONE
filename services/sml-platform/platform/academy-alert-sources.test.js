@@ -176,3 +176,21 @@ test('a bot that posts alerts is offered as a poster to follow; after posting an
   assert.equal(await sources.followOwn(U, CH_VIP), false, 'a channel the member cannot read: no follow, no throw');
   assert.equal((await sources.list(U)).sources.length, 1);
 });
+
+test('a bot token Discord refuses (401) is left alone for six hours instead of being retried every five minutes', async () => {
+  let clock = 1_700_000_000_000; const logs = []; const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push(options.headers.authorization);
+    if (options.headers.authorization === 'Bot dead') return { ok: false, status: 401, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => [{ id: '938894329076940820', name: 'MEM' }] };
+  };
+  const dir = createDiscordDirectory({ tokens: [{ label: 'connect', token: 'dead' }, { label: 'academy', token: 'live' }], fetchImpl, now: () => clock, logger: (l, e, x) => logs.push([e, x]) });
+  const guilds = await dir.botGuilds();
+  assert.equal(guilds.get('938894329076940820').token.label, 'academy');
+  assert.deepEqual(logs.filter((l) => l[0] === 'academy_alert_sources_guilds_failed').map((l) => l[1].pausedHours), [6]);
+  clock += 6 * 60_000; await dir.botGuilds();
+  clock += 6 * 60_000; await dir.botGuilds();
+  assert.equal(calls.filter((a) => a === 'Bot dead').length, 1, 'the dead token is not tried again');
+  clock += 6 * 3_600_000 + 60_000; await dir.botGuilds();
+  assert.equal(calls.filter((a) => a === 'Bot dead').length, 2, 'six hours later it gets one more chance');
+});

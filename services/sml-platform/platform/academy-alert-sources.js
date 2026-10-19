@@ -70,11 +70,20 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
   }
   const botUser = (t) => cached(`me:${t.label}`, 3_600_000, async () => { const r = await call(t, '/users/@me'); return r.data ? String(r.data.id) : ''; });
   /* every server any Academy bot is in -> { id, name, token } */
+  /* a token Discord refuses outright (401) is dead: it is left alone for six hours instead of being retried every five minutes */
+  const deadTokens = new Map();
+  const DEAD_TOKEN_MS = 6 * 3_600_000;
   const botGuilds = () => cached('guilds', 300_000, async () => {
     const out = new Map();
     for (const t of tokens) {
-      try { const r = await call(t, '/users/@me/guilds?limit=200'); for (const g of (r.data || [])) if (!out.has(String(g.id))) out.set(String(g.id), { id: String(g.id), name: cleanLabel(g.name), token: t }); }
-      catch (error) { logger('warn', 'academy_alert_sources_guilds_failed', { bot: t.label, error: String(error.message || error) }); }
+      const deadUntil = deadTokens.get(t.label) || 0;
+      if (deadUntil > now()) continue;
+      try { const r = await call(t, '/users/@me/guilds?limit=200'); deadTokens.delete(t.label); for (const g of (r.data || [])) if (!out.has(String(g.id))) out.set(String(g.id), { id: String(g.id), name: cleanLabel(g.name), token: t }); }
+      catch (error) {
+        const message = String(error.message || error);
+        if (error && error.status === 401) deadTokens.set(t.label, now() + DEAD_TOKEN_MS);
+        logger('warn', 'academy_alert_sources_guilds_failed', { bot: t.label, error: message, ...(error && error.status === 401 ? { pausedHours: 6 } : {}) });
+      }
     }
     return out;
   });

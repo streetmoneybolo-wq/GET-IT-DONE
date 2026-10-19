@@ -55,3 +55,22 @@ test('service: OAuth mode fetches a token once and uses oauth.reddit.com', async
   assert.equal(calls.filter((c) => c.url.includes('access_token')).length, 1);
   assert.ok(calls.filter((c) => c.url.startsWith('https://oauth.reddit.com/')).every((c) => c.auth === 'Bearer tok'));
 });
+
+test('a 403 is a block: half an hour off, and the backoff is logged once a minute rather than once per symbol', async () => {
+  let clock = NOW; const logs = [];
+  let status = 403;
+  const svc = reddit.createRedditService({ now: () => clock, logger: (l, e, x) => logs.push(x), fetchImpl: async () => ({ ok: status === 200, status, json: async () => ({ data: { children: [] } }) }) });
+  assert.equal(await svc.posts('NVDA'), null);
+  assert.equal(logs[0].error, 'reddit_403');
+  for (const s of ['AMD', 'TSLA', 'AAPL']) await svc.posts(s);
+  assert.equal(logs.filter((x) => x.error === 'reddit_backoff').length, 1, 'three symbols in backoff: one line');
+  clock += 61_000; await svc.posts('MSFT');
+  assert.equal(logs.filter((x) => x.error === 'reddit_backoff').length, 2, 'a minute later: one more');
+  clock += 20 * 60_000; status = 200;
+  await svc.posts('GOOG');
+  assert.equal(logs[logs.length - 1].error, 'reddit_backoff', 'still blocked at 21 minutes');
+  clock += 10 * 60_000;
+  assert.deepEqual(logs.filter((x) => x.error === 'reddit_200'), [], 'sanity');
+  const after = await svc.posts('META');
+  assert.notEqual(after, null, 'after half an hour the request goes out again');
+});
