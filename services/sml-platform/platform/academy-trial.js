@@ -20,6 +20,7 @@ const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&':
 function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', store = null, days = 15, enabled = true, appName = 'Making Easy Money Academy',
   fetchImpl = globalThis.fetch, now = Date.now, logger = () => {}, buyUrl = '', botToken = '', inviteUrl = '' } = {}) {
   const invite = /^https:\/\/(discord\.gg|discord\.com\/invite)\//i.test(String(inviteUrl || '')) ? String(inviteUrl).trim() : '';
+  const siteRegisterUrl = 'https://stockmarketloop.com/register/', siteConnectUrl = 'https://stockmarketloop.com/connect-discord/';
   const origin = String(publicUrl || '').replace(/\/+$/, '');
   const configured = Boolean(enabled && clientId && clientSecret && /^https:\/\//.test(origin) && store && typeof store.add === 'function');
   const trialDays = Math.max(1, Math.min(90, Number(days) || 15));
@@ -91,17 +92,17 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
     + '.lk{display:block;width:100%;box-sizing:border-box;margin:10px 0 4px;padding:11px 12px;border:1px solid #2b4b5a;border-radius:10px;background:#07111a;color:#aef5d5;font:700 .92rem ui-monospace,monospace}h3{margin:18px 0 6px;font-size:1rem}</style></head><body><main><div class="card">' + body + '</div></main></body></html>';
   /* how an Activity actually opens: from inside Discord. The link becomes a Play card when pasted into any chat or DM; the
      App Launcher is the other door; the user-install link puts the Academy on the account for servers that never added it. */
-  /* Discord refuses to launch the Academy from a DM for anyone outside the server ("This Activity is age-restricted"), so the
-     door is the server: join it, open any channel, tap Apps and launch. The DM link stays as the second door for members. */
-  const launch = () => '<h3>Open the Academy</h3>'
-    + (invite ? '<p><b>Step 1.</b> Join the ' + esc(appName) + ' Discord server. The Academy launches from inside the server; opened from a DM, Discord shows <i>"This Activity is age-restricted"</i> to anyone who has not joined.</p>'
-      + '<a class="btn" href="' + esc(invite) + '">Join the Discord server</a>'
-      + '<p style="margin-top:14px"><b>Step 2.</b> In any channel of the server, tap the <b>Apps</b> (rocket) button, find <b>' + esc(appName) + '</b> and press <b>Launch</b>. Sign in when it asks; your trial is on your Discord account.</p>'
-      : '<p>In any channel of the ' + esc(appName) + ' Discord server, tap the <b>Apps</b> (rocket) button, find <b>' + esc(appName) + '</b> and press <b>Launch</b>. Sign in when it asks; your trial is on your Discord account.</p>')
-    + '<h3>Already in the server?</h3><p>Paste this link into a channel and press <b>Play</b> on the card:</p>'
+  /* How the Academy opens, anywhere in Discord: a free stockmarketloop.com account, the Stock Market Loop Connect bot connected
+     to the member's Discord account (the site prompts for it), the Academy added to that account, then Apps -> Launch in any
+     chat or DM. No server membership is needed. */
+  const launch = () => '<h3>Open the Academy anywhere in Discord</h3><ol>'
+    + '<li><b>Create your free stockmarketloop.com account</b> (or sign in). <a href="' + esc(siteRegisterUrl) + '">Create account</a></li>'
+    + '<li><b>Connect your Discord.</b> The site prompts you to connect the <b>Stock Market Loop Connect</b> bot to your Discord account; accept it. <a href="' + esc(siteConnectUrl) + '">Connect Discord</a></li>'
+    + '<li><b>Add the Academy to your Discord account</b>, so it launches in any server or DM: <a href="' + installUrl + '">Add the Academy</a></li>'
+    + '<li><b>Launch it.</b> In any Discord chat or DM, tap the <b>Apps</b> (rocket) button, find <b>' + esc(appName) + '</b> and press <b>Launch</b>. Or paste this link into a chat and press <b>Play</b> on the card. Sign in when it asks; your trial is on your Discord account.</li></ol>'
     + '<input class="lk" readonly value="' + esc(activityUrl) + '" onfocus="this.select()" aria-label="Academy activity link">'
-    + '<a class="btn alt" href="' + activityUrl + '">Open in Discord</a><a class="btn alt" href="' + installUrl + '">Add the Academy to your Discord account</a>'
-    + '<small>If Discord says the Activity is age-restricted, you opened it from a DM or from outside the server: join the server with the button above and launch it from a channel there.</small>';
+    + '<a class="btn" href="' + activityUrl + '">Open in Discord</a><a class="btn alt" href="' + installUrl + '">Add the Academy to your Discord account</a>'
+    + (invite ? '<small>Want the community too? <a href="' + esc(invite) + '">Join the ' + esc(appName) + ' Discord server</a> (optional; the Academy works without it).</small>' : '');
   const landing = (via) => page(appName + ' · free trial', '<p class="k">FREE TRIAL · ' + trialDays + ' DAYS</p><h1>' + esc(appName) + '</h1>'
     + '<p>The live chart lab, every lesson with narration, the scanner, options, Level 2, alerts desk and member profiles. Free for ' + trialDays + ' days on your Discord account, in any Discord server where the Academy runs. No card.</p>'
     + '<a class="btn" href="/academy-activity/trial/start' + (via ? '?via=' + encodeURIComponent(via) : '') + '">Continue with Discord</a>'
