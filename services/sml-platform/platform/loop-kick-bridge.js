@@ -133,7 +133,31 @@ function createLoopKickBridge({ baseUrl = '', secret = '', appUrl = '', fetchImp
     return { ok: true, status: 200, linked: payload.linked === true, userId: Number(payload.user_id) || userId, verified: payload.verified !== false };
   }
 
-  return { configured, session, profile, activity, link };
+  /* Sign up with Discord: create or match the member's site account from what Discord shared (identify + email), link the Discord id,
+     mark the email verified when Discord verified it, and get a one-time sign-in link. POST /wp-json/sml-loop-kick/v1/discord-register. */
+  async function register({ discordUserId = '', discordTag = '', email = '', emailVerified = false, name = '', returnTo = '' } = {}) {
+    if (!configured) return { ok: false, status: 503, error: 'loop_kick_unconfigured' };
+    const cleanId = String(discordUserId || '').replace(/\D/g, '');
+    if (!/^\d{15,24}$/.test(cleanId)) return { ok: false, status: 400, error: 'invalid_discord_user' };
+    const path = '/wp-json/sml-loop-kick/v1/discord-register';
+    const body = JSON.stringify({ discord_user_id: cleanId, discord_tag: String(discordTag || '').slice(0, 190), email: String(email || '').trim().slice(0, 254), email_verified: emailVerified === true, name: String(name || '').slice(0, 80), return_to: String(returnTo || '').slice(0, 500) });
+    const timestamp = String(Math.floor(now() / 1000));
+    const bodyHash = crypto.createHash('sha256').update(body).digest('hex');
+    const signature = crypto.createHmac('sha256', String(secret)).update(`${timestamp}.${path}.${bodyHash}`).digest('hex');
+    let response;
+    try {
+      response = await fetchImpl(`${root}${path}`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'x-sml-lk-timestamp': timestamp, 'x-sml-lk-signature': `sha256=${signature}` }, body, signal: AbortSignal.timeout(10_000) });
+    } catch (error) { return { ok: false, status: 503, error: 'loop_kick_unavailable' }; }
+    let payload = null; try { payload = await response.json(); } catch (error) { payload = null; }
+    if (response.status === 404 && payload && payload.code === 'rest_no_route') return { ok: false, status: 503, error: 'register_unconfigured' }; // the site runs the connect plugin without sign-up
+    if (response.status === 409) return { ok: false, status: 409, error: payload && payload.code === 'sml_lkd_discord_already_linked' ? 'discord_already_linked' : 'email_unverified_existing' };
+    if (response.status === 400) return { ok: false, status: 400, error: payload && payload.code === 'sml_lkc_email_required' ? 'email_required' : 'invalid_request' };
+    if (!response.ok || !payload || payload.ok !== true) return { ok: false, status: 503, error: 'loop_kick_unavailable' };
+    const https = (v) => (/^https:\/\//i.test(String(v || '')) ? String(v) : '');
+    return { ok: true, status: 200, created: payload.created === true, matched: payload.matched === true, verified: payload.verified === true, userId: Number(payload.user_id) || 0, handle: String(payload.handle || '').slice(0, 80), loginUrl: https(payload.login_url), profileUrl: https(payload.profile_url) };
+  }
+
+  return { configured, session, profile, activity, link, register };
 }
 
 module.exports = { createLoopKickBridge };

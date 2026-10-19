@@ -19,11 +19,13 @@ test('the trial link: landing, Discord sign-in with a signed state, a 15-day pas
   const fetchImpl = async (url, options) => {
     calls.push(url);
     if (/oauth2\/token$/.test(url)) { assert.match(options.body, /grant_type=authorization_code/); assert.match(options.body, /redirect_uri=https%3A%2F%2Facademy.example%2Facademy-activity%2Ftrial%2Fcallback/); return { ok: true, json: async () => ({ access_token: 'at' }) }; }
-    if (/users\/@me$/.test(url)) return { ok: true, json: async () => ({ id: '420000000000000042', username: 'ana', global_name: 'Ana' }) };
+    if (/users\/@me$/.test(url)) return { ok: true, json: async () => ({ id: '420000000000000042', username: 'ana', global_name: 'Ana', email: 'ana@example.com', verified: true }) };
     throw new Error('unexpected ' + url);
   };
   let t = T0;
-  const trial = createAcademyTrial({ clientId: APP, clientSecret: 's3cret', publicUrl: 'https://academy.example/', store, fetchImpl, now: () => t, inviteUrl: 'https://discord.gg/makingeasymoney' });
+  const registered = [];
+  const bridge = { register: async (o) => { registered.push(o); return { ok: true, created: true, matched: false, verified: true, userId: 77, handle: 'ana', loginUrl: 'https://stockmarketloop.com/?sml_lkc_login=abc', profileUrl: 'https://stockmarketloop.com/members/77/' }; } };
+  const trial = createAcademyTrial({ clientId: APP, clientSecret: 's3cret', publicUrl: 'https://academy.example/', store, fetchImpl, now: () => t, inviteUrl: 'https://discord.gg/makingeasymoney', bridge: () => bridge });
   assert.equal(trial.configured, true); assert.equal(trial.days, 15);
   assert.equal(trial.link, 'https://academy.example/academy-activity/trial');
   assert.equal(trial.activityUrl, 'https://discord.com/activities/' + APP);
@@ -35,7 +37,7 @@ test('the trial link: landing, Discord sign-in with a signed state, a 15-day pas
   assert.equal(res.status, 302);
   const auth = new URL(res.headers.location);
   assert.equal(auth.origin + auth.pathname, 'https://discord.com/oauth2/authorize');
-  assert.equal(auth.searchParams.get('scope'), 'identify'); assert.equal(auth.searchParams.get('client_id'), APP);
+  assert.equal(auth.searchParams.get('scope'), 'identify email', 'the email Discord shares makes the site account'); assert.equal(auth.searchParams.get('client_id'), APP);
   assert.equal(auth.searchParams.get('redirect_uri'), 'https://academy.example/academy-activity/trial/callback');
   assert.equal(auth.searchParams.get('prompt'), null, 'the default consent screen: a first-time visitor must be able to authorise');
   const state = auth.searchParams.get('state');
@@ -43,7 +45,7 @@ test('the trial link: landing, Discord sign-in with a signed state, a 15-day pas
   assert.equal(trial.openState(state.slice(0, -2) + 'xx'), null, 'a tampered state is refused');
   // callback: the pass is granted, the page opens the Activity
   res = fakeResponse(); await trial.handle(req('/academy-activity/trial/callback'), res, '/academy-activity/trial/callback', new URL('https://academy.example/academy-activity/trial/callback?code=abc&state=' + encodeURIComponent(state)));
-  assert.equal(res.status, 200); assert.match(res.body, /You’re in, Ana\./); assert.match(res.body, /discord\.com\/activities\/1551336038713139370/); assert.match(res.body, /oauth2\/authorize\?client_id=1551336038713139370&integration_type=1&scope=applications.commands/); assert.match(res.body, /Open the Academy anywhere in Discord/); assert.match(res.body, /Create your free stockmarketloop\.com account/); assert.match(res.body, /href="https:\/\/stockmarketloop\.com\/connect-discord\/"/); assert.match(res.body, /Stock Market Loop Connect<\/b> bot/); assert.match(res.body, /Add the Academy to your Discord account/); assert.match(res.body, /optional; the Academy works without it/, 'the server is an optional extra, never a requirement'); assert.ok(res.body.indexOf('stockmarketloop.com/register/') < res.body.indexOf('discord.gg/makingeasymoney')); assert.match(res.body, /value="https:\/\/discord.com\/activities\/1551336038713139370"/);
+  assert.equal(res.status, 200); assert.match(res.body, /You’re in, Ana\./); assert.match(res.body, /discord\.com\/activities\/1551336038713139370/); assert.match(res.body, /oauth2\/authorize\?client_id=1551336038713139370&integration_type=1&scope=applications.commands/); assert.match(res.body, /Open the Academy anywhere in Discord/); assert.match(res.body, /Your stockmarketloop\.com account is ready\.<\/b> It was created from your Discord sign-in, email verified by Discord, and the Stock Market Loop Connect bot is connected\./); assert.match(res.body, /href="https:\/\/stockmarketloop\.com\/\?sml_lkc_login=abc"/); assert.doesNotMatch(res.body, /Create your free stockmarketloop\.com account/, 'the account step is done, not asked for'); assert.equal(registered.length, 1); assert.equal(registered[0].discordUserId, '420000000000000042'); assert.equal(registered[0].emailVerified, true); assert.equal(registered[0].email, 'ana@example.com'); assert.match(res.body, /Add the Academy to your Discord account/); assert.match(res.body, /optional; the Academy works without it/, 'the server is an optional extra, never a requirement'); assert.ok(res.body.indexOf('stockmarketloop.com/register/') < res.body.indexOf('discord.gg/makingeasymoney')); assert.match(res.body, /value="https:\/\/discord.com\/activities\/1551336038713139370"/);
   const pass = await store.active('420000000000000042', new Date(T0 + 1000), 'academy');
   assert.equal(pass.plan, 'trial'); assert.equal(pass.amount, 0); assert.equal(pass.ref, 'acad-trial:420000000000000042');
   assert.equal(new Date(pass.expiresAt).getTime() - new Date(pass.startsAt).getTime(), 15 * 86_400_000);

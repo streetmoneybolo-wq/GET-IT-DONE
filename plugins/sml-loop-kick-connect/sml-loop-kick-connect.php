@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: SML LOOP-KICK Connect
- * Description: One-tap LOOP-KICK ↔ Discord connection for the Making Easy Money Academy. Adds the signed /wp-json/sml-loop-kick/v1/discord-link route (called by sml-platform-api after the member signed in with their site password) and the /connect-discord/?lk= one-tap link handler. Add-on to the SML LOOP-KICK Discord Bridge mu-plugin 1.1.0: it reuses that plugin's signature checks and secret, and steps aside automatically once the bridge itself ships these routes (1.2.0+).
- * Version: 1.0.0
+ * Description: One-tap LOOP-KICK ↔ Discord connection for the Making Easy Money Academy, and sign-up with Discord (the signed /discord-register route creates or matches the member's account from the email Discord shares, marks it verified when Discord already verified it, links the Discord id, and hands back a one-time sign-in link). Adds the signed /wp-json/sml-loop-kick/v1/discord-link route (called by sml-platform-api after the member signed in with their site password) and the /connect-discord/?lk= one-tap link handler. Add-on to the SML LOOP-KICK Discord Bridge mu-plugin 1.1.0: it reuses that plugin's signature checks and secret, and steps aside automatically once the bridge itself ships these routes (1.2.0+).
+ * Version: 1.1.0
  * Author: StockMarketLoop
  */
 
@@ -177,6 +177,145 @@ add_action( 'wp_body_open', static function () {
 	echo '<div style="max-width:760px;margin:18px auto 0;padding:14px 18px;border-radius:12px;font:600 15px/1.5 system-ui,sans-serif;color:' . ( $ok ? '#04170d' : '#fff' ) . ';background:' . ( $ok ? '#22d97a' : '#7a2634' ) . '">' . esc_html( $messages[ $key ] ) . '</div>';
 } );
 
+/* ---------- sign up with Discord ----------
+ * sml-platform-api signs the member in with Discord (identify + email) and calls /discord-register with what Discord shared.
+ *   - a Discord id that is already linked: that member, nothing created
+ *   - an email that already belongs to a member: linked to that member, but only when Discord has verified the email
+ *     (Discord's verification is as good as our own code: the member proved they own that mailbox)
+ *   - otherwise a new member is created with a random password; the email is marked verified when Discord verified it
+ * The answer carries a one-time sign-in link (10 minutes, single use) so the member lands on the site signed in. */
+function sml_lkc_find_by_discord( $discord_user_id ) {
+	global $wpdb;
+	$table = sml_lkc_links_table();
+	if ( (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+		return 0;
+	}
+	return (int) $wpdb->get_var( $wpdb->prepare( "SELECT user_id FROM {$table} WHERE discord_user_id=%s", $discord_user_id ) );
+}
+
+function sml_lkc_username_for( $name, $email ) {
+	$base = sanitize_user( strtolower( preg_replace( '/[^a-z0-9._-]/i', '', (string) $name ) ), true );
+	if ( strlen( $base ) < 3 ) {
+		$base = sanitize_user( strtolower( (string) strstr( (string) $email, '@', true ) ), true );
+	}
+	if ( strlen( $base ) < 3 ) {
+		$base = 'member';
+	}
+	$base = substr( $base, 0, 40 );
+	$user = $base;
+	$i    = 1;
+	while ( username_exists( $user ) ) {
+		$user = $base . $i++;
+	}
+	return $user;
+}
+
+/** A one-time sign-in link for a member (10 minutes, single use), landing on $to when it is on this site. */
+function sml_lkc_login_link( $user_id, $to = '' ) {
+	$token = wp_generate_password( 40, false );
+	set_transient( 'sml_lkc_login_' . hash( 'sha256', $token ), array( 'u' => (int) $user_id, 'to' => (string) $to ), 10 * MINUTE_IN_SECONDS );
+	return add_query_arg( 'sml_lkc_login', $token, home_url( '/' ) );
+}
+
+add_action( 'init', static function () {
+	if ( is_admin() || empty( $_GET['sml_lkc_login'] ) ) {
+		return;
+	}
+	$token = (string) wp_unslash( $_GET['sml_lkc_login'] );
+	if ( ! preg_match( '/^[A-Za-z0-9]{40}$/', $token ) ) {
+		return;
+	}
+	$key = 'sml_lkc_login_' . hash( 'sha256', $token );
+	$row = get_transient( $key );
+	if ( ! is_array( $row ) ) {
+		wp_safe_redirect( add_query_arg( 'sml_login', 'expired', home_url( '/' ) ) );
+		exit;
+	}
+	delete_transient( $key );
+	$user = get_userdata( (int) $row['u'] );
+	if ( ! $user ) {
+		return;
+	}
+	wp_set_current_user( $user->ID );
+	wp_set_auth_cookie( $user->ID, true );
+	do_action( 'wp_login', $user->user_login, $user );
+	$to = (string) ( $row['to'] ?? '' );
+	wp_safe_redirect( $to && 0 === strpos( $to, home_url() ) ? $to : home_url( '/members/' . $user->ID . '/' ) );
+	exit;
+}, 1 );
+
+function sml_lkc_rest_discord_register( WP_REST_Request $request ) {
+	$body           = sml_lkd_signed_json( $request );
+	$discord_id     = preg_replace( '/\D/', '', (string) ( $body['discord_user_id'] ?? '' ) );
+	$tag            = sanitize_text_field( (string) ( $body['discord_tag'] ?? '' ) );
+	$email          = sanitize_email( (string) ( $body['email'] ?? '' ) );
+	$email_verified = ! empty( $body['email_verified'] );
+	$name           = sanitize_text_field( (string) ( $body['name'] ?? '' ) );
+	if ( ! preg_match( '/^\d{15,24}$/', $discord_id ) ) {
+		return new WP_Error( 'sml_lkd_bad_discord_id', 'A Discord user id is required.', array( 'status' => 400 ) );
+	}
+	$table = sml_lkc_links_table();
+	global $wpdb;
+	if ( (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+		return new WP_Error( 'sml_lkd_links_missing', 'Discord linking is not set up on this site.', array( 'status' => 503 ) );
+	}
+	$uid     = sml_lkc_find_by_discord( $discord_id );
+	$created = false;
+	$matched = false;
+	if ( ! $uid ) {
+		if ( ! $email || ! is_email( $email ) ) {
+			return new WP_Error( 'sml_lkc_email_required', 'Discord shared no email address for this account.', array( 'status' => 400 ) );
+		}
+		$existing = get_user_by( 'email', $email );
+		if ( $existing ) {
+			if ( ! $email_verified ) {
+				return new WP_Error( 'sml_lkc_email_unverified', 'An account with this email already exists. Sign in with your password to connect Discord to it.', array( 'status' => 409 ) );
+			}
+			$uid     = (int) $existing->ID;
+			$matched = true;
+		} else {
+			$username = sml_lkc_username_for( $name, $email );
+			$uid      = wp_insert_user( array(
+				'user_login'   => $username,
+				'user_email'   => $email,
+				'user_pass'    => wp_generate_password( 32, true, true ),
+				'display_name' => $name ?: $username,
+				'nickname'     => $name ?: $username,
+				'role'         => get_option( 'default_role', 'subscriber' ),
+			) );
+			if ( is_wp_error( $uid ) ) {
+				return $uid;
+			}
+			$created = true;
+			update_user_meta( $uid, 'sml_signup_via', 'discord' );
+			update_user_meta( $uid, 'sml_discord_signup_at', gmdate( 'c' ) );
+			do_action( 'sml_lkc_discord_registered', $uid, $discord_id );
+		}
+		$link = sml_lkc_upsert_link( $uid, $discord_id, $tag );
+		if ( is_wp_error( $link ) ) {
+			return $link;
+		}
+	}
+	if ( $email_verified && '1' !== (string) get_user_meta( $uid, 'sml_email_verified', true ) ) {
+		update_user_meta( $uid, 'sml_email_verified', '1' );
+		update_user_meta( $uid, 'sml_email_verified_via', 'discord' );
+	}
+	$user     = get_userdata( $uid );
+	$response = new WP_REST_Response( array(
+		'ok'          => true,
+		'created'     => $created,
+		'matched'     => $matched,
+		'linked'      => true,
+		'user_id'     => $uid,
+		'handle'      => $user ? $user->user_login : '',
+		'verified'    => '1' === (string) get_user_meta( $uid, 'sml_email_verified', true ),
+		'login_url'   => sml_lkc_login_link( $uid, (string) ( $body['return_to'] ?? '' ) ),
+		'profile_url' => home_url( '/members/' . $uid . '/' ),
+	), 200 );
+	$response->header( 'Cache-Control', 'no-store, private' );
+	return $response;
+}
+
 add_action( 'rest_api_init', static function () {
 	register_rest_route( 'sml-loop-kick/v1', '/discord-link', array(
 		'methods'             => 'POST',
@@ -184,5 +323,12 @@ add_action( 'rest_api_init', static function () {
 			return sml_lkd_verify_signed( $request, sml_lkd_bridge_secret(), 'x-sml-lk-timestamp', 'x-sml-lk-signature' );
 		},
 		'callback'            => 'sml_lkc_rest_discord_link',
+	) );
+	register_rest_route( 'sml-loop-kick/v1', '/discord-register', array(
+		'methods'             => 'POST',
+		'permission_callback' => static function ( WP_REST_Request $request ) {
+			return sml_lkd_verify_signed( $request, sml_lkd_bridge_secret(), 'x-sml-lk-timestamp', 'x-sml-lk-signature' );
+		},
+		'callback'            => 'sml_lkc_rest_discord_register',
 	) );
 } );
