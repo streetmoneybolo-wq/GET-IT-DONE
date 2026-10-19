@@ -12,9 +12,9 @@ test('returned post engagement card gives supported platforms a reply and share-
   assert.ok(labels.includes('Submit Public Proof Link'));
 });
 
-test('Stocktwits card does not offer an unsupported reshare composer', () => {
+test('Stocktwits card offers a manual, copy-first post preparation flow', () => {
   const rows = returnedPostShareComponents(id, id, 'stocktwits').map((row) => row.toJSON());
   const labels = rows.flatMap((row) => row.components.map((component) => component.label));
   assert.ok(labels.includes('Get reply to copy'));
-  assert.ok(!labels.some((label) => /share your take/i.test(label)));
+  assert.ok(labels.includes('Prepare Stocktwits post'));
 });

@@ -42,6 +42,11 @@ function bodyVariants(post, platform, reply = false) {
       clip(`${cashtag || 'This'} setup comes down to catalyst quality, volume, and whether price confirms the headline.`, 120),
       clip(`The useful question: is this already priced in, or does the next catalyst change expectations? ${cashtag}`.trim(), 120),
       clip(`I’m watching confirmation, not just the headline: price reaction, volume, and follow-through matter most. ${cashtag}`.trim(), 120),
+      clip(`${cashtag || 'The'} headline is only one input. Liquidity, risk, and follow-through decide whether the move has staying power.`, 120),
+      clip(`Worth separating the news from the trade: what does price do after the first reaction? ${cashtag}`.trim(), 120),
+      clip(`For ${cashtag || 'this name'}, I would watch the next volume test before drawing a conclusion.`, 120),
+      clip(`The useful discussion is the evidence: catalyst, float/liquidity, and whether buyers keep showing up. ${cashtag}`.trim(), 120),
+      clip(`A fast move can reverse quickly. I’m looking for price acceptance and a clear invalidation level. ${cashtag}`.trim(), 120),
     ];
   }
   if (platform === 'reddit') {
@@ -57,10 +62,16 @@ function bodyVariants(post, platform, reply = false) {
     clip(`${base}: catalyst, volume, and follow-through are the key tells.`, 120),
     clip(`${base}: what changes expectations next is the real market question.`, 120),
     clip(`${base}: watching price reaction, sentiment, and the next catalyst.`, 120),
+    clip(`${base}: the next confirmation point matters more than the first headline.`, 120),
+    clip(`${base}: separating the news from the market’s reaction is the real work.`, 120),
+    clip(`${base}: key questions are liquidity, risk, and whether momentum actually holds.`, 120),
+    clip(`${base}: a starting point for research, not a substitute for checking the source and risk.`, 120),
+    clip(`${base}: watch the evidence, then decide whether the thesis is improving or breaking.`, 120),
   ];
 }
 
 function tagSets(post, configuredTags = GENERIC_TAGS, count = 5) {
+  if (count === 0) return [[]];
   const tickerTags = effectiveTickers(post).map(hashtag);
   const sectorTags = (post.sectors || []).map(hashtag);
   const priority = [...new Set([...tickerTags, ...sectorTags].filter(Boolean))].slice(0, 2);
@@ -115,7 +126,9 @@ export async function generateSocialCopy(post, platform, { reply = false } = {})
   const settings = await readSettings();
   const bodies = bodyVariants(post, platform, reply);
   const configuredTags = platform === 'x' ? await approvedHashtags() : GENERIC_TAGS;
-  const hashtagCount = reply ? 3 : 5;
+  // Replies should read like a real contribution, not a copied promotion.
+  // Keep hashtags sparse on original posts and omit them from replies.
+  const hashtagCount = reply ? 0 : platform === 'x' ? 1 : 0;
   const sets = tagSets(post, configuredTags, hashtagCount);
   if (!sets.length) throw new Error(`The hashtag source must contain at least ${hashtagCount} unique valid hashtags.`);
   const mentionPool = platform === 'x' && !reply ? await approvedMentions(settings) : [];

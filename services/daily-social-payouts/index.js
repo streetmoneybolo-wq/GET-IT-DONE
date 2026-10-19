@@ -1037,13 +1037,22 @@ client.on('interactionCreate', async (interaction) => {
       ephemeral: true,
     });
   }
-  if (interaction.isButton() && /^sml-reshare:[0-9a-f-]{36}:[0-9a-f-]{36}:(x|facebook|reddit|linkedin|bluesky|threads)$/i.test(interaction.customId)) {
+  if (interaction.isButton() && /^sml-reshare:[0-9a-f-]{36}:[0-9a-f-]{36}:(x|facebook|reddit|linkedin|bluesky|threads|stocktwits)$/i.test(interaction.customId)) {
     try {
       await interaction.deferReply({ ephemeral: true });
       const [, postID, externalPostId, platform] = interaction.customId.split(':');
       const post = await postById(postID);
       const externalPost = post?.externalPosts?.find((entry) => entry.id === externalPostId);
       if (!post || !externalPost) return interaction.editReply('This returned-post share package is unavailable.');
+      if (platform === 'stocktwits') {
+        const stocktwits = await stocktwitsPackages(post);
+        return interaction.editReply({
+          content: `# 📈 STOCKTWITS POST DRAFT\n\nThis is a unique, cashtag-aware starting draft. Add your own reason or observation before posting, and do not publish it if it does not add value to the conversation.\n\n\`\`\`text\n${stocktwits.quote}\n\`\`\`\n\nOpen the original post, then use Stocktwits’ native composer to publish only after you review and personalize it.`,
+          components: [new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setLabel('Open original on Stocktwits').setStyle(ButtonStyle.Link).setURL(externalPost.url),
+          )],
+        });
+      }
       if (platform === 'bluesky') {
         const bluesky = await blueskyResharePackage(post, externalPost.url);
         return interaction.editReply({
@@ -1057,7 +1066,7 @@ client.on('interactionCreate', async (interaction) => {
       const url = socialShareUrl({ platform, copy, url: externalPost.url, post });
       const label = platform === 'x' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
       return interaction.editReply({
-        content: `# 🔴 COPY THIS LINK, PASTE IT, AND COME BACK WITH YOUR FINISHED POST LINK 🔴\n\n**Generated reply/reshare copy: ${Array.from(copy.body).length}/120 main-text characters · exactly 3 hashtags · no @handles:**\n\n\`\`\`text\n${copy.text}\n\`\`\`\nThen open ${label}, paste if its composer did not prefill, review it, and publish manually. The bot never posts for you.`,
+        content: `# 📝 REVIEW YOUR SHARE DRAFT\n\n**Generated draft: ${Array.from(copy.body).length}/120 main-text characters · ${copy.hashtags.length} optional hashtag${copy.hashtags.length === 1 ? '' : 's'} · no forced @handles**\n\n\`\`\`text\n${copy.text}\n\`\`\`\nAdd your own genuine perspective, verify the source, and follow the community’s rules. Then open ${label}; if its composer did not prefill, paste the edited draft and publish it manually. The bot never posts for you.`,
         components: [new ActionRowBuilder().addComponents(
           new ButtonBuilder().setLabel(`Open ${label}`).setStyle(ButtonStyle.Link).setURL(url),
         )],
