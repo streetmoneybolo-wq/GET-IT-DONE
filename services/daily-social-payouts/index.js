@@ -1066,7 +1066,7 @@ client.on('interactionCreate', async (interaction) => {
       const url = socialShareUrl({ platform, copy, url: externalPost.url, post });
       const label = platform === 'x' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
       return interaction.editReply({
-        content: `# 📝 REVIEW YOUR SHARE DRAFT\n\n**Generated draft: ${Array.from(copy.body).length}/120 main-text characters · ${copy.hashtags.length} optional hashtag${copy.hashtags.length === 1 ? '' : 's'} · no forced @handles**\n\n\`\`\`text\n${copy.text}\n\`\`\`\nAdd your own genuine perspective, verify the source, and follow the community’s rules. Then open ${label}; if its composer did not prefill, paste the edited draft and publish it manually. The bot never posts for you.`,
+        content: `# 📝 REVIEW YOUR SHARE DRAFT\n\n**Generated draft: ${Array.from(copy.body).length}/120 main-text characters · ${copy.hashtags.length} optional hashtag${copy.hashtags.length === 1 ? '' : 's'} · ${copy.mentions.length} owner-approved @handle${copy.mentions.length === 1 ? '' : 's'}**\n\n\`\`\`text\n${copy.text}\n\`\`\`\nAdd your own genuine perspective, verify the source, and follow the community’s rules. Then open ${label}; where the platform allows prefilling, the edited draft is already in its composer. Otherwise, copy the draft above and paste it manually. The bot never posts for you.`,
         components: [new ActionRowBuilder().addComponents(
           new ButtonBuilder().setLabel(`Open ${label}`).setStyle(ButtonStyle.Link).setURL(url),
         )],

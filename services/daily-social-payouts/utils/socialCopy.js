@@ -107,14 +107,14 @@ async function approvedMentions(settings) {
   return [...new Set((source.match(/(?<![A-Za-z0-9_])@[A-Za-z0-9_]{1,15}/g) || []).map((value) => clean(value).toLowerCase()))];
 }
 
-function mentionSet(pool, postID, generation) {
+function mentionSet(pool, postID, generation, limit = 1) {
   if (!pool.length) return [];
   let seed = generation;
   for (const character of String(postID || '')) seed = ((seed * 31) + character.charCodeAt(0)) >>> 0;
   const start = seed % pool.length;
   const stride = pool.length > 11 ? 11 : 1;
   const result = [];
-  for (let index = 0; index < pool.length && result.length < 5; index += 1) {
+  for (let index = 0; index < pool.length && result.length < limit; index += 1) {
     const handle = pool[(start + index * stride) % pool.length];
     if (!result.includes(handle)) result.push(handle);
   }
@@ -128,17 +128,19 @@ export async function generateSocialCopy(post, platform, { reply = false } = {})
   const configuredTags = platform === 'x' ? await approvedHashtags() : GENERIC_TAGS;
   // Replies should read like a real contribution, not a copied promotion.
   // Keep hashtags sparse on original posts and omit them from replies.
-  const hashtagCount = reply ? 0 : platform === 'x' ? 1 : 0;
+  const hashtagCount = platform === 'x' ? 1 : 0;
   const sets = tagSets(post, configuredTags, hashtagCount);
   if (!sets.length) throw new Error(`The hashtag source must contain at least ${hashtagCount} unique valid hashtags.`);
-  const mentionPool = platform === 'x' && !reply ? await approvedMentions(settings) : [];
+  // Only use handles that the owner explicitly allowlisted, and keep the
+  // number small so a draft still reads like an actual contribution.
+  const mentionPool = platform === 'x' ? await approvedMentions(settings) : [];
   const key = `${post.postID}:${platform}:${reply ? 'reply' : 'post'}`;
   let generated;
   await mutateJson(paths.shareCopyHistory, {}, (history) => {
     const previous = history[key] || [];
     const recentSets = new Set(previous.slice(-3).map((entry) => entry.hashtags.join(' ')));
     const hashtags = sets.find((set) => !recentSets.has(set.join(' '))) || sets[previous.length % sets.length];
-    const mentions = platform === 'x' && !reply ? mentionSet(mentionPool, post.postID, previous.length) : [];
+    const mentions = platform === 'x' ? mentionSet(mentionPool, post.postID, previous.length, reply ? 1 : 2) : [];
     generated = {
       // The editorial body limit is independent of the URL, handles, and hashtags.
       body: clip(bodies[previous.length % bodies.length], 120),
