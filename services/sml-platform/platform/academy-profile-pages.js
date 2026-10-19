@@ -180,7 +180,7 @@ function parseOg(html, url) {
 /* talk: the Ticker Talk store (or a function returning it, since it is built after this service); bridge: the LOOP-KICK bridge, for the member's activity on stockmarketloop.com */
 function createProfilePages({ pool = null, chat = null, paper = null, paperStore = null, tierLive = null, directory = null, wall = null, talk = null, bridge = null, fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
   const db = pool && typeof pool.query === 'function' ? pool : null;
-  const mem = { profiles: new Map(), follows: new Set(), presence: new Map(), audio: new Map() };
+  const mem = { profiles: new Map(), follows: new Set(), followAt: new Map(), presence: new Map(), audio: new Map() };
   const tiers = new Map(), cards = new Map(), images = new Set(), lastBeat = new Map();
   let lb = { at: 0, rows: [] };
 
@@ -340,7 +340,7 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
   async function follow(a, b, on = true) {
     const x = String(a), y = String(b); if (!SNOWFLAKE.test(x) || !SNOWFLAKE.test(y) || x === y) return { ok: false, error: 'invalid_follow' };
     if (db) { if (on) await db.query('INSERT INTO academy_follows (follower_id, followed_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [x, y]); else await db.query('DELETE FROM academy_follows WHERE follower_id=$1 AND followed_id=$2', [x, y]); }
-    else { if (on) mem.follows.add(x + '>' + y); else mem.follows.delete(x + '>' + y); }
+    else { if (on) { mem.follows.add(x + '>' + y); mem.followAt.set(x + '>' + y, now()); } else { mem.follows.delete(x + '>' + y); mem.followAt.delete(x + '>' + y); } }
     return { ok: true, following: on, ...(await followCounts(y, x)) };
   }
   async function followCounts(userId, viewerId = '') {
@@ -352,6 +352,25 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
     let followers = 0, following = 0;
     for (const k of mem.follows) { const [f, t] = k.split('>'); if (t === id) followers += 1; if (f === id) following += 1; }
     return { followers, following, viewerFollows: mem.follows.has(String(viewerId) + '>' + id) };
+  }
+  /* the members one member follows (ids) */
+  async function followingOf(userId, limit = 500) {
+    const id = String(userId);
+    if (db) return (await db.query('SELECT followed_id FROM academy_follows WHERE follower_id=$1 ORDER BY created_at DESC LIMIT $2', [id, limit])).rows.map((r) => String(r.followed_id));
+    return [...mem.follows].filter((k) => k.startsWith(id + '>')).map((k) => k.split('>')[1]).slice(0, limit);
+  }
+  /* the most followed members: [{ id, followers }] (traders to follow) */
+  async function topFollowed(limit = 20) {
+    const n = Math.max(1, Math.min(100, Number(limit) || 20));
+    if (db) return (await db.query('SELECT followed_id, count(*)::int AS n FROM academy_follows GROUP BY followed_id ORDER BY n DESC LIMIT $1', [n])).rows.map((r) => ({ id: String(r.followed_id), followers: Number(r.n) || 0 }));
+    const counts = new Map(); for (const k of mem.follows) { const t = k.split('>')[1]; counts.set(t, (counts.get(t) || 0) + 1); }
+    return [...counts.entries()].map(([id, followers]) => ({ id, followers })).sort((a, b) => b.followers - a.followers).slice(0, n);
+  }
+  /* who followed a member since a moment (the inbox) */
+  async function followersSince(userId, sinceIso = '', limit = 20) {
+    const id = String(userId); const since = sinceIso ? (Date.parse(sinceIso) || 0) : now() - 7 * 86_400_000;
+    if (db) return (await db.query('SELECT follower_id, created_at FROM academy_follows WHERE followed_id=$1 AND created_at > $2 ORDER BY created_at DESC LIMIT $3', [id, new Date(since), limit])).rows.map((r) => ({ id: String(r.follower_id), at: new Date(r.created_at).toISOString() }));
+    return [...mem.follows].filter((k) => k.endsWith('>' + id) && (mem.followAt.get(k) || 0) > since).map((k) => ({ id: k.split('>')[0], at: new Date(mem.followAt.get(k) || 0).toISOString() })).slice(0, limit);
   }
   async function followers(userId, limit = 50) {
     const id = String(userId);
@@ -481,7 +500,7 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
     return { userId: id, own: String(viewerId) === id, displayName: s.displayName, tagline: s.tagline, accent: s.theme.accent || '', layout: s.layout, tier, tierLabel: tierLabel(tier), server, paper: rank && rank.rank ? { rank: rank.rank, of: rank.of, returnPct: rank.returnPct, equity: rank.equity } : (rank ? { rank: null, of: rank.of } : null), followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed };
   }
 
-  return { ensureSchema, settingsOf, save, page, card, talkPosts, siteActivity, follow, followCounts, followers, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, registerImage, audioStream, uploadAudio, LAYOUTS };
+  return { ensureSchema, settingsOf, save, page, card, talkPosts, siteActivity, follow, followCounts, followers, followingOf, topFollowed, followersSince, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, registerImage, audioStream, uploadAudio, LAYOUTS };
 }
 
 module.exports = { createProfilePages, cleanSettings, linkKind, LINK_KINDS, FX, parseOg, sniffAudio, MAX_UPLOAD_BYTES, LAYOUTS, TEXTURES, DESKS, LIGHTS, ORBS };

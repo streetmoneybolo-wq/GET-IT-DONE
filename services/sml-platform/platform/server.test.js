@@ -2357,3 +2357,38 @@ test('Alert Chart routes: post, thread updates, follow with push, settings, prem
   assert.match(html, /pv-alerts-wrap/, 'the profile page has the Alert Chart section');
   assert.match(html, /\['traders', 'Traders'\]/, 'the Alerts desk has a Traders tab');
 });
+
+test('Community routes: suggestions, the Following stream, the inbox and one Follow that does both follows; the page carries the strip, tab, starters and toasts', async () => {
+  const { createCommunity } = require('./academy-community');
+  const { createTickerTalk } = require('./academy-ticker-talk');
+  const { createProfilePages } = require('./academy-profile-pages');
+  const { createTraderAlerts } = require('./academy-trader-alerts');
+  const ME = '100000000000000001', ACE = '200000000000000002';
+  const talk = createTickerTalk({ logger: () => {} });
+  const profiles = createProfilePages({});
+  const alerts = createTraderAlerts({ logger: () => {} });
+  const community = createCommunity({ talk, alerts, profiles, names: async (id) => (id === ACE ? 'Ace' : 'Me'), logger: () => {} });
+  await talk.post('SPY', { id: ACE, name: 'Ace' }, { body: 'Ace on SPY' });
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer me' ? { ok: true, userId: ME, tier: 'academy' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  await withServer({ academyOAuth, academyCommunity: community, tickerTalk: talk, academyProfilePages: profiles, traderAlerts: alerts }, async (base) => {
+    const H = { authorization: 'Bearer me' };
+    assert.equal((await fetch(`${base}/academy-activity/community/suggest`)).status, 401);
+    const s = await (await fetch(`${base}/academy-activity/community/suggest`, { headers: H })).json();
+    assert.equal(s.ok, true); assert.equal(s.traders[0].id, ACE); assert.match(s.traders[0].reason, /1 comment this week/);
+    const f0 = await (await fetch(`${base}/academy-activity/community/following`, { headers: H })).json();
+    assert.equal(f0.following, 0);
+    const fol = await (await fetch(`${base}/academy-activity/community/follow`, { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify({ user: ACE, on: true }) })).json();
+    assert.equal(fol.ok, true); assert.equal(fol.followers, 1);
+    assert.equal((await (await fetch(`${base}/academy-activity/profiles/${ACE}`, { headers: H })).json()).profile.viewerFollows, true, 'the profile follow is set');
+    assert.equal((await alerts.followState(ME, ACE)).following, true, 'and the Alert Chart follow');
+    const f1 = await (await fetch(`${base}/academy-activity/community/following`, { headers: H })).json();
+    assert.equal(f1.items.length, 1); assert.equal(f1.items[0].kind, 'comment'); assert.equal(f1.items[0].authorName, 'Ace');
+    assert.deepEqual((await (await fetch(`${base}/academy-activity/community/suggest`, { headers: H })).json()).traders, [], 'followed traders leave the suggestions');
+    const inbox = await (await fetch(`${base}/academy-activity/community/inbox?since=2020-01-01T00:00:00.000Z`, { headers: H })).json();
+    assert.equal(inbox.ok, true); assert.ok(Array.isArray(inbox.events));
+    assert.equal((await fetch(`${base}/academy-activity/community/follow`, { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify({ user: 'x' }) })).status, 400);
+    assert.equal((await fetch(`${base}/academy-activity/community/nope`, { headers: H })).status, 404);
+  });
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  assert.match(html, /window\.smlCommunity = \{ strip/); assert.match(html, /tk-cm-strip/); assert.match(html, /data-cm-tab="following"/); assert.match(html, /be the first to reply/); assert.match(html, /cm-toasts/);
+});

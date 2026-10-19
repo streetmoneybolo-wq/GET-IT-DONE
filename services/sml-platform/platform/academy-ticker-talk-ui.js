@@ -87,7 +87,7 @@
 
   const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'talk-btn'; btn.title = 'Ticker Talk: the comment section for this ticker'; toolbar.appendChild(btn);
   const panel = document.createElement('section'); panel.id = 'talk-panel'; panel.setAttribute('aria-label', 'Ticker Talk');
-  panel.innerHTML = '<div class="tk-head"><b>TALK</b><small></small><button type="button" data-close="1" aria-label="Close">×</button></div><div class="tk-msg"></div><div class="tk-body"><div class="tk-list"></div><div class="tk-status"></div><div class="tk-sentinel"></div></div><div class="tk-bar"><button type="button" class="tk-say" data-editor="1"></button><button type="button" class="tk-ic" data-pic="1" title="Add a picture">🖼</button></div>';
+  panel.innerHTML = '<div class="tk-head"><b>TALK</b><small></small><button type="button" data-close="1" aria-label="Close">×</button></div><div class="tk-msg"></div><div class="tk-body"><div class="tk-cm-strip"></div><div class="tk-cm-tabs cm-tabs"></div><div class="tk-list"></div><div class="tk-status"></div><div class="tk-sentinel"></div><div class="tk-following" hidden></div></div><div class="tk-bar"><button type="button" class="tk-say" data-editor="1"></button><button type="button" class="tk-ic" data-pic="1" title="Add a picture">🖼</button></div>';
   const file = document.createElement('input'); file.type = 'file'; file.accept = 'image/png,image/jpeg,image/webp,image/gif'; file.multiple = true; file.style.display = 'none'; document.body.appendChild(file);
   const head = panel.querySelector('.tk-head'), msgEl = panel.querySelector('.tk-msg'), bodyEl = panel.querySelector('.tk-body'), listEl = panel.querySelector('.tk-list'), statusEl = panel.querySelector('.tk-status'), sentinel = panel.querySelector('.tk-sentinel'), sayBtn = panel.querySelector('.tk-say');
 
@@ -137,7 +137,9 @@
     S.before = S.rows.length ? S.rows[S.rows.length - 1].id : '';
     if (fresh.length) { listEl.insertAdjacentHTML('beforeend', fresh.map((c) => commentHtml(c, false)).join('')); paintAvatars(listEl); }
     statusEl.textContent = S.rows.length ? (S.hasMore ? '' : 'You have read them all.') : 'No comments on $' + S.symbol + ' yet. Start the conversation.';
-    paintHead(); paintButton();
+    /* an empty ticker gets conversation starters; one tap opens the editor with the question in it */
+    if (!S.rows.length && window.smlCommunity) statusEl.insertAdjacentHTML('beforeend', window.smlCommunity.startersHtml(S.symbol));
+    paintHead(); paintButton(); if (reset) paintTabs();
     if (S.hasMore && bodyEl.scrollHeight <= bodyEl.clientHeight + 40) load(false);
   }
   async function loadNewer() {
@@ -214,7 +216,8 @@
   }
   function acts(c, isReply) {
     const mine = S.viewer && String(c.authorId) === String(S.viewer.id), canDel = mine || (S.viewer && S.viewer.elevated);
-    return '<div class="tk-acts">' + (isReply ? '' : '<button type="button" data-reply="' + esc(c.id) + '" data-name="' + esc(c.authorName || '') + '">Reply' + (c.replies && c.replies.length ? ' · ' + c.replies.length : '') + '</button>')
+    const quiet = !isReply && !(c.replies && c.replies.length) && !mine && S.viewer;
+    return '<div class="tk-acts">' + (isReply ? '' : '<button type="button" data-reply="' + esc(c.id) + '" data-name="' + esc(c.authorName || '') + '">Reply' + (c.replies && c.replies.length ? ' · ' + c.replies.length : '') + '</button>' + (quiet ? '<span class="cm-nudge">be the first to reply</span>' : ''))
       + '<button type="button" data-view="' + esc(isReply ? S.index.get(String(c.id)) && S.index.get(String(c.id)).id || c.id : c.id) + '" data-focus="' + esc(c.id) + '" title="Open full size">Expand ⤢</button>'
       + (canDel ? '<button type="button" data-del="' + esc(c.id) + '">Delete</button>' : '') + '</div>';
   }
@@ -343,7 +346,21 @@
   }
 
   /* ---- events: the panel, the editor and the reader share one handler ---- */
-  function openPanel() { S.open = true; say(''); mount(); paintHead(); paintButton(); paintBar(); load(true); }
+  /* the engagement layer (academy-community-ui.js): traders to follow at the top, a FOLLOWING tab beside the ticker's comments */
+  S.feedTab = 'symbol';
+  function paintTabs() {
+    const tabs = panel.querySelector('.tk-cm-tabs'); if (!tabs) return;
+    tabs.innerHTML = '<button type="button" data-cm-tab="symbol" class="' + (S.feedTab === 'symbol' ? 'on' : '') + '">$' + esc(S.symbol) + ' COMMENTS</button><button type="button" data-cm-tab="following" class="' + (S.feedTab === 'following' ? 'on' : '') + '">FOLLOWING</button>';
+    const onFollowing = S.feedTab === 'following';
+    for (const sel of ['.tk-list', '.tk-status', '.tk-sentinel']) { const el = panel.querySelector(sel); if (el) el.hidden = onFollowing; }
+    const fh = panel.querySelector('.tk-following'); if (fh) { fh.hidden = !onFollowing; if (onFollowing && window.smlCommunity) void window.smlCommunity.following(fh); }
+  }
+  function paintCommunity() { paintTabs(); const sh = panel.querySelector('.tk-cm-strip'); if (sh && window.smlCommunity) void window.smlCommunity.strip(sh, { title: 'TRADERS TO FOLLOW', limit: 8 }); }
+  panel.addEventListener('click', (e) => {
+    const tab = e.target.closest ? e.target.closest('[data-cm-tab]') : null; if (tab) { S.feedTab = tab.dataset.cmTab; paintTabs(); return; }
+    const st = e.target.closest ? e.target.closest('[data-cm-starter]') : null; if (st) { S.draft = st.dataset.cmStarter + ' '; S.replyTo = null; openEditor(); }
+  });
+  function openPanel() { S.open = true; say(''); mount(); paintHead(); paintButton(); paintBar(); load(true); paintCommunity(); }
   function closePanel() { S.open = false; closeMenu(); closeEditor(); closeView(); mount(); paintButton(); }
   btn.addEventListener('click', () => { if (S.open) closePanel(); else openPanel(); });
   function onClick(e) {

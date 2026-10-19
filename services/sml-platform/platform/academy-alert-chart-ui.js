@@ -114,7 +114,7 @@
     return h;
   }
   function feedHtml(d, host) {
-    let h = '<div class="ac-top"><h6 style="margin:0">TRADERS’ ALERT CHARTS</h6><span class="sp"></span><button type="button" class="ac-b acc" data-ac="new" title="Post to your own Alert Chart, starting from the chart on screen">+ Post alert</button><button type="button" class="ac-b" data-ac="mine">My chart</button></div><div class="ac-slot"></div>';
+    let h = '<div class="ac-cm"></div><div class="ac-top"><h6 style="margin:0">TRADERS’ ALERT CHARTS</h6><span class="sp"></span><button type="button" class="ac-b acc" data-ac="new" title="Post to your own Alert Chart, starting from the chart on screen">+ Post alert</button><button type="button" class="ac-b" data-ac="mine">My chart</button></div><div class="ac-slot"></div>';
     h += d.alerts.length ? d.alerts.map((a) => rowHtml(a, { own: false, showWho: true })).join('') : '<div class="ac-empty">No trader alerts yet. Follow a trader’s Alert Chart from their profile, or post your own.</div>';
     return h;
   }
@@ -132,6 +132,7 @@
     if (!r.ok) { host.innerHTML = '<div class="ac-empty">' + esc(r.error === 'alert_chart_disabled' ? 'Alert Charts are switched off right now.' : 'Could not load alerts (' + (r.error || 'error') + ').') + '</div>'; return; }
     st.data = r;
     host.innerHTML = opts.feed ? feedHtml(r, host) : chartHtml(r, host);
+    if (opts.feed && window.smlCommunity) void window.smlCommunity.strip(host.querySelector('.ac-cm'), { title: 'TRADERS TO FOLLOW', limit: 8 });
     if (!host.__acBound) { host.__acBound = true; bind(host); }
   }
   const refresh = (host) => { const st = mounts.get(host); if (st) return mount(host, st.opts); };

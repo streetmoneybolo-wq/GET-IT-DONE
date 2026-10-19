@@ -238,7 +238,43 @@ function createTickerTalk({ pool = null, now = Date.now, logger = () => {}, link
     const m = media.get(String(id)); return m ? { contentType: m.contentType, bytes: m.bytes } : null;
   }
 
-  return { configured: !!db, ensureSchema, post, list, count, byAuthor, remove, storeImage, image, MAX_BODY, MAX_IMAGE_BYTES, MAX_IMAGES };
+  const tsOf = (v) => (typeof v === 'number' ? v : v instanceof Date ? v.getTime() : Date.parse(v) || 0);
+  /* the members who commented most in the last days: [{ id, name, comments }] (traders to follow) */
+  async function recentAuthors(days = 7, limit = 20) {
+    const since = new Date(now() - Math.max(1, Math.min(90, Number(days) || 7)) * 86_400_000);
+    const n = Math.max(1, Math.min(100, Number(limit) || 20));
+    if (db) {
+      try { const r = await db.query('SELECT author_id, max(author_name) AS name, count(*)::int AS n FROM academy_ticker_talk WHERE deleted_at IS NULL AND created_at >= $1 GROUP BY author_id ORDER BY n DESC LIMIT $2', [since, n]); return r.rows.map((x) => ({ id: String(x.author_id), name: String(x.name || ''), comments: Number(x.n) || 0 })); }
+      catch (error) { logger('warn', 'academy_ticker_talk_read_failed', { error: String(error && error.message || error) }); return []; }
+    }
+    const counts = new Map();
+    for (const m of mem) if (!m.deletedAt && tsOf(m.createdAt) >= since.getTime()) { const c = counts.get(m.authorId) || { id: m.authorId, name: m.authorName || '', comments: 0 }; c.comments += 1; counts.set(m.authorId, c); }
+    return [...counts.values()].sort((a, b) => b.comments - a.comments).slice(0, n);
+  }
+  /* comments by a set of members across every ticker, newest first (the Following feed) */
+  async function byAuthors(ids, limit = 30) {
+    const who = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter((x) => SNOWFLAKE.test(x)))].slice(0, 500); if (!who.length) return [];
+    const n = Math.max(1, Math.min(100, Number(limit) || 30));
+    if (db) {
+      try { const r = await db.query('SELECT t.*, (SELECT count(*)::int FROM academy_ticker_talk c WHERE c.parent_id = t.id AND c.deleted_at IS NULL) AS reply_count FROM academy_ticker_talk t WHERE t.author_id = ANY($1::text[]) AND t.deleted_at IS NULL ORDER BY t.id DESC LIMIT $2', [who, n]); return r.rows.map((row) => Object.assign(out(row), { replyCount: Number(row.reply_count) || 0 })); }
+      catch (error) { logger('warn', 'academy_ticker_talk_read_failed', { error: String(error && error.message || error) }); return []; }
+    }
+    const set = new Set(who);
+    return mem.filter((m) => set.has(m.authorId) && !m.deletedAt).sort((a, b) => b.id - a.id).slice(0, n).map((m) => Object.assign(memOut(m), { replyCount: mem.filter((c) => String(c.parentId) === String(m.id) && !c.deletedAt).length }));
+  }
+  /* replies other members wrote to one member's comments since a moment (the inbox) */
+  async function repliesTo(authorId, sinceIso = '', limit = 20) {
+    const who = String(authorId || ''); if (!SNOWFLAKE.test(who)) return [];
+    const since = sinceIso ? new Date(Date.parse(sinceIso) || 0) : new Date(now() - 7 * 86_400_000);
+    const n = Math.max(1, Math.min(100, Number(limit) || 20));
+    if (db) {
+      try { const r = await db.query('SELECT c.* FROM academy_ticker_talk c JOIN academy_ticker_talk p ON p.id = c.parent_id WHERE p.author_id = $1 AND c.author_id <> $1 AND c.deleted_at IS NULL AND c.created_at > $2 ORDER BY c.id DESC LIMIT $3', [who, since, n]); return r.rows.map(out); }
+      catch (error) { logger('warn', 'academy_ticker_talk_read_failed', { error: String(error && error.message || error) }); return []; }
+    }
+    const mine = new Set(mem.filter((m) => m.authorId === who).map((m) => String(m.id)));
+    return mem.filter((m) => m.parentId != null && mine.has(String(m.parentId)) && m.authorId !== who && !m.deletedAt && tsOf(m.createdAt) > since.getTime()).sort((a, b) => b.id - a.id).slice(0, n).map(memOut);
+  }
+  return { configured: !!db, ensureSchema, post, list, count, byAuthor, byAuthors, recentAuthors, repliesTo, remove, storeImage, image, MAX_BODY, MAX_IMAGE_BYTES, MAX_IMAGES };
 }
 
 module.exports = { createTickerTalk, classifyLink, isDiscordLink, extractLinks, extractCashtags, youtubeId, sniffImage, cleanSymbol, MAX_BODY, MAX_IMAGE_BYTES, MAX_IMAGES };
