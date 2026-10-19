@@ -20,7 +20,9 @@
   const pct = (v) => (Number.isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : '–');
   const ago = (iso) => { const d = Date.now() - Date.parse(iso); if (!Number.isFinite(d)) return ''; const m = Math.round(d / 60000); if (m < 1) return 'now'; if (m < 60) return m + 'm'; const h = Math.round(m / 60); if (h < 24) return h + 'h'; return Math.round(h / 24) + 'd'; };
   const ROOMS = { global: 'Global', day: 'Day Trade', swing: 'Swing Trade', short: 'Short Sale', options: 'Options' };
-  const SOCIAL_ICON = { x: '𝕏', instagram: '◎', tiktok: '♪', youtube: '▶', facebook: 'f', threads: '@', linkedin: 'in', twitch: '▮', discord: '◉', stocktwits: '$', substack: '✉', stockmarketloop: '∞', link: '↗' };
+  const SOCIAL_ICON = { reddit: 'r/', discord: '◉', x: '𝕏', facebook: 'f', bluesky: '🦋', threads: '@', 'loop-channel': '∞', 'loop-letter': '✉', 'loop-profile': '👤', youtube: '▶', link: '↗' };
+  const LINK_KINDS = [['reddit', 'Reddit', 'https://www.reddit.com/user/you'], ['discord', 'Discord', 'https://discord.gg/your-server'], ['x', 'Twitter / X', 'https://x.com/you'], ['facebook', 'Facebook', 'https://www.facebook.com/you'], ['bluesky', 'Bluesky', 'https://bsky.app/profile/you.bsky.social'], ['threads', 'Threads', 'https://www.threads.net/@you'],
+    ['loop-channel', 'StockMarketLoop.com Loop channel', 'https://stockmarketloop.com/channel/you/'], ['loop-letter', 'StockMarketLoop.com Loop Letter publication', 'https://stockmarketloop.com/n/you/'], ['loop-profile', 'StockMarketLoop.com profile page', 'https://stockmarketloop.com/members/you/'], ['youtube', 'YouTube', 'https://www.youtube.com/@you']];
 
   /* ---------- the 20 layouts: where each section sits on a wide screen (areas) and the look that goes with it ---------- */
   const AREAS = {
@@ -102,6 +104,10 @@
     + '.pv-sw{display:flex;flex-wrap:wrap;gap:5px}.pv-sw button{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer}.pv-sw button.on{border-color:#fff}.pv-opts{display:flex;flex-wrap:wrap;gap:5px}.pv-opts button{border:1px solid #23404d;border-radius:6px;background:#0c1821;color:#cfe3ea;padding:5px 8px;font:700 .62rem system-ui,sans-serif;cursor:pointer}.pv-opts button.on{border-color:var(--acc,#00c47d);color:#fff}'
     + '.pv-soc{display:flex;gap:6px;align-items:center;margin-top:5px}.pv-soc span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cfe3ea}.pv-soc button{border:1px solid #3a2a2a;border-radius:6px;background:#1a0e0e;color:#ff9f9f;padding:3px 7px;cursor:pointer;font:800 .6rem system-ui}'
     + '.pv-row{display:flex;gap:6px;margin-top:6px}.pv-row input{flex:1}.pv-chk{display:flex;align-items:center;gap:6px;margin:5px 0;color:#cfe3ea}.pv-ft{display:flex;gap:6px;margin-top:14px;position:sticky;bottom:0;background:#0a1118;padding:8px 0}.pv-note{color:#7f95a1;font-weight:500;margin-top:6px}'
+    + '.pv-wall-wrap{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:0 16px 60px}.pv-wall .pv-cmp{display:flex;gap:8px;align-items:flex-end}.pv-wall textarea{flex:1;min-height:58px;max-height:160px;resize:vertical;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.04);color:#e6eef2;padding:8px 10px;font:500 .74rem/1.4 system-ui,sans-serif}'
+    + '.pv-wall .pv-cnote{margin:4px 0 10px;color:#7f95a1;font:600 .6rem ui-monospace,monospace}.pv-wall-list{display:flex;flex-direction:column;gap:8px}.pv-wc{border:1px solid rgba(255,255,255,.07);border-radius:10px;background:rgba(255,255,255,.03);padding:8px 10px}'
+    + '.pv-wc .m{display:flex;gap:8px;align-items:center;font:700 .58rem ui-monospace,monospace;color:#86a2b0}.pv-wc .m button.who{border:0;background:none;color:var(--acc,#00c47d);font:800 .62rem system-ui,sans-serif;cursor:pointer;padding:0}.pv-wc .m .sp{flex:1}.pv-wc .m button.del{border:1px solid #3a2a2a;border-radius:6px;background:#1a0d0d;color:#ff9f9f;font:700 .56rem system-ui,sans-serif;padding:2px 6px;cursor:pointer}'
+    + '.pv-wc p{margin:5px 0 0;white-space:pre-wrap;word-break:break-word;color:#e6eef2}.pv-wall .pv-more{margin-top:8px}.pv-wall .pv-empty{color:#7f95a1;font:600 .66rem system-ui,sans-serif}.pv-wall .pv-closed{color:#7f95a1;font:600 .66rem system-ui,sans-serif}'
     + '#pv-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147482700;padding:9px 14px;border:1px solid #1f8a5f;border-radius:9px;background:#071a13;color:#c9f6e2;font:700 .7rem system-ui,sans-serif;display:none;max-width:min(560px,92vw)}'
     + '#academy-profile-btn{position:fixed;right:10px;bottom:48px;z-index:2147483199;border:1px solid #2a4a58;border-radius:999px;background:#0d1a24;color:#e6eef2;padding:7px 12px;font:800 .7rem system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.5)}#academy-profile-btn:hover{border-color:#00c47d;color:#7ef0bd}body.sml-mobile #academy-profile-btn{bottom:56px}'
     /* hover card section */
@@ -162,6 +168,20 @@
   }
   function stopAudio() { const M = window.smlProfileMusic; if (M) M.unmount(); }
 
+
+  /* ---------- the Trading Wall: comments members leave on this page ---------- */
+  function wallHtml(d) {
+    const w = d.wall, me = selfId();
+    if (!w) return d.own ? '<section class="pv-sec wall pv-wall"><h6>Trading Wall</h6><div class="pv-closed">Your Trading Wall is switched off. Turn it on under Customize → Show on my page.</div></section>' : '';
+    const items = w.items || [];
+    const row = (c) => '<div class="pv-wc" data-wc="' + esc(c.id) + '"><div class="m"><button type="button" class="who" data-pv="profile" data-user="' + esc(c.authorId) + '">' + esc(c.authorName || 'Member') + '</button><span>' + esc(ago(c.createdAt)) + '</span><span class="sp"></span>'
+      + (d.own || c.authorId === me ? '<button type="button" class="del" data-pv="walldel" data-id="' + esc(c.id) + '">remove</button>' : '') + '</div><p>' + esc(c.body) + '</p></div>';
+    return '<section class="pv-sec wall pv-wall"><h6>Trading Wall · ' + (w.count || 0) + '</h6>'
+      + '<div class="pv-cmp"><textarea maxlength="500" data-wall="body" placeholder="' + esc(d.own ? 'Post on your own wall…' : 'Leave a note on this trader\'s wall…') + '"></textarea><button type="button" class="pv-btn acc" data-pv="wallpost">Post</button></div><div class="pv-cnote">Up to 500 characters. Plain text. Members see it on this page; the author, this page\'s owner and the Academy owners can remove it.</div>'
+      + '<div class="pv-wall-list">' + (items.length ? items.map(row).join('') : '<div class="pv-empty">No comments yet. Be the first.</div>') + '</div>'
+      + (w.more ? '<button type="button" class="pv-btn pv-more" data-pv="wallmore">Load older comments</button>' : '') + '</section>';
+  }
+  function paintWall() { const d = S.data, host = view.querySelector('.pv-wall-wrap'); if (d && host) host.innerHTML = wallHtml(d); }
   /* ---------- rendering ---------- */
   const sec = (name, title, body, hidden) => '<section class="pv-sec ' + name + (hidden ? ' hidden' : '') + '">' + (title ? '<h6>' + esc(title) + '</h6>' : '') + body + '</section>';
   function render() {
@@ -188,6 +208,7 @@
     const posts = d.posts || [];
     h += sec('feed', 'Posts in the Academy chat', posts.length ? '<div class="pv-feed">' + posts.map((p) => '<div class="pv-post"><div class="m"><i>' + esc(ROOMS[p.channel] || p.channel) + '</i><span>' + esc(ago(p.createdAt)) + '</span>' + (p.reply ? '<span>reply</span>' : '') + (p.score ? '<span>▲ ' + p.score + '</span>' : '') + '</div><p>' + esc(p.body) + '</p></div>').join('') + '</div>' : '<p class="pv-empty">No posts yet.</p>', s.flags.showFeed === false);
     h += '</div>';
+    h += '<div class="pv-wall-wrap">' + wallHtml(d) + '</div>';
     view.innerHTML = h;
     if (window.smlProfileMusic && window.smlProfileMusic.active()) window.smlProfileMusic.dockInto(view.querySelector('.pv-slot'));
     view.style.background = '';
@@ -272,14 +293,20 @@
       + '<h6>FONT</h6><div class="pv-opts">' + ['system', 'mono', 'serif', 'display', 'rounded'].map((f) => '<button type="button" data-font="' + f + '" class="' + (t.font === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div>'
       + deskControls(t)
       + '<h6>SONG (ONE)</h6>' + (d.song && d.song.upload ? '<div class="pv-soc"><span>🎵 Uploaded: ' + esc(d.song.title || 'My song') + '</span><button type="button" data-pv="rmsong">remove</button></div>' : '') + '<div class="pv-row"><button type="button" class="pv-btn acc" data-pv="pickaudio" style="flex:1">⬆ Upload a song from your device</button><input type="file" data-audiofile accept="audio/*,.mp3,.m4a,.aac,.ogg,.wav,.flac,.opus" style="display:none"></div><p class="pv-note" data-upnote>MP3, M4A, AAC, OGG, WAV or FLAC, up to 50 MB. Use music you made or have the rights to. It plays here without any setup, and the page moves to its kick, bass, vocals, snare and hi-hats.</p><p class="pv-note">Or paste a direct link to an MP3/M4A file:</p><input type="url" data-song="url" placeholder="https://… a direct .mp3 or .m4a file" value="' + esc(d.song && !d.song.upload ? d.song.url : '') + '"><div class="pv-row"><input type="text" data-song="title" maxlength="80" placeholder="Song title" value="' + esc(d.song ? d.song.title : '') + '"></div>'
-      + '<h6>SOCIAL LINKS (UP TO 8)</h6>' + (d.socials || []).map((x, i) => '<div class="pv-soc"><span title="' + esc(x.url) + '">' + esc(SOCIAL_ICON[x.kind] || '↗') + ' ' + esc(x.title || (x.card && x.card.title) || x.url) + '</span><button type="button" data-rm="' + i + '">remove</button></div>').join('') + '<div class="pv-row"><input type="url" data-add="url" placeholder="https://x.com/you"><input type="text" data-add="title" maxlength="60" placeholder="Label (optional)" style="max-width:120px"><button type="button" class="pv-btn" data-pv="addlink">Add</button></div><p class="pv-note">Each link gets a card with the page’s own title and picture.</p>'
-      + '<h6>SHOW ON MY PAGE</h6>' + [['showPaper', 'Paper trading account and rank'], ['showServer', 'Main Discord server'], ['showSocials', 'Social links'], ['showFeed', 'My chat posts'], ['showFollowers', 'Follower counts']].map(([k, l]) => '<label class="pv-chk"><input type="checkbox" data-flag="' + k + '"' + (d.flags[k] === false ? '' : ' checked') + '> ' + l + '</label>').join('')
+      + '<h6>LINKS</h6>' + LINK_KINDS.map(([k, label, hint]) => { const cur = (d.socials || []).find((x) => x.kind === k); return '<div class="pv-row" style="align-items:center"><span style="flex:none;width:34px;text-align:center;color:#cfe3ea" title="' + esc(label) + '">' + esc(SOCIAL_ICON[k]) + '</span><input type="url" data-link="' + k + '" value="' + esc(cur ? cur.url : '') + '" placeholder="' + esc(label + ' · ' + hint) + '"></div>'; }).join('') + '<p class="pv-note">One link of each kind. Paste the full https:// address; the kind is checked against the site.</p>'
+      + '<h6>SHOW ON MY PAGE</h6>' + [['showPaper', 'Paper trading account and rank'], ['showServer', 'Main Discord server'], ['showSocials', 'Links'], ['showFeed', 'My chat posts'], ['showFollowers', 'Follower counts'], ['showWall', 'Trading Wall (members can leave comments)']].map(([k, l]) => '<label class="pv-chk"><input type="checkbox" data-flag="' + k + '"' + (d.flags[k] === false ? '' : ' checked') + '> ' + l + '</label>').join('')
       + '<div class="pv-ft"><button type="button" class="pv-btn acc" data-pv="save">💾 Save profile</button><button type="button" class="pv-btn" data-pv="cancel">Cancel</button></div>';
   }
   const preview = () => { if (S.data && S.draft) { S.data.settings = JSON.parse(JSON.stringify(S.draft)); render(); } };
   edit.addEventListener('input', (e) => {
     const el = e.target; if (!S.draft) return;
     if (el.dataset.k) S.draft[el.dataset.k] = el.value;
+    if (el.dataset.link) {
+      const kind = el.dataset.link, url = String(el.value || '').trim();
+      S.draft.socials = (S.draft.socials || []).filter((x) => x.kind !== kind);
+      if (url) S.draft.socials.push({ url, kind, title: '', card: null });
+      clearTimeout(S.pt); S.pt = setTimeout(preview, 450); return;
+    }
     if (el.dataset.fxq !== undefined) { const q = el.value.trim().toLowerCase(); edit.querySelectorAll('[data-fxn]').forEach((b) => { b.style.display = !q || b.dataset.fxn.indexOf(q) >= 0 ? '' : 'none'; }); edit.querySelectorAll('[data-fxg]').forEach((g) => { g.style.display = [...g.querySelectorAll('[data-fxn]')].some((b) => b.style.display !== 'none') ? '' : 'none'; }); return; }
     if (el.dataset.song === 'url') {
       const v = el.value.trim(), isAudio = /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)(\?|#|$)/i.test(v), note = edit.querySelector('[data-upnote]');
@@ -335,7 +362,6 @@
     if (b.dataset.orbRm !== undefined) { (d.theme.orbit || []).splice(Number(b.dataset.orbRm), 1); paintEditor(); preview(); return; }
     if (b.dataset.rm) { d.socials.splice(Number(b.dataset.rm), 1); paintEditor(); preview(); return; }
     const a = b.dataset.pv;
-    if (a === 'addlink') { const u = edit.querySelector('[data-add="url"]'), t = edit.querySelector('[data-add="title"]'); const url = String(u.value || '').trim(); if (!/^https:\/\//i.test(url)) { toast('Paste a full https:// link.'); return; } if (d.socials.length >= 8) { toast('Up to 8 links.'); return; } d.socials.push({ url, title: String(t.value || '').trim(), kind: 'link', card: null }); u.value = ''; t.value = ''; paintEditor(); preview(); return; }
     if (a === 'addorb') {
       const g = (k) => { const el = edit.querySelector('[data-orbnew="' + k + '"]'); return el ? String(el.value || '').trim() : ''; };
       const image = g('image'), href = g('href'), title = g('title');
@@ -352,7 +378,7 @@
     if (a === 'cancel') { edit.classList.remove('open'); S.draft = null; await open(S.userId); return; }
     if (a === 'save') {
       if (S.saving) return; S.saving = true; b.textContent = 'Saving…';
-      const r = await api('/me', { method: 'PUT', body: JSON.stringify({ displayName: d.displayName, tagline: d.tagline, bio: d.bio, layout: d.layout, theme: d.theme, song: d.song, socials: d.socials.map((x) => ({ url: x.url, title: x.title })), flags: d.flags }) });
+      const r = await api('/me', { method: 'PUT', body: JSON.stringify({ displayName: d.displayName, tagline: d.tagline, bio: d.bio, layout: d.layout, theme: d.theme, song: d.song, socials: d.socials.map((x) => ({ url: x.url, kind: x.kind, title: x.title })), flags: d.flags }) });
       S.saving = false;
       if (!r.ok) { toast('Could not save: ' + (r.error || 'try again')); b.textContent = '💾 Save profile'; return; }
       edit.classList.remove('open'); S.draft = null; toast('Profile saved. Members see it on your name in chat and on your page.'); await open(S.userId);
@@ -368,6 +394,30 @@
     else if (a === 'play') { if (window.smlProfileMusic) window.smlProfileMusic.toggle(); }
     else if (a === 'open' && b.dataset.url) openOut(b.dataset.url);
     else if (a === 'popout') { if (typeof window.smlAcademyPopBrowser === 'function') void window.smlAcademyPopBrowser('profile', { user: S.userId }); }
+    else if (a === 'profile' && b.dataset.user) { void open(b.dataset.user); }
+    else if (a === 'wallpost') {
+      const d = S.data; if (!d) return; const ta = view.querySelector('[data-wall="body"]'); const body = ta ? String(ta.value || '').trim() : '';
+      if (!body) { toast('Write something first.'); return; }
+      b.disabled = true;
+      const r = await api('/' + encodeURIComponent(d.userId) + '/wall', { method: 'POST', body: JSON.stringify({ body }) });
+      b.disabled = false;
+      if (!r.ok) { toast(r.error === 'slow_down' ? 'Slow down: a few comments a minute.' : r.error === 'too_many_today' ? 'That is enough comments for this hour.' : r.error === 'wall_closed' ? 'This member has switched their wall off.' : 'Could not post right now.'); return; }
+      d.wall = d.wall || { items: [], count: 0, more: false };
+      if (!r.duplicate) { d.wall.items.unshift(r.item); d.wall.count = (d.wall.count || 0) + 1; }
+      paintWall();
+    }
+    else if (a === 'walldel' && b.dataset.id) {
+      const d = S.data; if (!d || !d.wall) return;
+      const r = await api('/' + encodeURIComponent(d.userId) + '/wall/' + encodeURIComponent(b.dataset.id), { method: 'DELETE' });
+      if (!r.ok) { toast('Could not remove that comment.'); return; }
+      d.wall.items = d.wall.items.filter((c) => c.id !== b.dataset.id); d.wall.count = Math.max(0, (d.wall.count || 1) - 1); paintWall();
+    }
+    else if (a === 'wallmore') {
+      const d = S.data; if (!d || !d.wall || !d.wall.items.length) return;
+      const last = d.wall.items[d.wall.items.length - 1];
+      const r = await api('/' + encodeURIComponent(d.userId) + '/wall?before=' + encodeURIComponent(last.id));
+      if (r.ok) { d.wall.items = d.wall.items.concat(r.items || []); d.wall.more = !!r.more; paintWall(); }
+    }
     else if (a === 'follow') {
       const d = S.data; if (!d) return; const on = !d.viewerFollows;
       const r = await api('/' + encodeURIComponent(d.userId) + '/follow', { method: on ? 'POST' : 'DELETE' });

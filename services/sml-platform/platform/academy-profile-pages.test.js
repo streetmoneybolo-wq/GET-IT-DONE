@@ -2,21 +2,21 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createProfilePages, cleanSettings, parseOg, sniffAudio, LAYOUTS, TEXTURES, DESKS, LIGHTS } = require('./academy-profile-pages');
+const { createProfilePages, cleanSettings, linkKind, LINK_KINDS, parseOg, sniffAudio, LAYOUTS, TEXTURES, DESKS, LIGHTS } = require('./academy-profile-pages');
 
 const A = '100000000000000001', B = '100000000000000002', G = '900000000000000009';
 
-test('settings are cleaned: layouts from the list, bounded text, one song with its kind, up to 8 https social links with kinds', () => {
+test('settings are cleaned: layouts from the list, bounded text, one song with its kind, one https link per listed kind', () => {
   assert.equal(LAYOUTS.length, 20);
   const s = cleanSettings({ displayName: 'Ana <b>', tagline: 'x'.repeat(200), layout: 'nope', theme: { accent: '#00C47D', fx: 'lasers', font: 'mono', immersive: 'immersive' }, song: { url: 'https://cdn.example.com/track.mp3', title: 'My song' }, socials: [{ url: 'https://x.com/ana' }, 'https://www.instagram.com/ana', 'http://insecure.example.com', 'https://x.com/ana', { url: 'https://stockmarketloop.com/ana/' }], flags: { showPaper: false } });
   assert.equal(s.displayName, 'Ana b'); assert.equal(s.tagline.length, 90); assert.equal(s.layout, 'classic');
   assert.deepEqual(s.theme, { accent: '#00c47d', fx: 'aurora', fxs: ['aurora'], font: 'mono', immersive: 'immersive' });
   assert.deepEqual(s.song, { url: 'https://cdn.example.com/track.mp3', title: 'My song', kind: 'audio' });
-  assert.deepEqual(s.socials.map((x) => x.kind), ['x', 'instagram', 'stockmarketloop']);
+  assert.deepEqual(s.socials.map((x) => x.kind), ['x', 'loop-profile'], 'Instagram is not on the list; a StockMarketLoop address with no known path is the profile page');
   assert.equal(s.flags.showPaper, false);
   for (const link of ['https://www.youtube.com/watch?v=abc', 'https://open.spotify.com/track/abc123', 'https://soundcloud.com/a/b', 'https://music.apple.com/us/album/x/1']) assert.equal(cleanSettings({ song: { url: link } }).song, null, 'links to other sites are not accepted as a song: ' + link);
   assert.equal(cleanSettings({ song: { url: 'javascript:alert(1)' } }).song, null);
-  assert.equal(cleanSettings({ socials: Array.from({ length: 12 }, (_, i) => 'https://site' + i + '.example.com/') }).socials.length, 8);
+  assert.equal(cleanSettings({ socials: Array.from({ length: 12 }, (_, i) => 'https://site' + i + '.example.com/') }).socials.length, 0, 'sites off the list are dropped');
 });
 
 test('open graph title and image come from the page, relative image urls resolve, nothing else is read', () => {
@@ -237,4 +237,34 @@ test('module shape: 3D by default, flat on request, anything else back to 3D', (
   for (const bit of ['pd-3d', 'p3-ring', 'p3-stack', 'p3-coin', 'p3-turn', 'p3-halo', 'prefers-reduced-motion']) assert.ok(desk.includes(bit), bit);
   const ui = require('node:fs').readFileSync(require.resolve('./academy-profile-ui.js'), 'utf8');
   assert.ok(ui.includes("data-shape") || ui.includes("opts('shape'"), 'the Customize editor offers the module shape');
+});
+
+test('links: the ten kinds, chosen kind wins when the site matches, one of each, Loop kinds told apart by path', () => {
+  assert.deepEqual(LINK_KINDS.map((k) => k.id), ['reddit', 'discord', 'x', 'facebook', 'bluesky', 'threads', 'loop-channel', 'loop-letter', 'loop-profile', 'youtube']);
+  assert.equal(linkKind('https://www.reddit.com/user/ana'), 'reddit');
+  assert.equal(linkKind('https://discord.gg/abc'), 'discord');
+  assert.equal(linkKind('https://twitter.com/ana'), 'x');
+  assert.equal(linkKind('https://bsky.app/profile/ana.bsky.social'), 'bluesky');
+  assert.equal(linkKind('https://www.threads.net/@ana'), 'threads');
+  assert.equal(linkKind('https://youtu.be/abc'), 'youtube');
+  assert.equal(linkKind('https://stockmarketloop.com/channel/ana/'), 'loop-channel');
+  assert.equal(linkKind('https://stockmarketloop.com/n/ana/'), 'loop-letter');
+  assert.equal(linkKind('https://stockmarketloop.com/members/ana/'), 'loop-profile');
+  assert.equal(linkKind('https://stockmarketloop.com/members/ana/', 'loop-channel'), 'loop-channel', 'the member\'s own choice wins on the same site');
+  assert.equal(linkKind('https://x.com/ana', 'reddit'), 'x', 'a wrong choice falls back to the site');
+  assert.equal(linkKind('https://www.instagram.com/ana'), '');
+  const s = cleanSettings({ socials: [{ url: 'https://x.com/ana', kind: 'x' }, { url: 'https://x.com/other', kind: 'x' }, { url: 'https://stockmarketloop.com/channel/ana/', kind: 'loop-channel' }, { url: 'https://stockmarketloop.com/n/ana/', kind: 'loop-letter' }, { url: 'https://www.youtube.com/@ana', kind: 'youtube' }] });
+  assert.deepEqual(s.socials.map((x) => [x.kind, x.url]), [['x', 'https://x.com/ana'], ['loop-channel', 'https://stockmarketloop.com/channel/ana/'], ['loop-letter', 'https://stockmarketloop.com/n/ana/'], ['youtube', 'https://www.youtube.com/@ana']]);
+  assert.equal(cleanSettings({ flags: { showWall: false } }).flags.showWall, false);
+});
+
+test('the page carries the Trading Wall when it is on, and leaves it out when the member switched it off', async () => {
+  const wall = { list: async (id, o) => ({ items: [{ id: '1', profileId: id, authorId: B, authorName: 'Ben', body: 'nice entry', createdAt: '2026-10-19T14:00:00Z' }], count: 1, more: false }) };
+  const svc = createProfilePages({ wall, now: () => 1_000_000 });
+  await svc.save(A, { displayName: 'Ana' });
+  const page = await svc.page(A, B);
+  assert.equal(page.wall.count, 1); assert.equal(page.wall.items[0].body, 'nice entry');
+  assert.deepEqual(page.linkKinds.map((k) => k.id).slice(0, 2), ['reddit', 'discord']);
+  await svc.save(A, { flags: { showWall: false } });
+  assert.equal((await svc.page(A, B)).wall, null);
 });

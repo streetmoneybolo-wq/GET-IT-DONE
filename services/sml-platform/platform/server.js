@@ -32,6 +32,7 @@ const { academyQuoteStatisticsScript } = require('./academy-quote-statistics');
 const { createAcademyProgress } = require('./academy-progress');
 const { createOrderFlowService } = require('./academy-order-flow-service');
 const { createOrderFlowStore } = require('./academy-order-flow-store');
+const { createProfileWall } = require('./academy-profile-wall');
 const { createDepthStore } = require('./academy-depth-store');
 const { createDepthRecorder, parseSymbols: parseDepthSymbols } = require('./academy-depth-recorder');
 const { replayDepth, dayBoundsNewYork } = require('./academy-depth-replay');
@@ -2660,9 +2661,29 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           const b = await readBody(32_768); if (!b || typeof b !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
           sendJson(response, 200, await academyProfilePages.save(session.userId, b)); return;
         }
-        const m = /^\/academy-activity\/profiles\/(\d{15,25})(?:\/(follow|audio))?$/.exec(path);
+        const m = /^\/academy-activity\/profiles\/(\d{15,25})(?:\/(follow|audio|wall)(?:\/(\d+))?)?$/.exec(path);
         if (!m) { sendJson(response, 404, { ok: false, error: 'not_found' }); return; }
         const who = m[1];
+        if (m[2] === 'wall') {
+          /* Trading Wall: read it, post on it, or remove a comment (its author, the wall's owner, or an Academy owner) */
+          if (request.method === 'GET' && !m[3]) { sendJson(response, 200, { ok: true, ...(await academyProfileWall.list(who, { limit: pq.get('limit') || 20, before: pq.get('before') || '' })) }); return; }
+          if (request.method === 'POST' && !m[3]) {
+            const b = await readBody(4096); if (!b || typeof b !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
+            const target = await academyProfilePages.settingsOf(who);
+            if (target.flags && target.flags.showWall === false) { sendJson(response, 403, { ok: false, error: 'wall_closed' }); return; }
+            const mine = await academyProfilePages.settingsOf(session.userId);
+            let name = mine.displayName || '';
+            if (!name && academyProfiles) { try { const c = await academyProfiles.profile(session.userId); name = c && c.discord ? (c.discord.name || c.discord.username || '') : ''; } catch (_) { name = ''; } }
+            const r = await academyProfileWall.post(who, session.userId, name, b.body);
+            sendJson(response, r.ok ? 200 : (r.error === 'slow_down' || r.error === 'too_many_today' ? 429 : 400), r); return;
+          }
+          if (request.method === 'DELETE' && m[3]) {
+            const elevated = String(session.userId) === who || OWNER_IDS.includes(String(session.userId));
+            const r = await academyProfileWall.remove(m[3], session.userId, { profileId: who, elevated });
+            sendJson(response, r.ok ? 200 : (r.error === 'forbidden' ? 403 : r.error === 'not_found' ? 404 : 400), r); return;
+          }
+          sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return;
+        }
         if (m[2] === 'follow') {
           if (request.method !== 'POST' && request.method !== 'DELETE') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return; }
           const r = await academyProfilePages.follow(session.userId, who, request.method === 'POST');
@@ -4461,9 +4482,12 @@ async function main() {
   if (academyMemLab) academyMemLab.schedule();
   /* Chat profile cards (avatar, Discord profile, linked StockMarketLoop profile). ACADEMY_PROFILE_CARDS=off removes them. */
   /* Member profile pages (schema 045): settings, follows, presence per server, the post feed and the paper leaderboard. */
+  /* Trading Wall: comments members leave on each other's profile pages (academy-profile-wall.js). */
+  const academyProfileWall = createProfileWall({ pool: database.pool, logger: log });
+  void academyProfileWall.ensureSchema();
   const academyProfilePages = process.env.ACADEMY_PROFILE_PAGES === 'off' ? null : createProfilePages({
     pool: database.pool, chat: createChatStore({ pool: database.pool }), paper: academyPaper, tierLive: academyTierLive,
-    directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), logger: log
+    directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), wall: academyProfileWall, logger: log
   });
   if (academyProfilePages) void academyProfilePages.ensureSchema();
   const academyProfiles = process.env.ACADEMY_PROFILE_CARDS === 'off' ? null : createProfileService({ directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), bridge: loopKickBridge, logger: log });
