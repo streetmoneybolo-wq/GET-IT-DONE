@@ -44,7 +44,8 @@ function sml_lls_render( $row, $is_owner ) {
 	$neigh     = sml_lls_neighbours( $row );
 	$more      = sml_lls_more_from( $row, 5 );
 	$reacts    = sml_lls_reaction_counts( $row['id'] );
-	$published = $row['published_at'] ? date_i18n( 'M j, Y', strtotime( $row['published_at'] . ' UTC' ) ) : 'Draft preview';
+	/* the date and the time it went out, in Eastern time (the market's clock; the page is cached for everyone, so one zone) */
+	$published = $row['published_at'] ? wp_date( 'M j, Y \\a\\t g:i A T', strtotime( $row['published_at'] . ' UTC' ), new DateTimeZone( 'America/New_York' ) ) : 'Draft preview';
 	$audio     = $data['audio'];
 	$intro     = ( ! empty( $data['intro']['enabled'] ) && ! empty( $data['intro']['url'] ) ) ? $data['intro'] : null;
 	$imm       = $data['immersive'];
