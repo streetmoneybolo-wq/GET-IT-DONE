@@ -43,7 +43,7 @@ const LIGHTS = new Set(['off', 'desk-lamp', 'window-sun', 'monitor-glow', 'neon-
 const ORBS = new Set(['off', 'few', 'many']);
 /* effects can be stacked: several textures (handed out across the modules), several lights and several background effects at
  * once; each module can also be given its own texture and told which part of the music it moves to */
-const MODULES = ['head', 'stats', 'server', 'paper', 'song', 'social', 'feed'];
+const MODULES = ['head', 'stats', 'server', 'paper', 'song', 'social', 'feed', 'record'];
 const REACTS = new Set(['auto', 'off', 'kick', 'bass', 'vocal', 'snare', 'hats']);
 const MAX_TEXTURES = 6, MAX_LIGHTS = 4, MAX_FXS = 5;
 const pickSet = (list, allowed, max, skip) => { const out = []; for (const v of Array.isArray(list) ? list : []) { const id = String(v); if (id !== skip && allowed.has(id) && !out.includes(id)) out.push(id); if (out.length >= max) break; } return out; };
@@ -178,7 +178,9 @@ function parseOg(html, url) {
 }
 
 /* talk: the Ticker Talk store (or a function returning it, since it is built after this service); bridge: the LOOP-KICK bridge, for the member's activity on stockmarketloop.com */
-function createProfilePages({ pool = null, chat = null, paper = null, paperStore = null, tierLive = null, directory = null, wall = null, talk = null, bridge = null, fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
+function createProfilePages({ pool = null, chat = null, paper = null, paperStore = null, tierLive = null, directory = null, wall = null, talk = null, bridge = null, alertRecord = null, fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
+  /* the member's alert record (academy-alert-record.js): public on every page, never blocks the page */
+  const alertsOf = async (id) => { if (!alertRecord || typeof alertRecord.summary !== 'function') return null; try { return await alertRecord.summary(id); } catch (error) { logger('warn', 'profile_alert_record_failed', { error: String(error && error.message || error) }); return null; } };
   const db = pool && typeof pool.query === 'function' ? pool : null;
   const mem = { profiles: new Map(), follows: new Set(), followAt: new Map(), presence: new Map(), audio: new Map() };
   const tiers = new Map(), cards = new Map(), images = new Set(), lastBeat = new Map();
@@ -485,19 +487,20 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
     const id = String(userId); if (!SNOWFLAKE.test(id)) return null;
     const s = await settingsOf(id);
     const wallOn = s.flags.showWall !== false && !!wall;
-    const [tier, server, pap, rank, counts, feed, wallPage, talkFeed, site] = await Promise.all([tierOf(id), s.flags.showServer === false ? null : mainServer(id), s.flags.showPaper === false ? null : paperSummary(id), s.flags.showPaper === false ? null : rankOf(id), followCounts(id, viewerId), s.flags.showFeed === false ? [] : posts(id, 30), wallOn ? wall.list(id, { limit: 20 }).catch(() => ({ items: [], count: 0, more: false })) : null,
-      s.flags.showTalk === false ? [] : talkPosts(id), s.flags.showSite === false ? null : siteActivity(id)]);
+    const [tier, server, pap, rank, counts, feed, wallPage, talkFeed, site, alerts] = await Promise.all([tierOf(id), s.flags.showServer === false ? null : mainServer(id), s.flags.showPaper === false ? null : paperSummary(id), s.flags.showPaper === false ? null : rankOf(id), followCounts(id, viewerId), s.flags.showFeed === false ? [] : posts(id, 30), wallOn ? wall.list(id, { limit: 20 }).catch(() => ({ items: [], count: 0, more: false })) : null,
+      s.flags.showTalk === false ? [] : talkPosts(id), s.flags.showSite === false ? null : siteActivity(id), alertsOf(id)]);
     return {
       userId: id, own: String(viewerId) === id, settings: s, layouts: LAYOUTS.map(([lid, name]) => ({ id: lid, name })), linkKinds: LINK_KINDS.map((k) => ({ id: k.id, label: k.label })),
       tier, tierLabel: tierLabel(tier), server, paper: pap ? { ...pap, rank: rank && rank.rank, of: rank && rank.of } : null,
-      followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed, talk: talkFeed, site, wall: wallPage, asOf: now()
+      followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed, talk: talkFeed, site, wall: wallPage, alerts, asOf: now()
     };
   }
   async function card(userId, viewerId = '') {
     const id = String(userId); if (!SNOWFLAKE.test(id)) return null;
     const s = await settingsOf(id);
-    const [tier, server, rank, counts, feed] = await Promise.all([tierOf(id), s.flags.showServer === false ? null : mainServer(id), s.flags.showPaper === false ? null : rankOf(id), followCounts(id, viewerId), s.flags.showFeed === false ? [] : posts(id, 3)]);
-    return { userId: id, own: String(viewerId) === id, displayName: s.displayName, tagline: s.tagline, accent: s.theme.accent || '', layout: s.layout, tier, tierLabel: tierLabel(tier), server, paper: rank && rank.rank ? { rank: rank.rank, of: rank.of, returnPct: rank.returnPct, equity: rank.equity } : (rank ? { rank: null, of: rank.of } : null), followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed };
+    const [tier, server, rank, counts, feed, alerts] = await Promise.all([tierOf(id), s.flags.showServer === false ? null : mainServer(id), s.flags.showPaper === false ? null : rankOf(id), followCounts(id, viewerId), s.flags.showFeed === false ? [] : posts(id, 3), alertsOf(id)]);
+    const rec = alerts && alerts.ninetyDay && alerts.allTime && alerts.allTime.alerts ? { winRatePct: alerts.ninetyDay.winRatePct, closed: alerts.ninetyDay.closed, open: alerts.ninetyDay.open, alerts: alerts.ninetyDay.alerts } : null;
+    return { userId: id, own: String(viewerId) === id, displayName: s.displayName, tagline: s.tagline, accent: s.theme.accent || '', layout: s.layout, tier, tierLabel: tierLabel(tier), server, paper: rank && rank.rank ? { rank: rank.rank, of: rank.of, returnPct: rank.returnPct, equity: rank.equity } : (rank ? { rank: null, of: rank.of } : null), followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed, alerts: rec };
   }
 
   return { ensureSchema, settingsOf, save, page, card, talkPosts, siteActivity, follow, followCounts, followers, followingOf, topFollowed, followersSince, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, registerImage, audioStream, uploadAudio, LAYOUTS };

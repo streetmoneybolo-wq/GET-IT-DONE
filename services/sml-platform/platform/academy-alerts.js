@@ -171,6 +171,28 @@ function createAlertsService({
     return true;
   }
 
+  /* every alert the desk holds (the alert record reads these) */
+  const records = () => [...alerts.values()];
+  /* the channels' history from a point in time, page by page through Discord's `after` cursor (the alert record's start date) */
+  async function backfill({ sinceMs, maxPages = 40 } = {}) {
+    const start = Number(sinceMs); if (!Number.isFinite(start) || start <= 0) return 0;
+    const snowflake = (ms) => String((BigInt(Math.max(0, Math.floor(ms)) - 1420070400000) << 22n));
+    let read = 0;
+    for (const c of channels.slice()) {
+      let after = snowflake(start);
+      for (let page = 0; page < maxPages; page++) {
+        let got = await readChannel(c.id, after);
+        if (!got.ok && c.mirrorId) got = await readChannel(c.mirrorId, after);
+        if (!got.ok || !got.list.length) break;
+        const list = got.list.slice().sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
+        for (const m of list) { if (ingest(c.key, m)) read += 1; }
+        after = list[list.length - 1].id;
+        if (list.length < 50) break;
+        await new Promise((r) => timers.setTimeout(r, 350));
+      }
+    }
+    return read;
+  }
   async function poll() {
     if (polling) return; polling = true;
     try { await pollAll(); } finally { polling = false; }
@@ -443,7 +465,7 @@ function createAlertsService({
 
   const channelIdFor = (key) => { const c = channels.find((x) => x.key === key); return c ? c.id : ''; };
   const setPtLadder = (fn) => { ptLadder = typeof fn === 'function' ? fn : null; };
-  return { setPtLadder, channelIdFor, start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels, shortData, nextEarnings, newsFor: news, socialFor: sentiment, chainFor, quotesFor: loadQuotes, company, fundamentals };
+  return { records, backfill, setPtLadder, channelIdFor, start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels, shortData, nextEarnings, newsFor: news, socialFor: sentiment, chainFor, quotesFor: loadQuotes, company, fundamentals };
 }
 
 /** Channels the desk watches: the two GrandMaster streams, each with its mirror in the new server. */

@@ -115,6 +115,7 @@ const { createSocialNotify } = require('./academy-social-notify');
 const { createAlertChartBilling } = require('./alert-chart-billing');
 const { createLoopStallProfiler } = require('./loop-stall-profiler');
 const { createProfilePages, MAX_UPLOAD_BYTES: PROFILE_UPLOAD_MAX } = require('./academy-profile-pages');
+const { createAlertRecord } = require('./academy-alert-record');
 const { createSnapshotService } = require('./academy-snapshot');
 const { createMemLab, fileStore: memLabFileStore } = require('./academy-mem-lab-service');
 const { parseTick, buildTickBars, mergeTrades } = require('./academy-tick-bars');
@@ -5377,9 +5378,18 @@ async function main() {
   /* Trading Wall: comments members leave on each other's profile pages (academy-profile-wall.js). */
   const academyProfileWall = createProfileWall({ pool: database.pool, logger: log });
   void academyProfileWall.ensureSchema();
+  /* The alert record (academy-alert-record.js): every Click-to-Alert post and the owner's desk alerts since SML_ALERT_RECORD_SINCE
+   * (2026-10-05), scored against the bars; the 90-day win rate and top ten are public on every profile. SML_ALERT_RECORD=off disables it. */
+  const academyAlertRecord = process.env.SML_ALERT_RECORD === 'off' ? null : createAlertRecord({
+    pool: database.pool, candles: (s, tf) => sentimentCandles(s, tf),
+    quote: async (s) => { const p = academyMassive ? academyMassive.peek(s) : null; if (p && Number.isFinite(p.last) && p.last > 0) return { last: p.last }; const c = changeFromDaily((await sentimentCandles(s, '1D')).bars); return c && Number.isFinite(c.price) ? { last: c.price } : null; },
+    deskAlerts: academyAlerts ? () => academyAlerts.records() : null, backfill: academyAlerts ? (sinceMs) => academyAlerts.backfill({ sinceMs }) : null,
+    ownerIds: [...OWNER_IDS], since: process.env.SML_ALERT_RECORD_SINCE || '2026-10-05', logger: log
+  });
+  if (academyAlertRecord) { void academyAlertRecord.ensureSchema(); academyAlertRecord.start(); }
   const academyProfilePages = process.env.ACADEMY_PROFILE_PAGES === 'off' ? null : createProfilePages({
     pool: database.pool, chat: createChatStore({ pool: database.pool }), paper: academyPaper, tierLive: academyTierLive,
-    directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), wall: academyProfileWall, talk: () => tickerTalk, bridge: loopKickBridge, logger: log
+    directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), wall: academyProfileWall, talk: () => tickerTalk, bridge: loopKickBridge, alertRecord: academyAlertRecord, logger: log
   });
   if (academyProfilePages) void academyProfilePages.ensureSchema();
   const academyProfiles = process.env.ACADEMY_PROFILE_CARDS === 'off' ? null : createProfileService({ directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), bridge: loopKickBridge, logger: log });

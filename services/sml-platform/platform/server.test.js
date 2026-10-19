@@ -2439,6 +2439,7 @@ test('Alert Chart routes: post, thread updates, follow with push, settings, prem
   assert.match(html, /15% of the disputed amount/, 'the dispute fee consent is on the page');
   assert.match(html, /window\.smlAlertChart = \{ mount/, 'the renderer ships with the page');
   assert.match(html, /pv-alerts-wrap/, 'the profile page has the Alert Chart section');
+  assert.match(html, /90-DAY WIN RATE/, 'the profile page has the alert record module');
   assert.match(html, /\['traders', 'Traders'\]/, 'the Alerts desk has a Traders tab');
 });
 

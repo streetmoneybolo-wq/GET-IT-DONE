@@ -1348,7 +1348,7 @@
     /* modules: a texture of their own, else handed out from the chosen textures in turn, else the desk's own mix */
     const secs = root.querySelectorAll('.pv-sec');
     const mix = !pool.length ? (MIX[desk] || null) : null;
-    const KEYS = ['head', 'stats', 'server', 'paper', 'song', 'social', 'feed'];
+    const KEYS = ['head', 'stats', 'server', 'paper', 'song', 'social', 'feed', 'record'];
     let k = 0;
     secs.forEach((el, i) => {
       if (el.classList.contains('orb')) return; /* the gallery stays clear so the desk shows behind the pictures */

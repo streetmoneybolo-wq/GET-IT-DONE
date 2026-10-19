@@ -55,6 +55,7 @@ test('save keeps a link card per social link; the page carries tier, main server
   assert.deepEqual(p.posts.map((x) => x.body), ['third', 'second', 'first']); assert.equal(p.posts[1].reply, true);
   const c = await svc.card(A, B);
   assert.equal(c.posts.length, 3); assert.equal(c.paper.rank, 1); assert.equal(c.followers, 1); assert.equal(c.server.name, 'MEM Trading Floor');
+  assert.equal(p.alerts, null, 'no alert record wired: the page still renders'); assert.equal(c.alerts, null);
   const un = await svc.follow(B, A, false); assert.equal(un.followers, 0);
   assert.equal((await svc.follow(A, A)).ok, false, 'no self-follow');
   const lb = await svc.leaderboard(10); assert.deepEqual(lb.map((r) => [r.userId, r.rank, r.returnPct]), [[A, 1, 70], [B, 2, -10]]);
@@ -294,4 +295,16 @@ test('the page carries the member\'s last Ticker Talk comments and their stockma
   const down = createProfilePages({ bridge: { configured: true, activity: async () => ({ ok: false, status: 503, error: 'activity_unconfigured' }) }, now: () => 1_000_000 });
   const d = await down.page(A, B); assert.equal(d.site.unavailable, true); assert.equal(d.site.error, 'activity_unconfigured');
   assert.ok(talkCalls >= 1);
+});
+
+test('the page and the hover card carry the member\'s alert record when one is wired; a failing record never blocks the page', async () => {
+  const rec = { ninetyDay: { alerts: 4, open: 1, closed: 3, wins: 2, stopped: 1, missed: 0, winRatePct: 67 }, allTime: { alerts: 6, closed: 5, wins: 3, winRatePct: 60 }, top: [{ symbol: 'ABC', peakPct: 25 }] };
+  const svc = createProfilePages({ tierLive: async () => 'member', alertRecord: { summary: async (id) => (id === A ? rec : null) }, now: () => 1 });
+  const p = await svc.page(A, B); assert.equal(p.alerts, rec);
+  const c = await svc.card(A, B); assert.deepEqual(c.alerts, { winRatePct: 67, closed: 3, open: 1, alerts: 4 });
+  assert.equal((await svc.card(B, A)).alerts, null, 'no alerts yet: nothing on the card');
+  const broken = createProfilePages({ tierLive: async () => 'member', alertRecord: { summary: async () => { throw new Error('db down'); } }, now: () => 1 });
+  assert.equal((await broken.page(A, B)).alerts, null);
+  const ui = require('node:fs').readFileSync(require.resolve('./academy-profile-ui.js'), 'utf8');
+  for (const bit of ['90-DAY WIN RATE', 'TIME TO PEAK', "sec('record'", 'pv-rec-tbl', 'Alert win rate', '.pv-sec.record{grid-area:record}']) assert.ok(ui.includes(bit), bit);
 });

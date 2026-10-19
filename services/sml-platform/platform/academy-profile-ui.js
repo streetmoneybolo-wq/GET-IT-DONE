@@ -59,7 +59,9 @@
     + '.pv-top b{font:800 .72rem ui-monospace,monospace;letter-spacing:.08em;color:var(--acc,#00c47d)}.pv-top .sp{flex:1}'
     + '.pv-btn{border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(255,255,255,.04);color:#e6eef2;padding:6px 10px;font:800 .66rem system-ui,sans-serif;cursor:pointer}.pv-btn:hover{border-color:var(--acc,#00c47d);color:#fff}.pv-btn.acc{background:var(--acc,#00c47d);color:#04140d;border-color:transparent}'
     + '.pv-root{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:18px 16px 60px;display:grid;gap:14px;grid-template-columns:1fr}'
-    + '@media(min-width:900px){.pv-root{grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));grid-template-areas:var(--areas)}.pv-sec.head{grid-area:head}.pv-sec.stats{grid-area:stats}.pv-sec.server{grid-area:server}.pv-sec.paper{grid-area:paper}.pv-sec.song{grid-area:song}.pv-sec.social{grid-area:social}.pv-sec.feed{grid-area:feed}}'
+    + '@media(min-width:900px){.pv-root{grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));grid-template-areas:var(--areas)}.pv-sec.head{grid-area:head}.pv-sec.stats{grid-area:stats}.pv-sec.server{grid-area:server}.pv-sec.paper{grid-area:paper}.pv-sec.song{grid-area:song}.pv-sec.social{grid-area:social}.pv-sec.feed{grid-area:feed}.pv-sec.record{grid-area:record}}'
+    /* the ALERT RECORD module: the member's Click-to-Alert record (90-day win rate, top ten peaks); public on every profile */
+    + '.pv-rec{display:flex;flex-direction:column;gap:10px}.pv-rec .pv-kv b{font-size:1.15rem}.pv-rec-tbl{width:100%;border-collapse:collapse;font:600 .68rem system-ui,sans-serif}.pv-rec-tbl th{text-align:left;font:800 .5rem ui-monospace,monospace;letter-spacing:.1em;color:#7f95a1;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap}.pv-rec-tbl td{padding:6px;border-bottom:1px solid rgba(255,255,255,.05);color:#dbe6ec;white-space:nowrap;vertical-align:middle}.pv-rec-tbl td.sym{font:900 .74rem system-ui,sans-serif;color:#fff}.pv-rec-tbl td.sym small{display:block;font:800 .5rem ui-monospace,monospace;letter-spacing:.08em;color:#7f95a1}.pv-rec-tbl .up{color:#52e6ad}.pv-rec-tbl .dn{color:#ff778b}.pv-rec-tbl .st{display:inline-block;padding:1px 6px;border-radius:999px;font:800 .5rem ui-monospace,monospace;letter-spacing:.08em;background:rgba(255,255,255,.06);color:#b9c7d2}.pv-rec-tbl .st.win{background:rgba(82,230,173,.16);color:#52e6ad}.pv-rec-tbl .st.stopped{background:rgba(255,119,139,.16);color:#ff778b}.pv-rec-tbl .st.open{background:color-mix(in srgb,var(--acc,#00c47d) 18%,transparent);color:var(--acc,#00c47d)}.pv-rec-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.pv-rec .pv-note{margin:0}'
     + '.pv-sec{position:relative;min-width:0;border:1px solid rgba(255,255,255,.08);border-radius:var(--rad,14px);background:rgba(10,16,26,.78);padding:14px;box-shadow:0 10px 40px rgba(0,0,0,.35);overflow:hidden}'
     + '.pv-sec h6{margin:0 0 8px;font:800 .56rem ui-monospace,monospace;letter-spacing:.14em;color:var(--acc,#00c47d);text-transform:uppercase}'
     + '.pv-sec.hidden{display:none!important}'
@@ -248,6 +250,39 @@
   function paintActivity() { const d = S.data, host = view.querySelector('.pv-sec.feed .pv-act'); if (d && host) host.innerHTML = activityBody(d); }
   /* ---------- rendering ---------- */
   const sec = (name, title, body, hidden) => '<section class="pv-sec ' + name + (hidden ? ' hidden' : '') + '">' + (title ? '<h6>' + esc(title) + '</h6>' : '') + body + '</section>';
+  /* ---------- the ALERT RECORD module: every alert the member sent through Click-to-Alert, scored (academy-alert-record.js) ---------- */
+  const whenAt = (ms) => { const d = new Date(Number(ms)); if (!Number.isFinite(d.getTime())) return ''; return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) + ' ET'; };
+  const span = (ms) => { if (!Number.isFinite(ms) || ms < 0) return '–'; const m = Math.round(ms / 60000); if (m < 1) return '<1m'; if (m < 60) return m + 'm'; const h = Math.floor(m / 60); if (h < 24) return h + 'h ' + (m % 60) + 'm'; const dd = Math.floor(h / 24); return dd + 'd ' + (h % 24) + 'h'; };
+  const pct2 = (v) => (Number.isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '–');
+  const signCls = (v) => (Number.isFinite(v) ? (v >= 0 ? 'up' : 'dn') : '');
+  const RESULT = { win: 'WIN', stopped: 'STOPPED', missed: 'MISSED', abandoned: 'NO DATA' };
+  function recordBody(d) {
+    const a = d.alerts;
+    if (!a || !a.allTime || !a.allTime.alerts) return '<p class="pv-empty">' + (d.own ? 'Your Click-to-Alert posts land here with a 90-day win rate and your ten best calls.' : 'No alerts on record yet.') + '</p>';
+    const n = a.ninetyDay || {}, t = a.allTime || {};
+    const rate = (x) => (Number.isFinite(x.winRatePct) ? x.winRatePct + '%' : '–');
+    let h = '<div class="pv-rec"><div class="pv-kv">'
+      + '<div><span>90-DAY WIN RATE</span><b class="' + (Number.isFinite(n.winRatePct) ? (n.winRatePct >= 50 ? 'up' : 'dn') : '') + '">' + rate(n) + '</b></div>'
+      + '<div><span>WINS · CLOSED</span><b>' + (n.wins || 0) + ' <small style="color:#7f95a1;font-size:.6rem">of ' + (n.closed || 0) + '</small></b></div>'
+      + '<div><span>OPEN</span><b>' + (n.open || 0) + '</b></div>'
+      + '<div><span>ALERTS · 90D</span><b>' + (n.alerts || 0) + '</b></div>'
+      + '<div><span>ALL-TIME</span><b>' + rate(t) + ' <small style="color:#7f95a1;font-size:.6rem">' + (t.wins || 0) + '/' + (t.closed || 0) + '</small></b></div>'
+      + '</div>';
+    const top = Array.isArray(a.top) ? a.top : [];
+    if (top.length) {
+      h += '<div class="pv-rec-scroll"><table class="pv-rec-tbl"><thead><tr><th>#</th><th>ALERT</th><th>SENT</th><th>PEAK</th><th>TIME TO PEAK</th><th>NOW</th><th>RESULT</th></tr></thead><tbody>';
+      top.forEach((r, i) => {
+        const res = r.status === 'open' ? 'open' : (r.result || '');
+        h += '<tr><td>' + (i + 1) + '</td><td class="sym">$' + esc(r.symbol) + '<small>' + esc(String(r.side || 'long').toUpperCase()) + ' · ' + esc(r.horizon || 'swing') + ' · ' + money(r.entry) + '</small></td>'
+          + '<td>' + esc(whenAt(r.alertedAt)) + '</td><td class="' + signCls(r.peakPct) + '">' + pct2(r.peakPct) + '</td><td>' + esc(span(r.timeToPeakMs)) + '</td>'
+          + '<td class="' + signCls(r.lastPct) + '">' + pct2(r.lastPct) + (r.live ? '' : (Number.isFinite(r.lastPct) ? ' <small style="color:#7f95a1">last close</small>' : '')) + '</td>'
+          + '<td><span class="st ' + esc(res) + '">' + esc(res === 'open' ? 'OPEN' : (RESULT[res] || res.toUpperCase())) + '</span></td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    h += '<p class="pv-note">Top ten by peak gain, all time. Win = the target traded; stopped = the stop traded first; missed = the horizon ran out. Peak and now are against the entry at the click. Research and education, not advice.</p></div>';
+    return h;
+  }
   function render() {
     const d = S.data; if (!d) return;
     const s = d.settings, t = s.theme || {}, acc = t.accent || '#00c47d', acc2 = t.accent2 || '#6c8cff', fx = t.fx || LAYOUT_FX[s.layout] || 'aurora';
@@ -257,7 +292,7 @@
       + (d.own ? '<button type="button" class="pv-btn acc" data-pv="edit">✎ Customize my profile</button>' : '<button type="button" class="pv-btn' + (d.viewerFollows ? '' : ' acc') + '" data-pv="follow">' + (d.viewerFollows ? '✓ Following' : '+ Follow') + '</button>')
       + (POP ? '' : '<button type="button" class="pv-btn" data-pv="popout" title="This profile in its own window">⧉</button>') + '<button type="button" class="pv-btn" data-pv="close">✕</button></div>';
     const orbit = (t.orbit || []).filter((o) => o && o.image), DESK = window.smlProfileDesk;
-    const cols = COLS[s.layout] || 3, areas = (orbit.length && DESK ? '"' + Array(cols).fill('orb').join(' ') + '" ' : '') + (AREAS[s.layout] || AREAS.classic);
+    const cols = COLS[s.layout] || 3, areas = (orbit.length && DESK ? '"' + Array(cols).fill('orb').join(' ') + '" ' : '') + (AREAS[s.layout] || AREAS.classic) + ' "' + Array(cols).fill('record').join(' ') + '"';
     h += '<div class="pv-root pl-' + esc(s.layout) + ' f-' + esc(t.font || 'system') + '" style="--acc:' + esc(acc) + ';--acc2:' + esc(acc2) + ';--areas:' + esc(areas) + ';--cols:' + cols + '">';
     h += sec('head', '', '<div class="pv-head"><img class="pv-ava" alt="" src="' + ava + '" data-ava><div><div class="pv-name">' + esc(name) + '</div>' + (s.tagline ? '<div class="pv-tag">' + esc(s.tagline) + '</div>' : '') + '<span class="pv-tier">' + esc(d.tierLabel) + '</span></div></div>' + (s.bio ? '<div class="pv-bio">' + esc(s.bio) + '</div>' : ''));
     if (orbit.length && DESK) h += sec('orb', '3D gallery', DESK.orbitHtml(orbit, token(), esc));
@@ -271,6 +306,7 @@
     h += sec('social', 'Links', socials.length ? '<div class="pv-links">' + socials.map((x) => '<button type="button" class="pv-link" data-pv="open" data-url="' + esc(x.url) + '">' + (x.card && x.card.image ? '<img alt="" loading="lazy" src="/academy-activity/profiles/link-image?u=' + encodeURIComponent(x.card.image) + '&t=' + encodeURIComponent(token()) + '">' : '<div class="ph">' + esc(SOCIAL_ICON[x.kind] || '↗') + '</div>') + '<span class="t">' + esc(x.title || (x.card && x.card.title) || x.kind) + '<small>' + esc((x.card && x.card.site) || x.kind) + '</small></span></button>').join('') + '</div>' : '<p class="pv-empty">' + (d.own ? 'Add your social links in Customize.' : 'No links yet.') + '</p>', s.flags.showSocials === false || (!socials.length && !d.own));
     const act = activityBody(d);
     h += sec('feed', 'Activity', '<div class="pv-act">' + act + '</div>', !act);
+    h += sec('record', 'Alert record · 90-day win rate', recordBody(d));
     h += '</div>';
     /* the trader's ALERT CHART (academy-alert-chart-ui.js): their alerts as threads with live gain numbers, follow with push, subscribe */
     h += '<div class="pv-alerts-wrap"><div class="pv-sec pv-alerts"><div class="ac-host"></div></div></div>';
@@ -318,7 +354,7 @@
     const picked = Array.isArray(t.textures) ? t.textures : [];
     const grid = [{ id: 'none', label: 'Plain (none)' }].concat(D.textures).map((x) => '<button type="button" data-tex="' + esc(x.id) + '" class="' + on(x.id === 'none' ? !picked.length : picked.indexOf(x.id) >= 0) + '"><span class="pd-sw ' + (x.id === 'none' ? 'none' : 'tx-' + esc(x.id)) + '"><span>' + esc(x.label) + '</span></span></button>').join('');
     const lights = Array.isArray(t.lights) ? t.lights : [], light = (D.lights || []).map((x) => '<button type="button" data-light="' + esc(x.id) + '" class="' + on(x.id === 'off' ? !lights.length : lights.indexOf(x.id) >= 0) + '">' + esc(x.label) + '</button>').join('');
-    const MODN = [['head', 'Name'], ['stats', 'Followers'], ['server', 'Server'], ['paper', 'Paper acct'], ['song', 'Song'], ['social', 'Links'], ['feed', 'Posts']], RX = [['auto', 'auto'], ['off', 'none'], ['kick', 'kick'], ['bass', 'bass'], ['vocal', 'vocals'], ['snare', 'snare'], ['hats', 'hi-hats']];
+    const MODN = [['head', 'Name'], ['stats', 'Followers'], ['server', 'Server'], ['paper', 'Paper acct'], ['song', 'Song'], ['social', 'Links'], ['feed', 'Posts'], ['record', 'Alert record']], RX = [['auto', 'auto'], ['off', 'none'], ['kick', 'kick'], ['bass', 'bass'], ['vocal', 'vocals'], ['snare', 'snare'], ['hats', 'hi-hats']];
     const mods = MODN.map(([k, l]) => '<div class="pd-mod"><b>' + l + '</b><select data-modtex="' + k + '"><option value="">texture: auto</option>' + D.textures.map((x) => '<option value="' + esc(x.id) + '"' + ((t.moduleTex || {})[k] === x.id ? ' selected' : '') + '>' + esc(x.label) + '</option>').join('') + '</select><select data-modrx="' + k + '">' + RX.map(([v, n]) => '<option value="' + v + '"' + (((t.moduleReact || {})[k] || 'auto') === v ? ' selected' : '') + '>moves to: ' + n + '</option>').join('') + '</select></div>').join('');
     const orbit = t.orbit || [];
     const rows = orbit.map((o, i) => '<div class="pd-orow"><div class="r"><b>' + (i + 1) + '</b><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#cfe3ea" title="' + esc(o.image) + '">' + esc(o.image) + '</span><button type="button" data-orb-rm="' + i + '">remove</button></div>'
@@ -530,7 +566,8 @@
     const old = cardEl.querySelector('.apc'); if (old) old.remove();
     const div = document.createElement('div'); div.className = 'apc';
     div.innerHTML = '<h6>ACADEMY</h6><div class="kv"><span>Tier</span><b>' + esc(c.tierLabel) + '</b><span>Followers</span><b>' + c.followers + '</b>'
-      + (c.server ? '<span>Main server</span><b>' + esc(c.server.name) + '</b>' : '') + (c.paper ? '<span>Paper rank</span><b>' + (c.paper.rank ? '#' + c.paper.rank + ' of ' + c.paper.of + (Number.isFinite(c.paper.returnPct) ? ' (' + pct(c.paper.returnPct) + ')' : '') : 'unranked') + '</b>' : '') + '</div>'
+      + (c.server ? '<span>Main server</span><b>' + esc(c.server.name) + '</b>' : '') + (c.paper ? '<span>Paper rank</span><b>' + (c.paper.rank ? '#' + c.paper.rank + ' of ' + c.paper.of + (Number.isFinite(c.paper.returnPct) ? ' (' + pct(c.paper.returnPct) + ')' : '') : 'unranked') + '</b>' : '')
+      + (c.alerts ? '<span>Alert win rate</span><b>' + (Number.isFinite(c.alerts.winRatePct) ? c.alerts.winRatePct + '% <small style="color:#7f95a1">90d, ' + c.alerts.closed + ' closed</small>' : (c.alerts.open ? c.alerts.open + ' open' : 'no alerts yet')) + '</b>' : '') + '</div>'
       + (c.posts && c.posts.length ? c.posts.map((x) => '<div class="p"><i>' + esc(ROOMS[x.channel] || x.channel) + '</i>' + esc(x.body) + '</div>').join('') : '<p class="note" style="margin:4px 0 0;color:#7f95a1;font-weight:500">No posts yet.</p>')
       + '<div class="btns"><button type="button" data-pv-open="' + esc(id) + '">View Academy profile</button>' + (c.own ? '' : '<button type="button" data-pv-follow="' + esc(id) + '" data-on="' + (c.viewerFollows ? '1' : '0') + '">' + (c.viewerFollows ? '✓ Following' : '+ Follow') + '</button>') + '</div>';
     const slot = cardEl.querySelector('.apc-slot');
