@@ -2105,3 +2105,21 @@ test('the Ticker Talk routes use the service createServer is given (and say so w
     assert.equal(list.comments.length, 1); assert.equal(list.viewer.id, '100000000000000001');
   });
 });
+
+test('the earnings insight route serves the model, signals and brief to paid members, and the panel script is on the page', async () => {
+  await withServer({}, async (base) => { assert.equal((await fetch(`${base}/academy-activity/earnings-insight?symbol=AAPL`)).status, 503); });
+  const academyOAuth = { verifySession: (auth) => (auth === 'Bearer member' ? { ok: true, tier: 'academy', userId: '1' } : auth === 'Bearer free' ? { ok: true, tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const svc = { insight: async (s) => ({ ok: true, available: true, symbol: s, quarters: [], signals: [{ key: 'growth', tone: 'up', text: 'x' }], ai: { available: false, reason: 'ai_unconfigured' } }) };
+  await withServer({ academyOAuth, getEarningsInsight: () => svc }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/earnings-insight?symbol=AAPL`)).status, 401);
+    assert.equal((await fetch(`${base}/academy-activity/earnings-insight?symbol=AAPL`, { headers: { authorization: 'Bearer free' } })).status, 403);
+    assert.equal((await fetch(`${base}/academy-activity/earnings-insight?symbol=bad!`, { headers: { authorization: 'Bearer member' } })).status, 400);
+    const ok = await fetch(`${base}/academy-activity/earnings-insight?symbol=aapl`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(ok.status, 200); const body = await ok.json(); assert.equal(body.symbol, 'AAPL'); assert.equal(body.signals[0].key, 'growth');
+  });
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m' });
+  assert.match(html, /academy-activity\/earnings-insight\?symbol=/, 'the insight loads under the earnings calendar');
+  assert.match(html, /EARNINGS INSIGHT/); assert.match(html, /data-ei="cost"/, 'the cost stack chart');
+  assert.doesNotMatch(html, PAGE_BANNED);
+});
