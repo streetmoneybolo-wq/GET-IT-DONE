@@ -110,6 +110,7 @@ const { createProfileService } = require('./academy-profile');
 const { createTraderAlerts } = require('./academy-trader-alerts');
 const { createCommunity } = require('./academy-community');
 const { createSocialNotify } = require('./academy-social-notify');
+const { createAlertChartBilling } = require('./alert-chart-billing');
 const { createProfilePages, MAX_UPLOAD_BYTES: PROFILE_UPLOAD_MAX } = require('./academy-profile-pages');
 const { createSnapshotService } = require('./academy-snapshot');
 const { createMemLab, fileStore: memLabFileStore } = require('./academy-mem-lab-service');
@@ -1946,7 +1947,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getSqueezeList = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null, academyProfileWall = null,
-  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null, academySocialNotify = null,
+  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null, academySocialNotify = null, alertChartBilling = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -2843,6 +2844,27 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         sendJson(response, 404, { ok: false, error: 'not_found' }); return;
       } catch (error) { logger('error', 'academy_community_failed', { error: String((error && error.message) || error) }); sendJson(response, 503, { ok: false, error: 'temporary_unavailable' }); return; }
     }
+    /* where Stripe sends a subscriber after paying for an Alert Chart, and a trader after Stripe onboarding (alert-chart-billing.js); no session: the browser is outside Discord */
+    if (request.method === 'GET' && (path === '/academy-activity/alert-chart/paid' || path === '/academy-activity/alert-chart/stripe')) {
+      const q = new URL(request.url || '/', 'http://localhost').searchParams;
+      const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      let title = 'Alert Chart', lead = '', detail = '';
+      if (path === '/academy-activity/alert-chart/stripe') {
+        title = q.get('done') ? 'Stripe setup complete' : 'Stripe setup not finished';
+        lead = q.get('done') ? 'Your Alert Chart can now take paid subscribers.' : 'Stripe needs a little more from you before your chart can take paid subscribers.';
+        detail = q.get('done') ? 'Go back to the Academy: open your profile, then Channels &amp; prices, and tick premium on the channels you sell. Payouts come from stockmarketloop.com after its 6% processing fee.' : 'Go back to the Academy, open Channels &amp; prices and press Get paid with Stripe again to continue where you left off.';
+      } else if (q.get('cancel')) {
+        title = 'Checkout cancelled'; lead = 'Nothing was charged.'; detail = 'Go back to the Academy whenever you want to subscribe.';
+      } else {
+        const state = alertChartBilling && q.get('k') ? await alertChartBilling.checkoutState(q.get('k')).catch(() => null) : null;
+        const paid = state && state.ok && (state.status === 'active');
+        title = paid ? 'Payment received' : 'Thank you';
+        lead = paid ? 'Your access is on.' : 'Your payment is being confirmed.';
+        detail = paid ? 'Go back to the Academy: the premium alerts on this chart are unlocked for you' + (state.until ? ' until ' + esc(new Date(state.until).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })) : '') + '. stockmarketloop.com manages the subscription, receipts, refunds and disputes.' : 'Stripe confirms the payment to stockmarketloop.com within a minute; your access in the Academy turns on by itself. Reload the chart if it still shows locked after that.';
+      }
+      sendHtml(response, 200, '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(title) + ' · Making Easy Money Academy</title><meta name="robots" content="noindex"><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#070b10;color:#dbe6ec;font:500 1rem/1.5 system-ui,sans-serif}main{max-width:520px;padding:28px 22px;border:1px solid #1b3540;border-radius:14px;background:#0a1118;margin:16px}h1{margin:0 0 6px;font:900 1.3rem system-ui,sans-serif;color:#fff}p.lead{color:#7ef0bd;font-weight:800;margin:0 0 10px}p{margin:0 0 10px}small{color:#7f98a6}</style></head><body><main><h1>' + esc(title) + '</h1><p class="lead">' + esc(lead) + '</p><p>' + detail + '</p><small>You can close this tab.</small></main></body></html>');
+      return;
+    }
     /* ALERT CHART (academy-trader-alerts.js): a trader's alerts as threads, followed (with a push opt-in) by members; premium channels need a grant */
     if (path === '/academy-activity/trader-alerts' || path.startsWith('/academy-activity/trader-alerts/')) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -2877,12 +2899,28 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           const r = b.revoke ? await traderAlerts.revokeAccess(String(b.member || ''), String(b.trader || '')) : await traderAlerts.grantAccess(String(b.member || ''), String(b.trader || ''), { plan: String(b.plan || 'month'), source: 'owner', reference: String(b.reference || '') });
           sendJson(response, r.ok ? 200 : 400, r); return;
         }
+        /* selling: the trader's seller status on stockmarketloop.com, and the consents + Stripe Express onboarding (alert-chart-billing.js) */
+        if (request.method === 'GET' && path === '/academy-activity/trader-alerts/seller') {
+          if (!alertChartBilling) { sendJson(response, 200, { ok: true, configured: false, ready: false, linked: false, consented: false, stripe: { connected: false, ready: false } }); return; }
+          sendJson(response, 200, await alertChartBilling.sellerStatus(me)); return;
+        }
+        if (request.method === 'POST' && path === '/academy-activity/trader-alerts/seller') {
+          if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+          if (!alertChartBilling) { sendJson(response, 503, { ok: false, error: 'billing_unconfigured' }); return; }
+          const gate = academyDataLimit.take(request); if (!gate.ok) { sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+          const b = await readBody(1024); if (!b) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+          const r = await alertChartBilling.onboardSeller(me, { terms: b.terms === true, fee: b.fee === true, disputes: b.disputes === true, activity: b.activity === true });
+          sendJson(response, r.ok ? 200 : r.error === 'consent_required' || r.error === 'site_not_linked' ? 400 : 503, r); return;
+        }
         if (request.method === 'POST' && path === '/academy-activity/trader-alerts/checkout') {
-          /* premium access is bought on stockmarketloop.com; until the site bridge for Alert Charts is live the page says so */
+          /* premium access is bought on stockmarketloop.com (Stripe Checkout through the site's marketplace); access lands from the webhook */
           const b = await readBody(1024); const trader = b && String(b.trader || ''), plan = b && String(b.plan || '');
           if (!SNOW.test(trader) || !(plan in traderAlerts.PLANS)) { sendJson(response, 400, { ok: false, error: 'invalid_request' }); return; }
-          if (!traderAlertsCheckout) { sendJson(response, 503, { ok: false, error: 'checkout_unavailable' }); return; }
-          const r = await traderAlertsCheckout({ memberId: me, traderId: trader, plan }); sendJson(response, r && r.ok ? 200 : 503, r || { ok: false, error: 'checkout_unavailable' }); return;
+          const start = traderAlertsCheckout || (alertChartBilling && alertChartBilling.configured ? (i) => alertChartBilling.checkout(i) : null);
+          if (!start) { sendJson(response, 503, { ok: false, error: 'checkout_unavailable' }); return; }
+          const gate = academyDataLimit.take(request); if (!gate.ok) { sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+          const r = await start({ memberId: me, traderId: trader, plan });
+          sendJson(response, r && r.ok ? 200 : r && (r.error === 'plan_not_offered' || r.error === 'not_premium' || r.error === 'own_chart' || r.error === 'invalid_plan' || r.error === 'seller_not_ready') ? 400 : 503, r || { ok: false, error: 'checkout_unavailable' }); return;
         }
         const um = /^\/academy-activity\/trader-alerts\/(\d{1,18})\/update$/.exec(path);
         if (request.method === 'POST' && um) {
@@ -5549,6 +5587,12 @@ async function main() {
   /* LOOP-KICK ↔ Discord connection from inside the Academy: site password sign-in over the app identity bridge, then the signed link route. */
   const loopKickConnect = createLoopKickConnect({ bridge: loopKickBridge, identity: appIdentity, secret: config.loopKickBridgeSecret, siteBase: config.loopKickBridgeUrl || REDDIT_HUB_ORIGIN, logger: log });
   const appAuth = createAppAuth({ store: createAppSessionStore({ pool: database.pool }), identity: appIdentity, secret: config.appTokenSecret, logger: log });
+  /* premium Alert Charts sold through stockmarketloop.com's marketplace (Stripe Connect, 6% fee, disputes); off without Stripe or with ACADEMY_ALERT_CHART_BILLING=off */
+  const alertChartBilling = !traderAlerts || process.env.ACADEMY_ALERT_CHART_BILLING === 'off' ? null : createAlertChartBilling({
+    pool: database.pool, stripe, billingService, loopKickBridge, loopKickConnect, traderAlerts, publicBase: POPOUT_BASE, logger: log,
+    names: async (id) => { try { if (academyProfilePages) { const s = await academyProfilePages.settingsOf(id); if (s && s.displayName) return s.displayName; } } catch (_) { /* fall through */ } try { if (academyProfiles) { const c = await academyProfiles.profile(id); return c && c.discord ? (c.discord.name || c.discord.username || '') : ''; } } catch (_) { /* fall through */ } return ''; }
+  });
+  if (alertChartBilling) { alertChartBilling.ensureSchema().catch(() => {}); log('info', 'alert_chart_billing_runtime', { configured: alertChartBilling.configured, stripe: Boolean(stripe), publicBase: POPOUT_BASE }); }
   /* one SIRE feed shared by the Academy's SIRE panel and the app's scanner stream (idle until the first viewer) */
   const appSireFeed = createSireFeed({ scanner: getAcademyScanner, massive: academyMassive, logger: log });
   /* native + web push to app devices: each sender is off until its credentials exist (SML_APNS_*, SML_FCM_SERVICE_ACCOUNT; web reuses the VAPID keys) */
@@ -5602,7 +5646,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,

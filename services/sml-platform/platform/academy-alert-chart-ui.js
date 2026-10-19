@@ -22,7 +22,8 @@
     + '.ac .ac-acts{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 0}.ac .ac-lockmsg{margin:6px 0 0;color:#ffcf7a;font-size:.64rem}'
     + '.ac form{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin:8px 0;padding:10px;border:1px solid #2d5a3f;border-radius:10px;background:#0b151d}.ac form label{display:flex;flex-direction:column;gap:3px;color:#8fa6b3;font:700 .54rem ui-monospace,monospace;letter-spacing:.08em}.ac form input,.ac form select,.ac form textarea{border:1px solid #2b5362;border-radius:6px;background:#0d1a24;color:#fff;padding:6px 7px;font:600 .72rem system-ui,sans-serif}.ac form textarea{min-height:48px;resize:vertical}.ac form .full{grid-column:1/-1}.ac form .btns{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center}.ac form .msg{color:#ff9fb0;font-size:.62rem}'
     + '.ac .ac-set .chs{display:flex;flex-direction:column;gap:4px}.ac .ac-set .chs label{flex-direction:row;align-items:center;gap:6px;color:#dbe6ec;font:600 .66rem system-ui,sans-serif}.ac .ac-set .chs input[type=text]{flex:1}.ac .ac-empty{padding:12px;color:#7f98a6;text-align:center;border:1px dashed #1b3540;border-radius:10px}'
-    + '.ac .ac-plans{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 0}.ac .ac-plans button{border:1px solid #8a6a1c;border-radius:7px;background:#1d1708;color:#ffcf7a;font:800 .6rem ui-monospace,monospace;padding:5px 8px;cursor:pointer}';
+    + '.ac .ac-plans{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 0}.ac .ac-plans button{border:1px solid #8a6a1c;border-radius:7px;background:#1d1708;color:#ffcf7a;font:800 .6rem ui-monospace,monospace;padding:5px 8px;cursor:pointer}'
+    + '.ac .ac-seller{padding:9px 10px;border:1px dashed #8a6a1c;border-radius:9px;background:#120f08}.ac .ac-seller.ok{border-style:solid;border-color:#2d5a3f;background:#0b1a13}.ac .ac-seller h6{color:#ffcf7a}.ac .ac-seller.ok h6{color:#7ef0bd}.ac .ac-seller p{margin:0 0 7px;color:#dbe6ec;font:500 .66rem/1.45 system-ui,sans-serif}.ac .ac-seller label.ck{flex-direction:row;align-items:flex-start;gap:7px;margin:0 0 6px;color:#cfe0e8;font:500 .64rem/1.4 system-ui,sans-serif;letter-spacing:0;text-transform:none}.ac .ac-seller label.ck input{margin-top:2px}.ac .ac-seller .btns{margin-top:4px}';
   document.head.appendChild(css);
 
   const money = (c) => '$' + (Number(c || 0) / 100).toFixed(2);
@@ -85,14 +86,34 @@
       + '<label class="full">NOTE<textarea name="note" maxlength="1200" placeholder="Why this alert: the setup, the plan, the risk…"></textarea></label>'
       + '<div class="btns"><button type="button" class="ac-b acc" data-ac="send-post">Post alert</button><button type="button" class="ac-b" data-ac="cancel-post">Cancel</button><span class="msg"></span></div></form>';
   }
-  function settingsForm(s) {
+  /* GET PAID: the trader's seller status on stockmarketloop.com and, until it is ready, the consents and the Stripe onboarding button */
+  function sellerHtml(st) {
+    const s = st || {};
+    if (s.configured === false) return '<div class="full ac-seller"><h6>GET PAID · stockmarketloop.com</h6><p>Paid subscriptions are not switched on for this Academy yet. Premium channels stay locked to everyone until they are.</p></div>';
+    if (s.ready) return '<div class="full ac-seller ok"><h6>GET PAID · stockmarketloop.com</h6><p>✓ Connected. Subscribers pay on stockmarketloop.com; you receive each payment less the 6% processing fee. Subscriptions, refunds and disputes are handled there.</p></div>';
+    let h = '<div class="full ac-seller"><h6>GET PAID · stockmarketloop.com</h6>';
+    if (!s.linked) h += '<p>Link your Discord to your stockmarketloop.com account first, then come back here.</p><div class="btns"><button type="button" class="ac-b gold" data-ac="site-link" data-url="' + esc(s.connectUrl || 'https://stockmarketloop.com/connect-discord/') + '">Link my stockmarketloop.com account</button></div>';
+    else {
+      if (s.stripe && s.stripe.connected && !s.stripe.ready) h += '<p>Stripe still needs details from you before you can take paid subscribers. Press the button to continue where you left off.</p>';
+      else h += '<p>Premium channels are sold through stockmarketloop.com, the same way it sells Discord group memberships. Tick the terms, then connect Stripe (a few minutes, identity and bank details).</p>';
+      if (!s.consented) h += '<label class="ck"><input type="checkbox" name="c_terms"> I accept the stockmarketloop.com seller terms. My alerts are educational content, not financial advice.</label>'
+        + '<label class="ck"><input type="checkbox" name="c_fee"> stockmarketloop.com processes every payment and keeps a 6% processing fee; the rest is paid to my Stripe account.</label>'
+        + '<label class="ck"><input type="checkbox" name="c_disputes"> If a subscriber disputes a charge, the disputed amount is held back from me, and if the dispute is lost a dispute fee of 15% of the disputed amount is paid to stockmarketloop.com. Both may be debited from my Stripe balance.</label>'
+        + '<label class="ck"><input type="checkbox" name="c_activity"> I will keep my chart active. A chart with no alert or update for more than 30 days is treated as not fulfilling the subscription, which gives me low chances of winning a dispute.</label>';
+      h += '<div class="btns"><button type="button" class="ac-b gold" data-ac="stripe-connect">' + (s.stripe && s.stripe.connected ? 'Continue Stripe setup' : 'Get paid with Stripe') + '</button><span class="msg"></span></div>';
+    }
+    return h + '</div>';
+  }
+  function settingsForm(s, seller) {
     const chans = (s.channels || []).concat(s.channels.length < 6 ? [{ key: '', name: '', premium: false }] : []);
     return '<form class="ac-set" data-ac-form="settings"><div class="full chs"><h6>CHANNELS · tick premium to sell access</h6>' + chans.map((c, i) => '<label><input type="checkbox" name="prem' + i + '"' + (c.premium ? ' checked' : '') + '> premium <input type="text" name="ch' + i + '" maxlength="40" value="' + esc(c.name) + '" placeholder="' + (i === chans.length - 1 && !c.name ? 'New channel name' : '') + '"></label>').join('') + '</div>'
       + '<div class="full"><h6>PREMIUM PRICES · what a subscriber pays on stockmarketloop.com (you receive it less the 6% processing fee)</h6></div>'
       + PLANS.map(([k, l]) => '<label>' + l.toUpperCase() + ' (USD)<input name="price_' + k + '" type="number" step="0.01" min="0" value="' + ((s.prices && s.prices[k]) ? (s.prices[k] / 100).toFixed(2) : '') + '" placeholder="0 = not offered"></label>').join('')
       + '<label class="full">ABOUT THIS CHART<textarea name="about" maxlength="400" placeholder="What you post, how often, your style…">' + esc(s.about || '') + '</textarea></label>'
+      + sellerHtml(seller)
       + '<div class="btns"><button type="button" class="ac-b acc" data-ac="save-set">Save</button><button type="button" class="ac-b" data-ac="cancel-set">Cancel</button><span class="msg"></span></div></form>';
   }
+  const openOut = (url) => { if (!url) return; if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url); else { try { window.open(url, '_blank', 'noopener'); } catch (_) { /* ignore */ } } };
 
   function chartHtml(d, host) {
     const t = d.trader, v = d.viewer, s = t.settings || {};
@@ -146,7 +167,16 @@
       if (act === 'mine') { openProfile(''); return; }
       if (act === 'new') { const s = st.settings || (await api('/settings')).settings; st.settings = s; slot.innerHTML = postForm(s, st.opts.feed ? { symbol: chartSymbol(), entry: chartPrice() } : {}); slot.querySelector('input[name=symbol]').focus(); return; }
       if (act === 'cancel-post' || act === 'cancel-set') { slot.innerHTML = ''; return; }
-      if (act === 'settings') { const s = (await api('/settings')).settings || st.settings; st.settings = s; slot.innerHTML = settingsForm(s); return; }
+      if (act === 'settings') { const [sr, seller] = await Promise.all([api('/settings'), api('/seller')]); const s = sr.settings || st.settings; st.settings = s; st.seller = seller; slot.innerHTML = settingsForm(s, seller); return; }
+      if (act === 'site-link') { openOut(b.dataset.url); toast('Link your Discord on stockmarketloop.com, then open Channels & prices again.'); return; }
+      if (act === 'stripe-connect') {
+        const f = b.closest('form'), msg = f.querySelector('.ac-seller .msg'); const ck = (n) => { const i = f.querySelector('[name=' + n + ']'); return i ? i.checked : true; };
+        if (!(ck('c_terms') && ck('c_fee') && ck('c_disputes') && ck('c_activity'))) { msg.textContent = 'Tick every line to continue.'; return; }
+        b.disabled = true; const r = await api('/seller', 'POST', { terms: true, fee: true, disputes: true, activity: true }); b.disabled = false;
+        if (r.ok && r.url) { openOut(r.url); toast('Stripe onboarding opened. Finish it there, then come back: your chart can take paid subscribers.'); return; }
+        if (r.error === 'site_not_linked') { openOut(r.connectUrl); msg.textContent = 'Link your stockmarketloop.com account first (opened).'; return; }
+        msg.textContent = { academy_access_required: 'Selling is for Academy members.', billing_unconfigured: 'Paid subscriptions are not switched on yet.', consent_required: 'Tick every line to continue.' }[r.error] || 'Could not start Stripe setup (' + (r.error || 'error') + ').'; return;
+      }
       if (act === 'send-post') {
         const f = b.closest('form'), msg = f.querySelector('.msg'); const g = (n) => f.querySelector('[name=' + n + ']').value;
         b.disabled = true;
@@ -185,8 +215,8 @@
       if (act === 'subscribe') { host.dataset.showPlans = '1'; host.innerHTML = chartHtml(d, host); host.querySelector('.ac-plans') && host.querySelector('.ac-plans').scrollIntoView({ block: 'nearest' }); return; }
       if (act === 'checkout') {
         b.disabled = true; const r = await api('/checkout', 'POST', { trader: d.trader.id, plan: b.dataset.plan }); b.disabled = false;
-        if (r.ok && r.url) { if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(r.url); else window.open(r.url, '_blank', 'noopener'); toast('Checkout opened on stockmarketloop.com. Your access turns on here once it is paid.'); }
-        else toast(r.error === 'checkout_unavailable' ? 'Premium checkout is not connected yet. Ask the trader how to subscribe for now.' : 'Could not start checkout (' + (r.error || 'error') + ').');
+        if (r.ok && r.url) { openOut(r.url); toast('Checkout opened on stockmarketloop.com. Your access turns on here once it is paid.'); }
+        else toast({ checkout_unavailable: 'Premium checkout is not connected yet. Ask the trader how to subscribe for now.', seller_not_ready: 'This trader has not finished setting up payouts on stockmarketloop.com yet.', plan_not_offered: 'That plan is not offered on this chart.', own_chart: 'That is your own chart.', rate_limited: 'Slow down a little.' }[r.error] || 'Could not start checkout (' + (r.error || 'error') + ').');
       }
     });
   }

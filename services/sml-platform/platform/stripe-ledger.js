@@ -27,7 +27,7 @@
 
 const crypto = require('node:crypto');
 
-const OUR_CHECKOUT_KINDS = new Set(['loop_bucks', 'membership']);
+const OUR_CHECKOUT_KINDS = new Set(['loop_bucks', 'membership', 'alert_chart']);
 const GRANT_STATUSES = new Set(['active', 'trialing']);
 const REVOKE_STATUSES = new Set(['canceled', 'unpaid', 'incomplete_expired']);
 

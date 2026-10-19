@@ -1,6 +1,7 @@
 'use strict';
 
-const { disputeFee } = require('./billing');
+const { disputeFeeFor } = require('./billing');
+const { applyAlertChartEvent, alertChartDisputeContext, pauseAlertChartAccess } = require('./alert-chart-billing');
 
 const TYPES = new Set([
   'account.updated',
@@ -8,10 +9,15 @@ const TYPES = new Set([
   'checkout.session.async_payment_succeeded',
   'customer.subscription.created',
   'customer.subscription.updated',
+  /* Alert Chart sales (alert-chart-billing.js): renewals extend access, an ended subscription ends it */
+  'customer.subscription.deleted',
+  'invoice.paid',
   'charge.dispute.created',
   'charge.dispute.updated',
   'charge.dispute.closed'
 ]);
+
+function kindOf(object) { return object && object.metadata && typeof object.metadata === 'object' ? String(object.metadata.sml_kind || '') : ''; }
 
 function objectOf(event) {
   return event && event.data && event.data.object && typeof event.data.object === 'object'
@@ -108,33 +114,58 @@ function disputeState(dispute) {
 }
 
 async function ensureDispute(client, event, dispute) {
-  const seller = await findSeller(client, event, dispute);
+  /* An Alert Chart sale is known by its charge or payment intent; its seller is the trader's marketplace account,
+     the fee is 15%, and the case records how long the trader had been quiet (over 30 days: low chances of winning). */
+  const alertChart = await alertChartDisputeContext(client, dispute);
+  let seller = null;
+  if (alertChart) {
+    const direct = await client.query('SELECT * FROM marketplace_sellers WHERE id = $1', [alertChart.sellerId]);
+    seller = direct.rows[0] || null;
+  }
+  if (!seller) seller = await findSeller(client, event, dispute);
   /* A Loop Bucks/customer-platform dispute has no marketplace seller. The
-     separate 12.5% seller fee must never be charged to an unrelated account. */
+     separate seller fee must never be charged to an unrelated account. */
   if (!seller) return null;
   if (!seller.dispute_debit_consent_at) throw new Error('seller dispute-debit consent is missing');
 
   const principal = Number(dispute.amount || 0);
   if (!Number.isSafeInteger(principal) || principal <= 0) throw new Error('invalid dispute amount');
-  const fee = disputeFee(principal);
+  const kind = alertChart ? 'alert_chart' : 'membership';
+  const fee = disputeFeeFor(principal, kind);
   const state = disputeState(dispute);
 
-  const result = await client.query(
-    `INSERT INTO marketplace_disputes (
-       stripe_dispute_id, seller_id, stripe_charge_id, disputed_principal_cents,
-       platform_dispute_fee_cents, currency, state
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (stripe_dispute_id) DO UPDATE SET state = EXCLUDED.state
-     RETURNING *`,
-    [dispute.id, seller.id, dispute.charge, principal, fee, dispute.currency || seller.currency, state]
-  );
-  return { seller, row: result.rows[0] };
+  const result = alertChart
+    ? await client.query(
+      `INSERT INTO marketplace_disputes (
+         stripe_dispute_id, seller_id, stripe_charge_id, disputed_principal_cents,
+         platform_dispute_fee_cents, currency, state, kind, context
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'alert_chart', $8::jsonb)
+       ON CONFLICT (stripe_dispute_id) DO UPDATE SET state = EXCLUDED.state, context = EXCLUDED.context
+       RETURNING *`,
+      [dispute.id, seller.id, dispute.charge, principal, fee, dispute.currency || seller.currency, state,
+        JSON.stringify({ checkoutKey: alertChart.checkoutKey, plan: alertChart.plan, traderDiscordId: alertChart.traderDiscordId, subscriberDiscordId: alertChart.subscriberDiscordId,
+          creatorInactiveDays: alertChart.inactiveDays, creatorInactive: alertChart.creatorInactive, inactiveRuleDays: alertChart.inactiveRuleDays, disputeFeeBps: alertChart.disputeFeeBps })]
+    )
+    : await client.query(
+      `INSERT INTO marketplace_disputes (
+         stripe_dispute_id, seller_id, stripe_charge_id, disputed_principal_cents,
+         platform_dispute_fee_cents, currency, state
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (stripe_dispute_id) DO UPDATE SET state = EXCLUDED.state
+       RETURNING *`,
+      [dispute.id, seller.id, dispute.charge, principal, fee, dispute.currency || seller.currency, state]
+    );
+  return { seller, row: result.rows[0], kind, alertChart };
 }
 
 async function applyDispute(client, event, dispute) {
   const context = await ensureDispute(client, event, dispute);
   if (!context) return 'ignored';
-  const { seller, row } = context;
+  const { seller, row, kind, alertChart } = context;
+  const feeReason = kind === 'alert_chart' ? 'platform_dispute_fee_15_percent' : 'platform_dispute_fee_12_5_percent';
+  /* the subscriber's Academy access pauses while the money is pulled back, and returns if the trader wins */
+  if (alertChart && event.type === 'charge.dispute.created') await pauseAlertChartAccess(client, alertChart);
+  if (alertChart && event.type === 'charge.dispute.closed' && (row.state === 'won' || row.state === 'warning_closed')) await pauseAlertChartAccess(client, alertChart, { restore: true });
   const base = { sellerId: seller.id, connectedAccountId: seller.connected_account_id,
     disputeId: dispute.id, chargeId: dispute.charge, currency: row.currency };
 
@@ -158,7 +189,7 @@ async function applyDispute(client, event, dispute) {
       [seller.id, `dispute-fee:${dispute.id}`, -Number(row.platform_dispute_fee_cents), row.currency, dispute.id]
     );
     await outbox(client, `seller-recover-fee:${dispute.id}`, 'seller_recovery', {
-      ...base, amountCents: Number(row.platform_dispute_fee_cents), reason: 'platform_dispute_fee_12_5_percent'
+      ...base, amountCents: Number(row.platform_dispute_fee_cents), reason: feeReason
     });
     await client.query(
       `UPDATE marketplace_disputes SET fee_finalized_at = now(), resolved_at = now()
@@ -197,7 +228,9 @@ async function applyMarketplaceEvent(client, event) {
     );
     return result.rowCount === 1 ? 'processed' : 'ignored';
   }
+  if (kindOf(object) === 'alert_chart' || event.type === 'invoice.paid') return applyAlertChartEvent(client, event);
   if (event.type.startsWith('checkout.session.')) return settleLoopBucks(client, event, object);
+  if (event.type === 'customer.subscription.deleted') return 'ignored'; // memberships: the lifecycle engine ends access
   if (event.type.startsWith('customer.subscription.')) {
     const key = object.metadata && String(object.metadata.subscription_key || '');
     if (!key) return 'ignored';

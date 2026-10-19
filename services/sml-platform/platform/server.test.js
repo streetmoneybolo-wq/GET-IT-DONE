@@ -2398,8 +2398,40 @@ test('Alert Chart routes: post, thread updates, follow with push, settings, prem
     assert.equal(feed.alerts.length, 2); assert.equal(feed.alerts[0].followed, true); assert.equal(feed.alerts[0].authorName, 'Ace');
     const mine = await (await fetch(`${base}/academy-activity/trader-alerts/settings`, { headers: { authorization: 'Bearer owner' } })).json();
     assert.equal(mine.stats.alerts, 2); assert.equal(mine.stats.active, true);
+    const noSeller = await (await fetch(`${base}/academy-activity/trader-alerts/seller`, { headers: { authorization: 'Bearer owner' } })).json();
+    assert.equal(noSeller.configured, false); assert.equal(noSeller.ready, false);
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts/seller`, J('owner', { terms: true, fee: true, disputes: true, activity: true }))).status, 503, 'no billing wired');
+    const paidPage = await fetch(`${base}/academy-activity/alert-chart/paid?k=ac_${'a'.repeat(32)}`);
+    assert.equal(paidPage.status, 200); assert.match(await paidPage.text(), /being confirmed/);
+  });
+  /* premium billing through stockmarketloop.com (alert-chart-billing.js) wired in: seller status + consents + Stripe onboarding, then checkout */
+  const calls = [];
+  const alertChartBilling = {
+    configured: true,
+    sellerStatus: async (id) => ({ ok: true, configured: true, linked: true, consented: false, stripe: { connected: false, ready: false }, ready: false, feeBps: 600, disputeFeeBps: 1500, who: id }),
+    onboardSeller: async (id, c) => { calls.push(['onboard', id, c]); return c.terms && c.fee && c.disputes && c.activity ? { ok: true, url: 'https://connect.stripe.com/setup/e/acct_1/x', sellerId: 4 } : { ok: false, error: 'consent_required' }; },
+    checkout: async (i) => { calls.push(['checkout', i]); return i.plan === 'week' ? { ok: false, error: 'plan_not_offered' } : { ok: true, url: 'https://checkout.stripe.com/c/pay/cs_1', checkoutKey: 'ac_' + 'b'.repeat(32), plan: i.plan, priceCents: 2999, feeBps: 600 }; },
+    checkoutState: async (k) => (k === 'ac_' + 'b'.repeat(32) ? { ok: true, plan: 'month', status: 'active', until: new Date(Date.now() + 33 * 86_400_000).toISOString() } : { ok: false, error: 'not_found' })
+  };
+  await withServer({ academyOAuth, traderAlerts, alertChartBilling }, async (base) => {
+    const st = await (await fetch(`${base}/academy-activity/trader-alerts/seller`, { headers: { authorization: 'Bearer owner' } })).json();
+    assert.equal(st.who, A); assert.equal(st.disputeFeeBps, 1500);
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts/seller`, J('free', { terms: true, fee: true, disputes: true, activity: true }))).status, 403);
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts/seller`, J('owner', { terms: true, fee: true }))).status, 400, 'every consent is required');
+    const on = await (await fetch(`${base}/academy-activity/trader-alerts/seller`, J('owner', { terms: true, fee: true, disputes: true, activity: true }))).json();
+    assert.match(on.url, /connect\.stripe\.com/); assert.deepEqual(calls[1], ['onboard', A, { terms: true, fee: true, disputes: true, activity: true }]);
+    const co = await (await fetch(`${base}/academy-activity/trader-alerts/checkout`, J('member', { trader: A, plan: 'month' }))).json();
+    assert.match(co.url, /checkout\.stripe\.com/); assert.deepEqual(calls[2], ['checkout', { memberId: B, traderId: A, plan: 'month' }]);
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts/checkout`, J('member', { trader: A, plan: 'week' }))).status, 400, 'a plan the trader does not sell');
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts/checkout`, J('member', { trader: A, plan: 'forever' }))).status, 400);
+    const paid = await (await fetch(`${base}/academy-activity/alert-chart/paid?k=ac_${'b'.repeat(32)}`)).text();
+    assert.match(paid, /Payment received/); assert.match(paid, /unlocked for you until/);
+    assert.match(await (await fetch(`${base}/academy-activity/alert-chart/paid?cancel=1`)).text(), /Nothing was charged/);
+    assert.match(await (await fetch(`${base}/academy-activity/alert-chart/stripe?done=1`)).text(), /Stripe setup complete/);
   });
   const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  assert.match(html, /data-ac="stripe-connect"/, 'the settings form carries the Get paid with Stripe flow');
+  assert.match(html, /15% of the disputed amount/, 'the dispute fee consent is on the page');
   assert.match(html, /window\.smlAlertChart = \{ mount/, 'the renderer ships with the page');
   assert.match(html, /pv-alerts-wrap/, 'the profile page has the Alert Chart section');
   assert.match(html, /\['traders', 'Traders'\]/, 'the Alerts desk has a Traders tab');

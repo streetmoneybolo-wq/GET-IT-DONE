@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Academy Profile Card
  * Description: Read-only, HMAC-signed lookup that lets the Making Easy Money Academy chat show a member's StockMarketLoop profile, channel and home group next to their Discord profile. Public fields only, and only for members whose Discord is linked and email-verified.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: StockMarketLoop
  *
  * Routes: POST /wp-json/sml-loop-kick/v1/discord-profile    body {"discord_user_id": "..."}
@@ -52,6 +52,8 @@ function sml_apc_rest_profile( WP_REST_Request $request ) {
 
 	$handle = function_exists( 'sml_lkd_handle_display' ) ? sml_lkd_handle_display( $user_id ) : (string) $user->user_nicename;
 	$card   = array(
+		// the member's site user id: lets the Academy's premium Alert Charts bill through the site's marketplace (seller = this user)
+		'user_id'      => $user_id,
 		'handle'       => sanitize_text_field( $handle ),
 		'display_name' => sanitize_text_field( (string) $user->display_name ),
 		'avatar'       => sml_apc_https( get_avatar_url( $user_id, array( 'size' => 128 ) ) ),
