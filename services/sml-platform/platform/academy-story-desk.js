@@ -27,7 +27,7 @@ const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
    a hash of the exact body to the shared bridge secret (SML_ACADEMY_BRIDGE_SECRET), and names the site user to act as
    (the byline); the plugin allows only the byline and the service user, and only on the letters, SEO, media and
    users/me routes. When both are configured both are sent; whichever the site honours signs the request in. */
-function createLettersPublisher({ siteUrl, username, appPassword, authorId, secret = '', serviceUserId = null, fetchImpl = fetch, logger = () => {}, now = Date.now } = {}) {
+function createLettersPublisher({ siteUrl, username, appPassword, authorId, secret = '', serviceUserId = null, fetchImpl = fetch, logger = () => {}, now = Date.now, minIntervalMs = 0, retryCount = 2, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   const base = String(siteUrl || 'https://stockmarketloop.com').replace(/\/$/, '');
   const crypto = require('node:crypto');
   const auth = () => 'Basic ' + Buffer.from(`${username}:${appPassword}`).toString('base64');
@@ -41,16 +41,30 @@ function createLettersPublisher({ siteUrl, username, appPassword, authorId, secr
     const sig = crypto.createHmac('sha256', String(secret)).update(`${ts}.${pathname}.${bodyHash}`).digest('hex');
     return { 'x-sml-letters-timestamp': ts, 'x-sml-letters-user': user, 'x-sml-letters-signature': `sha256=${sig}` };
   }
+  let nextRequestAt = 0;
   async function api(path, { method = 'GET', body = null, raw = null, headers = {} } = {}) {
     let payload = null;
     const h = { accept: 'application/json', ...headers };
     if (username && appPassword) h.authorization = auth();
     if (raw) payload = raw; else if (body) { payload = JSON.stringify(body); h['content-type'] = 'application/json'; }
-    Object.assign(h, signHeaders(path, payload));
-    const res = await fetchImpl(base + path, { method, headers: h, body: payload, signal: AbortSignal.timeout(30_000) });
-    const text = await res.text(); let json = null; try { json = JSON.parse(text); } catch (_) { json = null; }
-    if (!res.ok) { const e = new Error(`wp_${res.status}`); e.status = res.status; e.body = json || text.slice(0, 300); throw e; }
-    return json;
+    for (let attempt = 0; attempt <= Math.max(0, retryCount); attempt++) {
+      const wait = Math.max(0, nextRequestAt - now()); if (wait) await sleep(wait);
+      /* Sign just before sending: a queued request must not carry a stale timestamp. */
+      const requestHeaders = { ...h, ...signHeaders(path, payload) };
+      const res = await fetchImpl(base + path, { method, headers: requestHeaders, body: payload, signal: AbortSignal.timeout(30_000) });
+      const text = await res.text(); let json = null; try { json = JSON.parse(text); } catch (_) { json = null; }
+      nextRequestAt = now() + Math.max(0, Number(minIntervalMs) || 0);
+      if (res.ok) return json;
+      if (res.status === 429 && attempt < Math.max(0, retryCount)) {
+        const retryAfter = Number(res.headers && res.headers.get && res.headers.get('retry-after'));
+        const retryMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : Math.max(2000, Number(minIntervalMs) || 0) * (attempt + 1);
+        nextRequestAt = Math.max(nextRequestAt, now() + retryMs);
+        logger('warn', 'story_letter_rate_limited', { path, attempt: attempt + 1, retryMs });
+        continue;
+      }
+      const e = new Error(`wp_${res.status}`); e.status = res.status; e.body = json || text.slice(0, 300); throw e;
+    }
+    throw new Error('wp_retry_exhausted');
   }
   let who = null;
   async function identity() { if (who) return who; const me = await api('/wp-json/wp/v2/users/me?context=edit'); who = { id: Number(me.id), name: me.name, slug: me.slug }; return who; }

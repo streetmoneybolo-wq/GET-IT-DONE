@@ -181,3 +181,15 @@ test('the letters publisher signs every request for the bridge plugin: clock, ex
   const last = calls[calls.length - 1]; assert.ok(last.h.authorization.startsWith('Basic ') && last.h['x-sml-letters-signature'], 'both ways in when both are configured');
   assert.equal(createLettersPublisher({ secret: 'short', authorId: 1 }).configured(), false);
 });
+
+test('the letters publisher spaces dependent WordPress calls and retries a 429 with a fresh signature', async () => {
+  let t = 1_760_000_000_000, calls = 0; const pauses = [], stamps = [];
+  const fetchImpl = async (url, init) => {
+    calls += 1; stamps.push(init.headers['x-sml-letters-timestamp']);
+    if (calls === 1) return { ok: false, status: 429, headers: { get: () => '2' }, text: async () => 'slow down' };
+    return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ id: 258456581, name: 'V', slug: 'v' }) };
+  };
+  const p = createLettersPublisher({ secret: 'y'.repeat(40), authorId: 258456581, serviceUserId: 258456581, fetchImpl, minIntervalMs: 1250, now: () => t, sleep: async (ms) => { pauses.push(ms); t += ms; } });
+  await p.identity();
+  assert.equal(calls, 2); assert.deepEqual(pauses, [2000]); assert.notEqual(stamps[0], stamps[1], 'retry is signed at send time, not before the wait');
+});
