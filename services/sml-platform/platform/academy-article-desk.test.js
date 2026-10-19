@@ -87,7 +87,8 @@ test('the Loop Letters blocks keep dead space out: one tight frame for the figur
   const thinGlance = compose({ story: story() }); assert.ok(thinGlance.blocks[0].height >= 300);
   assert.ok(a.blocks.some((b) => b.type === 'heading' && b.text === 'Bottom line')); assert.ok(a.blocks.some((b) => b.type === 'heading' && b.level === 2 && b.text === a.sections[0]));
   for (const b of a.blocks.filter((x) => x.type === 'custom_code')) assert.ok(!/<svg|<iframe|<script|<input|<details|style="/.test(b.html), b.id + ' is sanitizer-safe');
-  const chart = a.blocks.find((b) => b.id === 'img-chart'); assert.equal(chart.type, 'image'); assert.equal(chart.url, 'https://stockmarketloop.com/wp-content/uploads/p.png'); assert.match(chart.caption, /at publication/); assert.match(chart.alt, /daily chart/);
+  assert.ok(!a.blocks.some((b) => b.type === 'image' || b.id === 'img-chart' || b.id === 'mod-chart'), 'no chart in the body: the cover image at the top is the same scenario poster');
+  assert.equal(a.modules.includes('chart'), true, 'the standalone page keeps its live chart');
   const headings = a.blocks.filter((b) => b.type === 'heading' && b.level === 3).map((b) => b.text);
   assert.deepEqual(headings, ['The bull case', 'The bear case', 'Kill switch'], 'the cases and the kill switch are plain headings and lists');
   assert.ok(a.blocks.filter((b) => b.type === 'list').length >= 3, 'lists, not frames');
@@ -126,16 +127,19 @@ test('an old letter is rebuilt in the compact layout from its stored blocks, and
     { id: 'd1', type: 'disclosure', position: 'p' }
   ];
   const out = D.compactLetterBlocks(old);
-  assert.deepEqual(out.map((b) => b.id.replace(/\d+$/, '')), ['mod-glance', 'p', 'img-chart', 'h', 'l', 'h', 'l', 'h', 'p', 'l', 'p', 'd'].map((x) => x === 'p' || x === 'h' || x === 'l' || x === 'd' ? x : x));
+  assert.deepEqual(out.map((b) => b.id.replace(/\d+$/, '')), ['mod-glance', 'p', 'h', 'l', 'h', 'l', 'h', 'p', 'l', 'p', 'd'].map((x) => x === 'p' || x === 'h' || x === 'l' || x === 'd' ? x : x));
   assert.equal(out[0].type, 'custom_code'); assert.match(out[0].html, /mem-glance/); assert.ok(out[0].html.includes('mem-board') && out[0].html.includes('mem-count') && out[0].html.includes('mem-track'));
   assert.ok(out[0].css.includes('.mem-track-bar i{left:48.2%}') && out[0].css.includes('.mem-glance'), 'the marker position survives'); assert.equal(out[0].height, 131 + 67 + 161 + 16);
-  assert.equal(out[2].type, 'image'); assert.equal(out[2].url, 'https://stockmarketloop.com/wp-content/uploads/p.png?a=1&b=2'); assert.equal(out[2].caption, '$ARQT $31.89 (+10.7%) at publication. The candles as published.');
+  assert.ok(!out.some((b) => b.type === 'image' || b.id === 'mod-chart'), 'the old chart frame is gone: the cover is the chart');
   assert.deepEqual(out.filter((b) => b.type === 'heading').map((b) => b.text), ['The bull case', 'The bear case', 'Kill switch']);
   assert.deepEqual(out.filter((b) => b.type === 'list').map((b) => b.items), [['Shorts & volume'], ['Gamma is an inference'], ['A close under $28.70.', 'Sellers absorb it.']]);
   assert.ok(out.some((b) => b.type === 'paragraph' && b.spans.some((s) => s.mark === 'link' && s.href === 'https://discord.gg/x')) && !out.some((b) => b.id === 'card1' || b.id === 'mod-poll'));
   assert.equal(out[out.length - 1].type, 'disclosure');
-  /* the animated path already shows the scenario: no still chart */
-  assert.ok(!D.compactLetterBlocks([...old.slice(0, 2), { id: 'gif1', type: 'image', url: 'u', alt: 'a', caption: '' }, ...old.slice(2)]).some((b) => b.id === 'img-chart'));
+  /* the animated path and a still chart from the last rebuild go too, even from a letter that is otherwise already compact */
+  const withGif = [...old.slice(0, 2), { id: 'gif1', type: 'image', url: 'u', alt: 'a', caption: '' }, ...old.slice(2)];
+  assert.ok(!D.compactLetterBlocks(withGif).some((b) => b.id === 'gif1' || b.id === 'img-chart'));
+  const lastRebuild = [...out.slice(0, 1), { id: 'img-chart', type: 'image', url: 'u', alt: 'a', caption: 'c' }, ...out.slice(1)];
+  const dropped = D.compactLetterBlocks(lastRebuild); assert.ok(dropped && !dropped.some((b) => b.id === 'img-chart') && dropped.length === out.length);
   assert.equal(D.compactLetterBlocks(out), null, 'already compact'); assert.equal(D.compactLetterBlocks([{ id: 'p1', type: 'paragraph', spans: [] }]), null, 'a hand-written letter'); assert.equal(D.compactLetterBlocks(null), null);
 });
 

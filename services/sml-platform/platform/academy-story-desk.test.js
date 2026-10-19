@@ -51,7 +51,7 @@ test('a tick scans the universe, writes the strongest uncovered angle as a draft
   assert.equal(created.l.blocks.filter((b) => b.type === 'custom_code').length, 1, 'no second card repeating the figures, no frame for what a list can show');
   assert.ok(created.l.blocks.filter((b) => b.type === 'heading' && b.level === 2).length >= 4 && created.l.blocks.filter((b) => b.type === 'heading' && b.level === 2).length <= 6, 'four to six sections');
   /* the letter's chart block is the uploaded poster (an img: the letters sanitizer drops svg); without the GIF rasterizer there is no poster and no chart block */
-  if (require('./academy-scenario-gif').available()) assert.ok(created.l.blocks.some((b) => b.id === 'gif1' && b.type === 'image') && !created.l.blocks.some((b) => b.id === 'img-chart'), 'the animated path stands in for the still chart');
+  assert.ok(!created.l.blocks.some((b) => b.type === 'image' || b.id === 'img-chart' || b.id === 'gif1'), 'no second chart in the body: the cover image is the scenario');
   assert.ok(created.l.blocks.some((b) => b.type === 'heading' && b.text === 'The bull case') && created.l.blocks.some((b) => b.type === 'heading' && b.text === 'Kill switch'), 'the cases and the kill switch are native blocks');
   assert.ok(created.l.blocks.filter((b) => b.type === 'custom_code').every((b) => !/<svg|<iframe|<script|<input|<details/.test(b.html)), 'nothing the letters sanitizer would drop');
   assert.match(created.l.html, /class="mem-article"/); assert.match(created.l.html, /sec\.gov/);
@@ -62,7 +62,7 @@ test('a tick scans the universe, writes the strongest uncovered angle as a draft
   assert.equal(r.results[0].url, 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/x/');
   assert.ok(!h.posts.some((p) => p.kind === 'publish'), 'draft unless autopublish');
   const gifAvailable = require('./academy-scenario-gif').available();
-  if (gifAvailable) { assert.ok(h.media.length >= 1 && h.media.length <= 2, 'the GIF, plus a still poster for social cards'); assert.equal(h.media[0].contentType, 'image/gif'); assert.ok(created.l.blocks.some((b) => b.type === 'image'), 'the animated path is in the body'); assert.ok(created.l.cover_url && created.l.cover_url.startsWith('https://')); }
+  if (gifAvailable) { assert.ok(h.media.length >= 1 && h.media.length <= 2, 'the GIF, plus a still poster for social cards'); assert.equal(h.media[0].contentType, 'image/gif'); assert.ok(!created.l.blocks.some((b) => b.type === 'image'), 'the cover carries the chart, the body does not repeat it'); assert.ok(created.l.cover_url && created.l.cover_url.startsWith('https://')); }
   assert.equal(h.dms.length, 1); assert.match(h.dms[0].text, /Article Desk/); assert.match(h.dms[0].text, /draft/);
   assert.ok(h.saved().written['ABCD:' + r.results[0].angle]);
   const again = await h.desk.tick();

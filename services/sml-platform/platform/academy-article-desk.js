@@ -365,6 +365,8 @@ const glanceHeight = (names) => names.reduce((sum, n) => sum + (GLANCE_H[n] || 0
 /* An old letter's stored blocks, rebuilt in the compact layout: the same figures, chart, cases, kill switch and poll line the
    composer now writes, read back out of the frames they used to sit in. Null when the blocks are not a desk letter (no board
    module or top card: a hand-written letter is never touched) or are already compact. */
+/* the second copy of the cover chart: the still the composer used to add, its old frame, and the animated path the desk used to insert */
+const CHART_IDS = ['mod-chart', 'img-chart', 'gif1'];
 function compactLetterBlocks(blocks) {
   if (!Array.isArray(blocks)) return null;
   const by = (id) => blocks.find((b) => b && b.id === id);
@@ -373,31 +375,22 @@ function compactLetterBlocks(blocks) {
     /* an earlier rebuild left the old wrapper inside the new one and the css of that day: unwrap, and bring the css up to date */
     const html = String(g.html || '').replace(/^(<div class="mem-article mem-letter mem-glance"(?: data-theme="dark")?>)<div class="mem-article mem-letter"(?: data-theme="dark")?>([\s\S]*)<\/div><\/div>$/, '$1$2</div>');
     const css = CSS + '\n' + GLANCE_CSS + (/\.mem-track-bar i\{left:[\d.]+%\}/.exec(g.css || '') || [''])[0];
-    if (html === g.html && css === g.css) return null;
-    return blocks.map((b) => (b === g ? { ...g, html, css } : b));
+    const rest = blocks.filter((b) => !(b && CHART_IDS.includes(b.id)));
+    if (html === g.html && css === g.css && rest.length === blocks.length) return null;
+    return rest.map((b) => (b === g ? { ...g, html, css } : b));
   }
   if (!by('mod-board') && !by('card1')) return null;
   const wrap = (h) => String(h || '').replace(/^<div class="mem-article mem-letter[^"]*"(?: data-theme="dark")?>/, '').replace(/<\/div>$/, '');
-  const hasGif = blocks.some((b) => b && b.id === 'gif1' && b.type === 'image');
   const parts = [['board', by('mod-board')], ['countdown', by('mod-countdown')], ['tracker', by('mod-tracker')]].filter(([, b]) => b && b.html);
   const trackCss = (/\.mem-track-bar i\{left:[\d.]+%\}/.exec((by('mod-tracker') || {}).css || '') || [''])[0];
   const native = (html) => htmlToBlocks(html, { tickers: [] });
   const out = [];
   let glanced = false;
   for (const b of blocks) {
-    if (!b || b.id === 'card1' || b.id === 'mod-countdown' || b.id === 'mod-tracker') continue;
+    if (!b || b.id === 'card1' || b.id === 'mod-countdown' || b.id === 'mod-tracker' || CHART_IDS.includes(b.id)) continue;
     if (b.id === 'mod-board') {
       if (!glanced && parts.length) out.push({ id: 'mod-glance', type: 'custom_code', html: `<div class="mem-article mem-letter mem-glance" data-theme="dark">${parts.map(([, x]) => wrap(x.html)).join('')}</div>`, css: CSS + '\n' + GLANCE_CSS + trackCss, height: glanceHeight(parts.map(([n]) => n)) });
       glanced = true; continue;
-    }
-    if (b.id === 'mod-chart') {
-      const img = /<img src="([^"]+)" alt="([^"]*)"/.exec(b.html || '');
-      if (img && !hasGif) {
-        const sym = /^\$([A-Z][A-Z0-9.\-]*)/.exec(img[2].replace(/&amp;/g, '&')), price = /<b>([^<]+)<\/b>/.exec(b.html), chg = /<em[^>]*>([^<]*)<\/em>/.exec(b.html), cap = /<figcaption>([^<]*)<\/figcaption>/.exec(b.html);
-        const lead = sym && price ? `$${sym[1]} ${price[1]}${chg && chg[1] ? ' (' + chg[1] + ')' : ''} at publication. ` : '';
-        out.push({ id: 'img-chart', type: 'image', url: img[1].replace(/&amp;/g, '&'), alt: img[2].replace(/&amp;/g, '&'), caption: (lead + (cap ? cap[1].replace(/&amp;/g, '&') : '')).trim() });
-      }
-      continue;
     }
     if (b.id === 'mod-bullbear') {
       const bull = /mem-vs-bull"><h3>[^<]*<\/h3><ul>([\s\S]*?)<\/ul>/.exec(b.html || ''), bear = /mem-vs-bear"><h3>[^<]*<\/h3><ul>([\s\S]*?)<\/ul>/.exec(b.html || '');
@@ -584,10 +577,8 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
       if (glanceParts.length) blocks.push({ id: 'mod-glance', type: 'custom_code', html: `<div class="mem-article mem-letter mem-glance" data-theme="dark">${glanceParts.map((m) => m.letter).join('')}</div>`, css: CSS + '\n' + GLANCE_CSS + glanceParts.map((m) => m.css || '').join(''), height: glanceHeight(glanceParts.map((m) => m.name)) });
       continue;
     }
-    if (ch.name === 'chart') {
-      if (imageUrl) blocks.push({ id: 'img-chart', type: 'image', url: imageUrl, alt: `$${c.symbol} daily chart with the scenario path to ${px(st.pt)}`, caption: `$${c.symbol} ${px(c.price)}${num(c.changePct) != null ? ' (' + pct(c.changePct) + ')' : ''} at publication. The candles, the levels that matter and the scenario path to ${px(st.pt)}.` });
-      continue;
-    }
+    /* no chart block: the cover image at the top of the letter is this same scenario poster, and a second copy only repeats it */
+    if (ch.name === 'chart') continue;
     if (ch.name === 'bullbear') { blocks.push(...native(`<h3>The bull case</h3>${ul(bb.bull.length ? bb.bull : ['Thin. The data does not make a strong long case here.'])}<h3>The bear case</h3>${ul(bb.bear.length ? bb.bear : ['Thin. The data does not make a strong short case here.'])}`)); continue; }
     if (ch.name === 'killswitch') { blocks.push(...native(`<h3>Kill switch</h3><p>Any one of these and the thesis is over, no averaging down, no renaming it.</p>${ul(killItems)}`)); continue; }
     if (ch.name === 'poll') { blocks.push(...native(`<p>The desk leans <strong>${esc(st.lean)}</strong>. ${discordUrl ? `Bull or bear, say so in <a href="${esc(discordUrl)}">the Making Easy Money Discord</a>, where the alerts land first.` : 'Bull or bear, the kill switch above is what keeps either call honest.'}</p>`)); continue; }

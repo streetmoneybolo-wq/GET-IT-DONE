@@ -241,13 +241,8 @@ function createStoryDesk({
     const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author: byline, publication, siteUrl, authorUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic, record: recordNow(), narrative });
     const guess = compose('');
     const pkg = file ? compose(`${siteUrl}${authorPath}${guess.slug}/`) : guess;
-    const symLine = `${c.symbol} price-action scenario to $${story.pt}`;
-    /* the figures lead as the composer's one tight frame (no second card repeating them), and the animated path replaces the still chart */
-    const body = [...pkg.blocks.filter((b) => !(media && media.url && b.id === 'img-chart')), { id: 'd1', type: 'disclosure', position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' }];
-    // the animated path sits right after the opening paragraphs
-    let at = 0, seen = 0;
-    for (let i = 0; i < body.length; i++) { if (body[i].type === 'paragraph') { seen += 1; if (seen === 2) { at = i + 1; break; } } }
-    if (media && media.url) body.splice(at, 0, { id: 'gif1', type: 'image', url: media.url, alt: symLine, caption: 'Speculative scenario: real candles, then the path the setup needs. Not a forecast.' });
+    /* the figures lead as the composer's one tight frame; the cover image is the scenario chart, so the body carries no second copy */
+    const body = [...pkg.blocks, { id: 'd1', type: 'disclosure', position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' }];
     const blocks = body;
     const letter = { title: pkg.title, subtitle: pkg.dek, tldr: pkg.tldr, html: pkg.bodyHtml, blocks, content_type: 'Analysis', tags: pkg.tags, cover_url: coverUrl || undefined, visibility: 'public', slug: pkg.slug };
     return { draft: { ...pkg, html: pkg.bodyHtml, parts: pkg.parts, asOfIso: pkg.asOfIso }, pkg, compose, html: pkg.bodyHtml, letter, media, posterMedia, seo: pkg.seo, dossier, gifFrames: gifInfo ? gifInfo.frames : 0 };
@@ -367,8 +362,8 @@ function createStoryDesk({
   async function rebuildOld({ limit = 2 } = {}) {
     await load();
     if (!publisher || !publisher.configured() || typeof publisher.readLetter !== 'function' || state.rebuildHalt) return { ok: false, skipped: state.rebuildHalt ? 'halted' : 'unconfigured' };
-    /* version 2: letters rebuilt before the always-dark and unwrap fixes are looked at again (a letter that is already right is skipped) */
-    if (state.rebuildV !== 2) { state.rebuilt = {}; state.rebuildV = 2; }
+    /* version 3: letters rebuilt before the one-chart change are looked at again (a letter that is already right is skipped) */
+    if (state.rebuildV !== 3) { state.rebuilt = {}; state.rebuildV = 3; }
     if (!state.rebuilt) state.rebuilt = {};
     const done = { rebuilt: 0, skipped: 0, failed: 0 };
     let ids = [];
