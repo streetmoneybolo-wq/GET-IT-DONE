@@ -79,3 +79,13 @@ test('the Ask Obi page script is owner-gated on the client and copies the answer
   assert.match(src, /btn\.classList\.toggle\('on', S\.owner\)/, 'the button shows only for the owner');
   assert.match(src, /Ctrl\+Enter/);
 });
+
+test('Obi answers short and certain: the prompt asks for two to five sentences and bans hedging', () => {
+  const { systemPrompt } = require('./academy-ask');
+  const prompt = systemPrompt(['sample']);
+  assert.match(prompt, /Two to five sentences, 30 to 90 words/);
+  assert.match(prompt, /never more than 140 words/);
+  assert.match(prompt, /Answer in the first sentence/);
+  assert.match(prompt, /no "it depends"/);
+  assert.doesNotMatch(prompt, /120 to 350 words/);
+});
