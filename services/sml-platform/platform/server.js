@@ -115,6 +115,7 @@ const { createAcademySlideDesigner } = require('./academy-slide-designer');
 const { createAcademyMediaStore } = require('./academy-media-store');
 const { createAcademyAsk } = require('./academy-ask');
 const { createAskLog } = require('./academy-ask-log');
+const { createTickerTalk } = require('./academy-ticker-talk');
 const { createAcademyTrial } = require('./academy-trial');
 const { createAcademyBake } = require('./academy-bake');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
@@ -729,6 +730,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const smartMoneyUi = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money-ui.js'), 'utf8');
     const clickAlertUi = fs.readFileSync(pathModule.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
     const snapshotUi = fs.readFileSync(pathModule.join(__dirname, 'academy-snapshot-ui.js'), 'utf8');
+    const tickerTalkUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-ticker-talk-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const optionContract = fs.readFileSync(pathModule.join(__dirname, 'academy-option-contract.js'), 'utf8');
     const optionsBrokers = fs.readFileSync(pathModule.join(__dirname, 'academy-options-brokers.js'), 'utf8');
     const alertsUi = fs.readFileSync(pathModule.join(__dirname, 'academy-alerts-ui.js'), 'utf8');
@@ -759,7 +761,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script><script>' + belowCycle + '</script>',
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + '<script>' + belowCycle + '</script>',
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -3725,6 +3727,79 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (await academyTrial.handle(request, response, path, new URL(request.url || '/', 'http://localhost'))) return;
     }
 
+    /* Ticker Talk: comments on a ticker's chart. Signed-in members read, post, reply, tag members, attach pictures and links.
+       <img> cannot send a header, so the image routes take the session token as ?t= like the profile pages do. */
+    if (path === '/academy-activity/talk' || path.startsWith('/academy-activity/talk/')) {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const tq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const imageRead = request.method === 'GET' && (path === '/academy-activity/talk/link-image' || /^\/academy-activity\/talk\/image\/\d+$/.test(path));
+      const authz = request.headers.authorization || (imageRead && tq.get('t') ? 'Bearer ' + tq.get('t') : '');
+      const session = academyOAuth.verifySession(authz);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const me = String(session.userId);
+      const elevated = OWNER_IDS.includes(me);
+      const status = (r) => (r.ok ? 200 : r.error === 'slow_down' || r.error === 'too_many_today' ? 429 : r.error === 'forbidden' ? 403 : r.error === 'not_found' || r.error === 'parent_not_found' ? 404 : r.error === 'file_too_large' ? 413 : r.error === 'storage_unavailable' ? 503 : 400);
+      try {
+        if (imageRead && path === '/academy-activity/talk/link-image') {
+          const img = academyProfilePages ? await academyProfilePages.linkImage(tq.get('u') || '') : null;
+          if (!img) { response.writeHead(404); response.end(); return; }
+          response.writeHead(200, { 'content-type': img.contentType, 'content-length': img.bytes.length, 'cache-control': 'private, max-age=21600', 'x-content-type-options': 'nosniff' }); response.end(img.bytes); return;
+        }
+        if (imageRead) {
+          const img = await tickerTalk.image(path.split('/')[4]);
+          if (!img) { response.writeHead(404); response.end(); return; }
+          response.writeHead(200, { 'content-type': img.contentType, 'content-length': img.bytes.length, 'cache-control': 'private, max-age=86400', 'x-content-type-options': 'nosniff' }); response.end(img.bytes); return;
+        }
+        if (request.method === 'GET' && path === '/academy-activity/talk/members') {
+          const users = academyMentions ? await academyMentions.search(tq.get('q') || '', { limit: 8, exclude: me }) : [];
+          sendJson(response, 200, { ok: true, users: (users || []).map((u) => ({ id: String(u.id || ''), name: String(u.name || '') })).filter((u) => u.id && u.name) }); return;
+        }
+        if (request.method === 'POST' && path === '/academy-activity/talk/image') {
+          const limit = tickerTalk.MAX_IMAGE_BYTES;
+          const declared = Number(request.headers['content-length']);
+          if (Number.isFinite(declared) && declared > limit) { sendJson(response, 413, { ok: false, error: 'file_too_large' }); request.resume(); return; }
+          const chunks = []; let size = 0, tooBig = false;
+          await new Promise((resolve, reject) => {
+            request.on('data', (c) => { size += c.length; if (size > limit) { tooBig = true; request.pause(); resolve(); } else chunks.push(c); });
+            request.once('end', resolve); request.once('error', reject);
+          });
+          if (tooBig) { sendJson(response, 413, { ok: false, error: 'file_too_large' }); return; }
+          const r = await tickerTalk.storeImage(me, Buffer.concat(chunks));
+          sendJson(response, status(r), r); return;
+        }
+        const m = /^\/academy-activity\/talk\/([A-Za-z0-9.\-^=:%]{1,24})(?:\/(count|\d+))?$/.exec(path);
+        if (!m) { sendJson(response, 404, { ok: false, error: 'not_found' }); return; }
+        let symbol = m[1]; try { symbol = decodeURIComponent(m[1]); } catch (_) { symbol = m[1]; }
+        if (request.method === 'GET' && m[2] === 'count') { const n = await tickerTalk.count(symbol); sendJson(response, 200, { ok: true, symbol: String(symbol).toUpperCase(), count: n }); return; }
+        if (request.method === 'GET' && !m[2]) {
+          const r = await tickerTalk.list(symbol, { limit: tq.get('limit') || 20, before: tq.get('before') || '' });
+          sendJson(response, r.ok ? 200 : 400, { ...r, viewer: { id: me, elevated } }); return;
+        }
+        if (request.method === 'POST' && !m[2]) {
+          const raw = await readRequestBody(request, 16_384).catch(() => null);
+          let b = null; try { b = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : null; } catch (_) { b = null; }
+          if (!b || typeof b !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
+          let name = '';
+          if (academyProfilePages) { try { name = (await academyProfilePages.settingsOf(me)).displayName || ''; } catch (_) { name = ''; } }
+          if (!name && academyProfiles) { try { const c = await academyProfiles.profile(me); name = c && c.discord ? (c.discord.name || c.discord.username || '') : ''; } catch (_) { name = ''; } }
+          if (!name) name = session.displayName || 'Member';
+          const r = await tickerTalk.post(symbol, { id: me, name }, { body: b.body, parentId: b.parentId, imageIds: b.imageIds, mentions: b.mentions });
+          if (r.ok && academyMentions && r.comment && Array.isArray(r.comment.mentions) && r.comment.mentions.length) {
+            academyMentions.notify({ sender: { userId: me, displayName: name }, mentions: r.comment.mentions, message: { id: r.comment.id, body: r.comment.body }, channel: 'Ticker Talk $' + r.comment.symbol }).catch(() => {});
+          }
+          sendJson(response, status(r), r); return;
+        }
+        if (request.method === 'DELETE' && m[2] && m[2] !== 'count') {
+          const r = await tickerTalk.remove(m[2], me, { elevated });
+          sendJson(response, status(r), r); return;
+        }
+        sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return;
+      } catch (error) {
+        log('warn', 'academy_ticker_talk_failed', { path, error: String(error && error.message || error) });
+        sendJson(response, 500, { ok: false, error: 'talk_failed' }); return;
+      }
+    }
+
     /* Ask Obi's log, for backtesting: every question and answer with the call it made. Owner only. */
     if (path === '/academy-activity/ask/log' || path === '/academy-activity/ask/stats' || /^\/academy-activity\/ask\/log\/\d+\/score$/.test(path)) {
       const session = academyOAuth && academyOAuth.verifySession(request.headers.authorization);
@@ -4870,6 +4945,9 @@ async function main() {
      direction question carries the desk's live market read (Market Direction, SML VIX, SPY) so the call is today's read. */
   const askLog = createAskLog({ pool: database.pool, logger: log });
   askLog.ensureSchema().catch(() => {});
+  /* Ticker Talk: the comment section under each ticker on the live chart (academy_ticker_talk, migration 054). */
+  const tickerTalk = createTickerTalk({ pool: database.pool, logger: log, linkCard: academyProfilePages ? (u) => academyProfilePages.linkCard(u) : null });
+  tickerTalk.ensureSchema().catch(() => {});
   const askContext = async ({ subject, horizon }) => {
     const lines = [];
     const px2 = (v) => (Number.isFinite(v) ? (v >= 1 ? v.toFixed(2) : v.toFixed(4)) : '–');
