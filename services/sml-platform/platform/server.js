@@ -76,6 +76,7 @@ const { createClassifier } = require('./academy-classifier');
 const { createEarningsPlaybook } = require('./academy-earnings-playbook');
 const { createEarningsInsight } = require('./academy-earnings-insight');
 const { createShortInsight } = require('./academy-short-insight');
+const { createSqueezeList } = require('./academy-squeeze-list');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
@@ -753,6 +754,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const buySellPanel = fs.readFileSync(pathModule.join(__dirname, 'academy-buy-sell-panel.js'), 'utf8');
     const darkPool = fs.readFileSync(pathModule.join(__dirname, 'academy-dark-pool.js'), 'utf8');
     const shortSale = fs.readFileSync(pathModule.join(__dirname, 'academy-short-sale.js'), 'utf8');
+    const squeezeListUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-squeeze-list-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const earningsPanel = fs.readFileSync(pathModule.join(__dirname, 'academy-earnings-panel.js'), 'utf8');
     const earningsInsightUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-earnings-insight-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const catalystsPanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-catalysts-panel.js'), 'utf8'); } catch (_) { return ''; } })();
@@ -776,7 +778,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script>' : '') + '<script>' + belowCycle + '</script>',
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script>' : '') + '<script>' + belowCycle + '</script>',
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -1886,7 +1888,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   appApi = null,
   /* Academy data services and the challenge/paper surfaces live in main(); the handler only sees what is passed here */
   academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null, academyFlowDaily = null, academySignalOutcomes = null, optionBars = null, tickerTalk = null,
-  getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
+  getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getSqueezeList = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null,
   logger = log, now = Date.now }) {
@@ -3997,6 +3999,23 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* The owner's squeeze list (academy-squeeze-list.js): the top 20 SQUEEZE RISK names across the active market. The GET says whether the
+       account is the owner (the button shows on that); everyone else is refused. */
+    if (request.method === 'GET' && path === '/academy-activity/squeeze-list') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const owner = OWNER_IDS.includes(String(session.userId));
+      const zq = new URL(request.url || '/', 'http://localhost').searchParams;
+      if (!owner) { sendJson(response, zq.get('probe') ? 200 : 403, { ok: !!zq.get('probe'), owner: false, error: zq.get('probe') ? undefined : 'owner_only' }); return; }
+      if (zq.get('probe')) { sendJson(response, 200, { ok: true, owner: true }); return; }
+      const svc = getSqueezeList();
+      if (!svc) { sendJson(response, 503, { ok: false, owner: true, error: 'insight_unavailable' }); return; }
+      try { sendJson(response, 200, { owner: true, ...svc.list({ refresh: zq.get('refresh') === '1' }) }); }
+      catch (error) { logger('error', 'academy_squeeze_list_failed', { error }); sendJson(response, 503, { ok: false, owner: true, error: 'insight_unavailable' }); }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/sentiment') {
       if (!academyOAuth || !academySentiment) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -4649,6 +4668,14 @@ async function main() {
     });
     return shortInsight;
   };
+  /* the owner's squeeze list: the wide scanner's active names scored through the short insight, a few at a time */
+  let squeezeList = null;
+  const getSqueezeList = () => {
+    if (squeezeList) return squeezeList;
+    const si = getShortInsight(); if (!si) return null;
+    squeezeList = createSqueezeList({ insight: (s) => si.insight(s), universe: async () => { const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(120) : await getAcademyScanner(); return w && Array.isArray(w.rows) ? w.rows : []; }, logger: log });
+    return squeezeList;
+  };
   const getFdaService = () => {
     if (fdaService || process.env.SML_ACADEMY_FDA === 'off') return fdaService;
     fdaService = createFdaService({
@@ -5193,7 +5220,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,

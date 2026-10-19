@@ -2141,3 +2141,23 @@ test('the short insight route serves the two scores and the verdicts to paid mem
   assert.match(html, /academy-activity\/short-insight\?symbol=/); assert.match(html, /SHORTS PRESSING/); assert.match(html, /SQUEEZE RISK/);
   assert.doesNotMatch(html, PAGE_BANNED);
 });
+
+test('the squeeze list is the owner\'s: the probe tells the page who is the owner, the list is refused to everyone else', async () => {
+  const { OWNER_IDS } = require('./academy-free-users');
+  const owner = OWNER_IDS[0] || '100000000000000009';
+  const academyOAuth = { verifySession: (auth) => (auth === 'Bearer owner' ? { ok: true, tier: 'academy', userId: owner } : auth === 'Bearer member' ? { ok: true, tier: 'academy', userId: '100000000000000001' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const svc = { list: ({ refresh }) => ({ ok: true, rows: [{ rank: 1, symbol: 'GME', squeeze: 88 }], building: false, done: 40, total: 40, asOf: 1, refreshed: !!refresh }) };
+  await withServer({ academyOAuth, getSqueezeList: () => svc }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/squeeze-list`)).status, 401);
+    const probe = await fetch(`${base}/academy-activity/squeeze-list?probe=1`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(probe.status, 200); assert.deepEqual(await probe.json(), { ok: true, owner: false });
+    assert.equal((await fetch(`${base}/academy-activity/squeeze-list`, { headers: { authorization: 'Bearer member' } })).status, 403);
+    const mine = await fetch(`${base}/academy-activity/squeeze-list?probe=1`, { headers: { authorization: 'Bearer owner' } }); assert.deepEqual(await mine.json(), { ok: true, owner: true });
+    const list = await fetch(`${base}/academy-activity/squeeze-list?refresh=1`, { headers: { authorization: 'Bearer owner' } });
+    assert.equal(list.status, 200); const body = await list.json(); assert.equal(body.owner, true); assert.equal(body.rows[0].symbol, 'GME'); assert.equal(body.refreshed, true);
+  });
+  await withServer({ academyOAuth }, async (base) => { assert.equal((await fetch(`${base}/academy-activity/squeeze-list`, { headers: { authorization: 'Bearer owner' } })).status, 503); });
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m' });
+  assert.match(html, /id = 'squeeze-btn'/); assert.match(html, /academy-activity\/squeeze-list/); assert.doesNotMatch(html, PAGE_BANNED);
+});
