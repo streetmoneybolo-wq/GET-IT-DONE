@@ -38,6 +38,7 @@ const { createDepthStore } = require('./academy-depth-store');
 const { createDepthRecorder, parseSymbols: parseDepthSymbols } = require('./academy-depth-recorder');
 const { replayDepth, dayBoundsNewYork } = require('./academy-depth-replay');
 const { createFlowDaily } = require('./academy-flow-daily');
+const { createSignalOutcomes } = require('./academy-signal-outcomes');
 const { createMassiveStream } = require('./academy-massive-stream');
 const { createSireFeed } = require('./academy-sire-feed');
 const { createBrokerLinks, brokerLaunchHtml, moomooQuoteUrl, webullUrl, cleanSymbol: cleanBrokerSymbol } = require('./academy-brokers');
@@ -1866,7 +1867,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   memberEmail = null, siteExportSink = null, linkTracker = null, verifyGate = null,
   appApi = null,
   /* Academy data services and the challenge/paper surfaces live in main(); the handler only sees what is passed here */
-  academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null, academyFlowDaily = null,
+  academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null, academyFlowDaily = null, academySignalOutcomes = null,
   getEarningsPlaybook = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null,
@@ -3916,11 +3917,24 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
       if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
-      const symbol = String(url.searchParams.get('symbol') || '').toUpperCase();
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(params.get('symbol') || '').toUpperCase();
       if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
-      const days = Math.max(2, Math.min(30, Number(url.searchParams.get('days')) || 10));
+      const days = Math.max(2, Math.min(30, Number(params.get('days')) || 10));
       try { sendJson(response, 200, await academyFlowDaily.summary(symbol, days)); }
       catch (error) { logger('error', 'academy_flow_days_failed', { error }); sendJson(response, 503, { ok: false, error: 'flow_days_unavailable' }); }
+      return;
+    }
+
+    /* How the newer signals have done (academy-signal-outcomes.js): hit rates and average moves per signal, side and band, and the sweep-versus-wall outcomes. */
+    if (request.method === 'GET' && path === '/academy-activity/signal-outcomes') {
+      if (!academyOAuth || !academySignalOutcomes || !academySignalOutcomes.configured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const days = Math.max(1, Math.min(365, Number(new URL(request.url || '/', 'http://localhost').searchParams.get('days')) || 30));
+      try { sendJson(response, 200, await academySignalOutcomes.summary(days)); }
+      catch (error) { logger('error', 'academy_signal_outcomes_failed', { error }); sendJson(response, 503, { ok: false, error: 'signal_outcomes_unavailable' }); }
       return;
     }
 
@@ -4578,6 +4592,9 @@ async function main() {
     pool: database.pool, orderFlow: academyOrderFlow, massive: academyMassive, institutional: academyInstitutional, logger: log,
     extraSymbols: parseDepthSymbols(process.env.ACADEMY_DEPTH_RECORD_SYMBOLS)
   });
+  /* Outcome measurement for the newer signals (academy_signal_outcomes): the depth reading's signals stamped with the mid and scored 1, 5 and 15 minutes
+     later; the week's read stamped at the open and scored off the ledger 1, 3 and 5 trading days later. ACADEMY_SIGNAL_OUTCOMES=off disables it. */
+  const academySignalOutcomes = process.env.ACADEMY_SIGNAL_OUTCOMES === 'off' ? null : createSignalOutcomes({ pool: database.pool, orderFlow: academyOrderFlow, flowDaily: academyFlowDaily, logger: log });
   /* SEC filings for the Academy: Form 4 insider buys/sells and 13D/13G stakes straight from EDGAR (no vendor, no key). */
   const academyFilings = process.env.SML_ACADEMY_FILINGS === 'off' ? null : createFilingsService({
     userAgent: String(process.env.SML_SEC_USER_AGENT || DEFAULT_SEC_UA), logger: log
@@ -4953,7 +4970,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,
@@ -4974,6 +4991,7 @@ async function main() {
     if (academyMassive) academyMassive.stop();
     if (academyScreener) academyScreener.stop();
     if (academyFlowDaily) academyFlowDaily.stop();
+    if (academySignalOutcomes) academySignalOutcomes.stop();
     if (academyChatWss) academyChatWss.close();
     server.close(async () => {
       await database.close();
@@ -4999,6 +5017,7 @@ async function main() {
     if (academyAlertSources) academyAlertSources.start();
     if (academyMassive) academyMassive.start();
     if (academyScreener) academyScreener.start();
+    if (academySignalOutcomes) academySignalOutcomes.start();
     if (academyFlowDaily && academyFlowDaily.start()) {
       /* the days before the ledger existed, for the recorded symbols, from the full book's prints; once, shortly after start */
       const syms = academyDepthRecorder ? academyDepthRecorder.symbols : parseDepthSymbols(process.env.ACADEMY_DEPTH_RECORD_SYMBOLS);

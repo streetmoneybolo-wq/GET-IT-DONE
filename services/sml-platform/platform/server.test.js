@@ -1049,6 +1049,29 @@ test('the order flow route validates symbols, reports disabled, and serves the r
   });
 });
 
+test('the flow-days route serves the week to members only and validates the symbol', async () => {
+  const academyFlowDaily = { configured: true, summary: async (symbol, days) => ({ ok: true, symbol, days, days_: days, window: { available: false, days: 0 } }) };
+  const academyOAuth = { verifySession: (auth) => (auth === 'Bearer member' ? { ok: true, tier: 'academy' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  await withServer({ academyFlowDaily, academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/flow-days?symbol=SPY`)).status, 401);
+    const ok = await fetch(`${base}/academy-activity/flow-days?symbol=spy&days=7`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(ok.status, 200); const body = await ok.json(); assert.equal(body.symbol, 'SPY'); assert.equal(body.days_, 7);
+    assert.equal((await fetch(`${base}/academy-activity/flow-days?symbol=../x`, { headers: { authorization: 'Bearer member' } })).status, 400);
+  });
+});
+
+test('the signal outcomes route serves the measured hit rates to members only', async () => {
+  await withServer({}, async (base) => { assert.equal((await fetch(`${base}/academy-activity/signal-outcomes`)).status, 503); });
+  const academySignalOutcomes = { configured: true, summary: async (days) => ({ ok: true, days, depth: [], week: [], sweeps: [] }) };
+  const academyOAuth = { verifySession: (auth) => (auth === 'Bearer member' ? { ok: true, tier: 'academy' } : auth === 'Bearer free' ? { ok: true, tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  await withServer({ academySignalOutcomes, academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/signal-outcomes`)).status, 401);
+    assert.equal((await fetch(`${base}/academy-activity/signal-outcomes`, { headers: { authorization: 'Bearer free' } })).status, 403);
+    const ok = await fetch(`${base}/academy-activity/signal-outcomes?days=7`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(ok.status, 200); const body = await ok.json(); assert.equal(body.days, 7); assert.ok(Array.isArray(body.sweeps));
+  });
+});
+
 test('the heat map route serves the order-flow service\'s book columns, gated like order flow', async () => {
   await withServer({}, async (base) => { assert.equal((await fetch(`${base}/academy-activity/heatmap?symbol=SPY`)).status, 503); });
   const academyOrderFlow = { get: () => ({}), heatmap: (s, since) => { if (!/^[A-Z]+$/i.test(String(s))) throw new TypeError('invalid_symbol'); return { symbol: String(s).toUpperCase(), ready: true, since, columns: [{ t: 10, b: [[100, 5]], a: [[100.01, 6]] }] }; } };

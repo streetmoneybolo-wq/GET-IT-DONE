@@ -213,6 +213,8 @@
     if (inst && inst.ok) ctx.institutional = inst;
     if (fil && fil.ok) ctx.filings = fil;
     if (fdw && fdw.ok) ctx.flowDays = fdw;
+    /* how the newer signals have done: one summary for every ticker, refreshed every five minutes */
+    if (!S.outcomes || Date.now() - (S.outcomesAt || 0) > 300000) { S.outcomesAt = Date.now(); authGet('/academy-activity/signal-outcomes?days=30').then((o) => { if (o && o.ok) { S.outcomes = o; paintOF(); } }); }
     recompute(); paint(); draw();
   }
   async function refresh(force) {
@@ -407,6 +409,7 @@
       if ((o.events || []).length) h += '<div style="margin-top:8px">' + o.events.slice(0, 5).map((e) => '<div class="mem-ev"><u class="' + e.side + '"></u>' + esc(new Date(e.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })) + ' · ' + esc(e.note) + '</div>').join('') + '</div>';
       h += depthHtml(o.depth);
       h += sweepHtml(o.sweepWall);
+      h += measuredHtml(o.depth);
       h += '<p class="mem-blurb">Level 2 is a reading of what buyers and sellers are doing, not a prediction. Every signal is being recorded with what price did next, so it can be measured before anyone relies on it.</p>';
     }
     if (h !== S.lastOfHtml) {
@@ -444,6 +447,27 @@
         + '<small>' + esc(wr.note) + '</small></div>';
     }
     return h + '<p class="mem-bdn" style="margin:6px 0 0">Folded once a minute from the tape (Massive when watched, otherwise moomoo prints), the full-depth pressure, the Level 2 events and moomoo\'s size buckets. Educational, not a recommendation.</p></div>';
+  }
+  /* ---- How these have done (academy-signal-outcomes.js): every newer signal stamped when it fired and scored later; the rows that match
+     what the book is saying right now come first, the rest fold under a summary. Under 20 measured samples is labelled as still collecting. ---- */
+  const SIG_NAME = { pressure: 'Pressure', microprice: 'Microprice tilt', divergence: 'CVD divergence', large: 'Large prints', refill: 'Replenishment', week: 'The week' };
+  const OUT_NAME = { breakout_confirmed: 'Sweep: breakout confirmed', sweep_absorbed: 'Sweep absorbed', false_break: 'Sweep: false break' };
+  function measuredHtml(D) {
+    const O = S.outcomes; if (!O || !O.ok) return '';
+    const pct = (v) => (v == null ? '–' : Math.round(v * 100) + '%');
+    const mv = (v) => (v == null ? '' : ' · avg ' + (v >= 0 ? '+' : '') + v.toFixed(2) + '%');
+    const row = (label, h, side) => { const m = h.measured || 0; return '<div class="mem-ev"><u class="' + side + '"></u>' + esc(label) + ' · ' + (m >= 20 ? '<b>' + pct(h.hitRate) + ' right</b>' + mv(h.avgPct) + ' · n=' + m : '<span style="color:#7f98a6">collecting (' + m + ' measured)</span>') + '</div>'; };
+    const live = new Set();
+    if (D && D.ready) { const sc = D.pressure.score; if (Math.abs(sc) >= 25) live.add('pressure:' + (sc > 0 ? 'bull' : 'bear')); if (Math.abs(D.book.microTilt) >= 0.3) live.add('microprice:' + (D.book.microTilt > 0 ? 'bull' : 'bear')); if (D.flow.divergence) live.add('divergence:' + (D.flow.divergence === 'bullish' ? 'bull' : 'bear')); }
+    const depth = (O.depth || []).slice().sort((a, b) => (live.has(b.signal + ':' + b.side) ? 1 : 0) - (live.has(a.signal + ':' + a.side) ? 1 : 0) || b.n - a.n);
+    let h = '<div class="mem-of-row"><b>How these have done</b> · <span class="mem-blurb">last ' + O.days + ' days, five minutes later</span>';
+    const top = depth.filter((r) => live.has(r.signal + ':' + r.side)), rest = depth.filter((r) => !live.has(r.signal + ':' + r.side));
+    if (!depth.length && !(O.sweeps || []).length && !(O.week || []).length) h += '<br><span class="mem-blurb">Nothing measured yet. Every signal that fires from now on is stamped and scored, and the numbers appear here as they come in.</span>';
+    for (const r of top) h += row((SIG_NAME[r.signal] || r.signal) + ' ' + r.side + (r.bucket ? ' (' + r.bucket + ')' : '') + ' · on now', r.horizons.outcome_5m, r.side);
+    for (const s of O.sweeps || []) h += row((OUT_NAME[s.outcome] || s.outcome) + ' ' + s.side, { measured: s.measured, hitRate: s.hitRate, avgPct: s.avgPct }, s.side);
+    for (const r of O.week || []) h += row('The week ' + r.side + (r.bucket ? ' (' + r.bucket + ')' : '') + ' · 3 days later', r.horizons.outcome_3d, r.side);
+    if (rest.length) h += '<details><summary>Every measured signal (' + rest.length + ')</summary>' + rest.map((r) => row((SIG_NAME[r.signal] || r.signal) + ' ' + r.side + (r.bucket ? ' (' + r.bucket + ')' : ''), r.horizons.outcome_5m, r.side)).join('') + '</details>';
+    return h + '<small style="display:block;margin-top:4px;color:#6f8794">"Right" means price moved the signal\'s way from the moment it fired. Below 20 samples the number means little; the rule stays educational either way.</small></div>';
   }
   /* ---- Sweep versus wall (academy-sweep-wall.js): aggressive sweeps against the walls the Level 2 reader tracks, scored on the next snapshots ---- */
   const SW_LABEL = { breakout_confirmed: 'BREAKOUT CONFIRMED', sweep_absorbed: 'SWEEP ABSORBED', false_break: 'FALSE BREAK' };
