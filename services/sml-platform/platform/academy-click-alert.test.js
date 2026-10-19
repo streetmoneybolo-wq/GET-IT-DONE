@@ -69,7 +69,10 @@ test('bad clicks and thin data are refused with a reason', () => {
   assert.equal(CA.classify({ symbol: 'X', target: -1, price: 5, bars: bars(5) }).code, 'invalid_target');
   assert.equal(run(0.0005).code, 'target_too_close');
   assert.equal(run(5).code, 'target_too_far');
-  assert.equal(CA.classify({ symbol: 'X', target: 6, price: 5, bars: { daily: D.slice(0, 10), m5: [], m15: [], weekly: [] } }).code, 'not_enough_history');
+  // a short history never refuses the alert: it lowers the confidence and says so; the only refusal is no candles at all
+  const thin = CA.classify({ symbol: 'X', target: 6, price: 5, bars: { daily: D.slice(0, 10), m5: [], m15: [], weekly: [] } });
+  assert.equal(thin.ok, true); assert.equal(thin.confidence, 'low'); assert.match(thin.rationale[0], /only 10 sessions of history/);
+  assert.equal(CA.classify({ symbol: 'X', target: 6, price: 5, bars: { daily: [], m5: [], m15: [], weekly: [] } }).code, 'no_price_history');
 });
 
 test('risk steps up with volatility and for sub-dollar stocks', () => {
@@ -619,4 +622,17 @@ test('stockTargetForPremium: a premium clicked on the contract chart becomes the
   assert.equal(CA.stockTargetForPremium({ type: 'call', price: 100, strike: 100, premium: 3, premiumTarget: 5000, iv: 0.3, dte: 30 }).code, 'premium_target_unreachable');
   assert.equal(CA.stockTargetForPremium({ type: 'call', price: 100, strike: 100, premium: 3, premiumTarget: 6, iv: 0.3, dte: 0 }).code, 'contract_expired');
   assert.equal(CA.stockTargetForPremium({ type: 'x', price: 100, strike: 100, premium: 3, premiumTarget: 6, iv: 0.3, dte: 30 }).code, 'invalid_contract');
+});
+
+test('a new listing with a handful of sessions is alertable: the days are built from the intraday candles and the read says the history is thin', () => {
+  // 4 sessions of 5-minute candles, no daily candles at all (what a fresh IPO looks like on the feed)
+  const m5 = []; let p = 10; const open = Date.UTC(2026, 9, 14, 13, 30);
+  for (let d = 0; d < 4; d++) for (let i = 0; i < 78; i++) { p *= 1 + (Math.sin(d * 7 + i / 5) * 0.004); const t = open + d * 86_400_000 + i * 300_000; m5.push({ t, o: p * 0.999, h: p * 1.004, l: p * 0.996, c: p, v: 5000 }); }
+  const days = CA.synthDaily(m5);
+  assert.equal(days.length, 4); assert.ok(days[0].h >= days[0].c && days[0].l <= days[0].c); assert.equal(days[0].v, 78 * 5000);
+  const merged = CA.mergeDaily([{ t: open, o: 10, h: 10.5, l: 9.8, c: 10.2, v: 1 }], days);
+  assert.equal(merged.length, 4, 'a real daily candle for the same day wins over the built one');
+  const r = CA.classify({ symbol: 'SAIQ', target: p * 1.2, price: p, bars: { daily: [], m5, m15: [], weekly: [] } });
+  assert.equal(r.ok, true, JSON.stringify(r)); assert.equal(r.side, 'long'); assert.equal(r.confidence, 'low');
+  assert.match(r.rationale[0], /SAIQ has only 4 sessions of history/); assert.ok(r.horizon, 'a horizon is still estimated'); assert.ok(Number.isFinite(r.stop) || r.stop == null);
 });

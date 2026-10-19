@@ -88,7 +88,7 @@
     click_alert_disabled: 'Click-to-Alert is not available right now.',
     target_too_close: 'That target is too close to the live price. Click further away.',
     target_too_far: 'That target is too far from the live price.',
-    not_enough_history: 'There is not enough price history on this symbol to estimate a horizon.',
+    not_enough_history: 'There is not enough price history on this symbol to estimate a horizon.', no_price_history: 'No candles came back for this symbol on any interval. Reload the chart and try again.',
     no_live_price: 'There is no live price for this symbol right now.',
     invalid_symbol: 'That symbol cannot be used.',
     you_cannot_post_there: 'You do not have permission to send messages in that channel.',

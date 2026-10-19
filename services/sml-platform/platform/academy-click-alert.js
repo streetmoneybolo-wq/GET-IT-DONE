@@ -210,6 +210,24 @@ function stockTargetForPremium({ type, price, strike, premium, premiumTarget, iv
     targetBasis: 'your click on the contract chart: the ' + type + ' at $' + px(want).toFixed(2) + (prem > 0 ? ' (now $' + px(prem).toFixed(2) + ')' : '') + ', which needs the stock at about $' + px(target).toFixed(px(target) >= 1 ? 2 : 4) + ' with ' + Math.round(days) + ' day' + (Math.round(days) === 1 ? '' : 's') + ' left' + (withContract ? '' : '; a lower premium means the stock moving against this contract, so this reads as a sell') };
 }
 
+/* The trading day a candle belongs to (New York), and daily candles built from intraday ones for a new listing. */
+function tradingDay(t) { try { return new Date(t).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); } catch (_) { return new Date(t).toISOString().slice(0, 10); } }
+function synthDaily(intraday) {
+  const days = new Map();
+  for (const b of Array.isArray(intraday) ? intraday : []) {
+    if (!b || !(Number(b.c) > 0)) continue;
+    const k = tradingDay(Number(b.t)); let d = days.get(k);
+    if (!d) { d = { t: Number(b.t), o: Number(b.o), h: Number(b.h), l: Number(b.l), c: Number(b.c), v: 0, day: k }; days.set(k, d); }
+    d.h = Math.max(d.h, Number(b.h)); d.l = Math.min(d.l, Number(b.l)); d.c = Number(b.c); d.v += Number(b.v) || 0;
+  }
+  return [...days.values()].sort((a, b) => a.t - b.t);
+}
+function mergeDaily(real, synth) {
+  const have = new Set((real || []).map((b) => tradingDay(Number(b.t))));
+  const extra = (synth || []).filter((d) => !have.has(d.day)).map((d) => ({ t: d.t, o: d.o, h: d.h, l: d.l, c: d.c, v: d.v }));
+  return (real || []).concat(extra).sort((a, b) => a.t - b.t);
+}
+
 function classify({ symbol, target, price, bars }) {
   const sym = String(symbol || '').toUpperCase();
   const entry = Number(price), tgt = Number(target);
@@ -220,11 +238,18 @@ function classify({ symbol, target, price, bars }) {
   const move = (tgt - entry) / entry;
   if (Math.abs(move) < 0.002) return { ok: false, code: 'target_too_close', detail: 'The target is within 0.2% of the entry price.' };
   if (Math.abs(move) > 3) return { ok: false, code: 'target_too_far', detail: 'The target is more than 300% from the entry price.' };
-  const daily = bars.daily || [];
-  if (daily.length < 30) return { ok: false, code: 'not_enough_history', detail: 'Fewer than 30 daily candles for ' + sym + '.' };
+  /* History: the daily candles, and for a new listing (fewer than 30 sessions) the days built from the intraday candles as well. A short
+     history never refuses the alert: it lowers the confidence and says so. The only refusal is no candles at all on any interval. */
+  const real = bars.daily || [];
+  const intraHist = (bars.m5 && bars.m5.length ? bars.m5 : bars.m15 && bars.m15.length ? bars.m15 : []);
+  const daily = real.length >= 30 ? real : mergeDaily(real, synthDaily(intraHist));
+  if (!daily.length) return { ok: false, code: 'no_price_history', detail: 'No candles came back for ' + sym + ' on any interval. Reload the chart and try again.' };
+  const thin = daily.length < 30, sessions = daily.length;
 
   const atrD = SM.atrSeries(daily).slice(-1)[0] || entry * 0.02;
-  const sigma = Math.max(0.003, dailyVolatility(daily) || atrD / entry);
+  let sigmaEst = dailyVolatility(daily);
+  if (sigmaEst == null && intraHist.length >= 20) { const perDay = bars.m5 && bars.m5.length ? 78 : 26; const iv = dailyVolatility(intraHist); if (iv != null) sigmaEst = iv * Math.sqrt(perDay); }
+  const sigma = Math.max(0.003, sigmaEst || atrD / entry);
   const D = Math.abs(tgt - entry), r = D / entry;
   const tVol = (r / sigma) ** 2, tAtr = D / atrD;
   const blend = Math.sqrt(tVol * tAtr);
@@ -259,14 +284,16 @@ function classify({ symbol, target, price, bars }) {
   // confidence: how much data there is, whether the horizon reads agree, and how far the estimate is from a boundary
   let pts = 0;
   if (daily.length >= 120) pts++;
+  if (thin) pts -= 1;
   if (horizon !== 'long' || (bars.weekly || []).length >= 60) pts++;
   if (counted >= 3 && alignment >= 0.3) pts += 2; else if (counted >= 3 && alignment <= -0.3) pts -= 1;
   if (!alsoFits.length) pts++;
   if (bars.fresh !== false) pts++;
-  const confidence = pts >= 4 ? 'high' : pts >= 2 ? 'medium' : 'low';
+  const confidence = thin ? 'low' : pts >= 4 ? 'high' : pts >= 2 ? 'medium' : 'low'; // a thin history is never more than low confidence
 
   const T = HORIZON_TEXT[horizon];
   const rationale = [];
+  if (thin) rationale.push(sym + ' has only ' + sessions + ' session' + (sessions === 1 ? '' : 's') + ' of history (a new listing), so the pace estimate leans on the intraday candles; treat the horizon as rough.');
   rationale.push('The move is ' + (Math.abs(move) * 100).toFixed(1) + '% (' + (D / atrD).toFixed(1) + ' daily ranges) ' + (side === 'long' ? 'up' : 'down') + '; ' + sym + ' usually moves about ' + (sigma * 100).toFixed(1) + '% a day.');
   rationale.push('At its normal pace that takes roughly ' + (days < 1 ? 'under a day' : days < 10 ? days.toFixed(1) + ' trading days' : Math.round(days) + ' trading days') + ' (about ' + (low < 1 ? 'under a day' : Math.round(low) + '') + ' to ' + Math.round(high) + '), which is a ' + T.label.toLowerCase() + ' (' + T.span + ').');
   if (counted) {
@@ -908,4 +935,4 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   return { entitlement, warm, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
 }
 
-module.exports = { createClickAlertService, createClickAlertStore, classify, autoTargetForContract, stockTargetForPremium, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };
+module.exports = { createClickAlertService, createClickAlertStore, classify, synthDaily, mergeDaily, autoTargetForContract, stockTargetForPremium, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };
