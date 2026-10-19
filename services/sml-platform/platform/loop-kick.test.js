@@ -166,6 +166,32 @@ test('no new file writes to Discord DMs or channels', () => {
   }
 });
 
+test('the device floats like the site launcher: transparent window, clipped to the phone, draggable grip, pulsing button', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'academy-loop-kick.js'), 'utf8');
+  assert.match(source, /#academy-lk-panel\{display:none;position:fixed;[^}]*background:none;[^}]*pointer-events:none\}/, 'no box around the phone, clicks fall through around it');
+  assert.match(source, /allowtransparency/);
+  assert.match(source, /clipPath = 'inset\(/, 'the frame is clipped to the surfaces the phone reports');
+  assert.match(source, /sml-loop-kick:surface[\s\S]*fitSurfaces\(d\.surfaces\)/);
+  assert.match(source, /id="academy-lk-grip"/);
+  assert.match(source, /addEventListener\('pointerdown'/);
+  assert.match(source, /setPointerCapture/);
+  assert.match(source, /localStorage\.setItem\(POS_KEY/, 'the spot is remembered');
+  assert.match(source, /right = '26px'; st\.bottom = '26px'/, 'bottom-right by default, like stockmarketloop.com');
+  assert.match(source, /@keyframes academyLkPulse/);
+  assert.match(source, /#academy-lk-btn\{[^}]*animation:academyLkPulse 2\.6s ease-in-out infinite\}/);
+  assert.match(source, /d\.surface === 'closed' && S\.sawOpen[^\n]*closePanel\(\)/, 'the phone\'s own X hides the device');
+  assert.doesNotMatch(source, /academy-lk-head/);
+  assert.doesNotMatch(source, /querySelector\('\.side'\)/, 'no longer pinned over the quote column');
+  // the Watch deck opens YouTube outside Discord (its player cannot load inside the Activity)
+  const external = /var EXTERNAL_OK = (\/.*\/);/.exec(source);
+  const re = new Function('return ' + external[1])();
+  assert.ok(re.test('https://www.youtube.com/watch?v=dQw4w9WgXcQ'));
+  assert.ok(re.test('https://youtu.be/dQw4w9WgXcQ'));
+  assert.ok(re.test('https://stockmarketloop.com/watch/'));
+  assert.ok(!re.test('https://www.youtube.com/'));
+  assert.ok(!re.test('https://evil.example/'));
+});
+
 test('the injected module parses as a classic script', () => {
   const source = fs.readFileSync(path.join(__dirname, 'academy-loop-kick.js'), 'utf8');
   assert.doesNotThrow(() => new Function(source));
