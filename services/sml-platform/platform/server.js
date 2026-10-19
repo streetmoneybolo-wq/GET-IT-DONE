@@ -111,6 +111,7 @@ const { createTraderAlerts } = require('./academy-trader-alerts');
 const { createCommunity } = require('./academy-community');
 const { createSocialNotify } = require('./academy-social-notify');
 const { createAlertChartBilling } = require('./alert-chart-billing');
+const { createLoopStallProfiler } = require('./loop-stall-profiler');
 const { createProfilePages, MAX_UPLOAD_BYTES: PROFILE_UPLOAD_MAX } = require('./academy-profile-pages');
 const { createSnapshotService } = require('./academy-snapshot');
 const { createMemLab, fileStore: memLabFileStore } = require('./academy-mem-lab-service');
@@ -5704,7 +5705,10 @@ async function main() {
     log('info', 'api_started', { port: config.port, memory: memorySample() });
     /* one line a minute on what the process weighs, so a climb toward the 512 MB kill line is visible in the log before it happens */
     try { loopMonitor = monitorEventLoopDelay({ resolution: 20 }); loopMonitor.enable(); } catch (_) { loopMonitor = null; }
-    const memoryTimer = setInterval(() => { const m = memorySample(); academyEvolve.observeMemory(m); log(m.rss >= 440 || (m.loopP99 || 0) >= 500 ? 'warn' : 'info', 'memory_sample', m); }, 60_000);
+    /* names what blocked the loop when a pause over three seconds is seen (loop-stall-profiler.js); SML_LOOP_PROFILE=off removes it */
+    const stallProfiler = process.env.SML_LOOP_PROFILE === 'off' ? null : createLoopStallProfiler({ logger: log });
+    if (stallProfiler) stallProfiler.start().then((on) => log('info', 'loop_profiler_runtime', { on })).catch(() => {});
+    const memoryTimer = setInterval(() => { const m = memorySample(); academyEvolve.observeMemory(m); log(m.rss >= 440 || (m.loopP99 || 0) >= 500 ? 'warn' : 'info', 'memory_sample', m); if (stallProfiler) stallProfiler.onSample({ loopMax: m.loopMax || 0, loopP99: m.loopP99 || 0 }).catch(() => {}); }, 60_000);
     /* the daily brief runs in the quiet hour; a crash in it is logged and never stops the server */
     const evolveTimer = setInterval(() => { if (academyEvolve.due()) academyEvolve.runBrief({ reason: 'scheduled' }).catch((error) => log('warn', 'academy_evolve_brief_failed', { error: String((error && error.message) || error) })); }, 10 * 60_000);
     if (evolveTimer.unref) evolveTimer.unref();
