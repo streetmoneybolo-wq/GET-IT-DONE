@@ -93,6 +93,18 @@ test('the quick memo: pre-screen results are kept for hours and survive a restar
   assert.equal(quickSeen.length, 5, 'the second sweep needed no quick reads at all'); assert.equal(svc.state.quickCached, 6);
 });
 
+test('back-pressure: while memory is short the sweep pauses between names instead of pushing on, and says so', async () => {
+  let checks = 0, pausedSeen = false;
+  const svc = createSqueezeList({ universe: async () => [{ symbol: 'P1' }, { symbol: 'P2' }, { symbol: 'P3' }], concurrency: 1, pauseMs: 15, logger: () => {},
+    memoryOk: () => { checks += 1; return checks > 2; }, insight: async (s) => { pausedSeen = pausedSeen || svc.state.paused; return fake(s, 50); } });
+  svc.list();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(svc.list().paused, true, 'waiting for memory');
+  for (let i = 0; i < 200 && svc.state.building; i++) await new Promise((r) => setTimeout(r, 10));
+  const out = svc.list();
+  assert.equal(out.building, false); assert.equal(out.paused, false); assert.equal(out.rows.length, 3); assert.ok(checks >= 3);
+});
+
 test('an empty or broken universe is reported, not thrown; a slow symbol is skipped', async () => {
   const empty = createSqueezeList({ universe: async () => { throw new Error('down'); }, insight: async () => fake('X', 50), logger: () => {} });
   empty.list(); await new Promise((r) => setTimeout(r, 30));

@@ -5084,7 +5084,8 @@ async function main() {
     const si = getShortInsight(); if (!si) return null;
     /* two phases: the cheap fuel read screens the whole wide ranking plus the low-float lane, the top names get the full read;
        the last list lives in academy_state_kv so the button answers at once after a restart */
-    squeezeList = createSqueezeList({ concurrency: academyEvolve.knob('squeezeConcurrency'), maxSymbols: academyEvolve.knob('squeezeMaxSymbols'), limit: 100, quickConcurrency: Number(process.env.SML_ACADEMY_SQUEEZE_QUICK_WORKERS) || 16,
+    squeezeList = createSqueezeList({ concurrency: academyEvolve.knob('squeezeConcurrency'), maxSymbols: academyEvolve.knob('squeezeMaxSymbols'), limit: 100, quickConcurrency: Number(process.env.SML_ACADEMY_SQUEEZE_QUICK_WORKERS) || 4,
+      memoryOk: () => process.memoryUsage().rss < (Number(process.env.SML_ACADEMY_SQUEEZE_PAUSE_MB) || 390) * 1024 * 1024,
       insight: (s) => si.insight(s, { brief: false }), quick: typeof si.quick === 'function' ? (s) => si.quick(s) : null,
       store: createPgStateStore({ pool: database.pool, key: 'squeeze-list', defaultValue: () => ({ rows: [], at: 0 }), logger: log }),
       quickStore: createPgStateStore({ pool: database.pool, key: 'squeeze-quick', defaultValue: () => ({ items: {}, at: 0 }), logger: log }),
@@ -5092,7 +5093,8 @@ async function main() {
     return squeezeList;
   };
   /* the list is pre-built shortly after boot so the first press of SQUEEZE is served, not started; ACADEMY_SQUEEZE_PREWARM=off skips it */
-  if (process.env.ACADEMY_SQUEEZE_PREWARM !== 'off') { const pre = setTimeout(() => { try { const l = getSqueezeList(); if (l) l.list({ touch: false }); } catch (error) { log('warn', 'squeeze_list_prewarm_failed', { error: String(error && error.message || error) }); } }, 90_000); if (pre.unref) pre.unref(); }
+  /* the pre-build waits until the boot has settled, and only runs when memory has room (the stored list serves the button meanwhile) */
+  if (process.env.ACADEMY_SQUEEZE_PREWARM !== 'off') { const pre = setTimeout(() => { try { const rss = process.memoryUsage().rss / 1048576; if (rss > 300) { log('info', 'squeeze_list_prewarm_skipped', { rss: Math.round(rss) }); return; } const l = getSqueezeList(); if (l) l.list({ touch: false }); } catch (error) { log('warn', 'squeeze_list_prewarm_failed', { error: String(error && error.message || error) }); } }, 4 * 60_000); if (pre.unref) pre.unref(); }
   const getFdaService = () => {
     if (fdaService || process.env.SML_ACADEMY_FDA === 'off') return fdaService;
     fdaService = createFdaService({

@@ -202,7 +202,7 @@ function createShortInsight({ shortData, candles = null, orderFlow = null, tape 
     const full = cache.get(symbol); if (!wantBrief && full && now() - full.at < ttlMs) return Promise.resolve(full.v); // a fresh full read serves the sweep too
     const hit = cache.get(key); if (hit && now() - hit.at < ttlMs) return Promise.resolve(hit.v);
     if (inflight.has(key)) return inflight.get(key);
-    const p = build(symbol, { brief: wantBrief }).then((v) => { cache.set(key, { at: now(), v }); if (cache.size > 600) cache.delete(cache.keys().next().value); return v; }).catch((error) => { logger('error', 'short_insight_failed', { symbol, error: String(error && error.message || error) }); return { ok: false, status: 503, error: 'insight_unavailable' }; }).finally(() => inflight.delete(key));
+    const p = build(symbol, { brief: wantBrief }).then((v) => { cache.set(key, { at: now(), v }); if (cache.size > 160) cache.delete(cache.keys().next().value); return v; }).catch((error) => { logger('error', 'short_insight_failed', { symbol, error: String(error && error.message || error) }); return { ok: false, status: 503, error: 'insight_unavailable' }; }).finally(() => inflight.delete(key));
     inflight.set(key, p); return p;
   }
   /* QUICK: the fuel block alone from the two cheap, long-cached inputs (the short feed and the scanner row with the float), so a

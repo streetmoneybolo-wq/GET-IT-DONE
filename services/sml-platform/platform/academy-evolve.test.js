@@ -45,7 +45,7 @@ test('knobs turn only inside their rails from the evidence, never when pinned, a
   ev.observeMemory({ rss: 470, loopP99: 900 });
   const turns = ev.tune(await ev.digest());
   assert.ok(turns.includes('livePollMs') && turns.includes('squeezeConcurrency') && turns.includes('squeezeMaxSymbols'));
-  assert.equal(ev.knob('livePollMs'), 3_500); assert.equal(ev.knob('squeezeConcurrency'), 3); assert.equal(ev.knob('squeezeMaxSymbols'), 100);
+  assert.equal(ev.knob('livePollMs'), 3_500); assert.equal(ev.knob('squeezeConcurrency'), 1); assert.equal(ev.knob('squeezeMaxSymbols'), 80);
   assert.equal(ev.state.turns.length, 3); assert.match(ev.state.turns[0].reason, /live p95 3000 ms/);
   /* pressure keeps coming: the knobs stop at their floors */
   for (let i = 0; i < 6; i++) { ev.observeMemory({ rss: 480, loopP99: 900 }); ev.tune(await ev.digest()); }

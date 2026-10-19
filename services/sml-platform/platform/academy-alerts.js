@@ -114,11 +114,19 @@ function createAlertsService({
   const acquire = () => new Promise((resolve) => { if (semaphore < 3) { semaphore += 1; resolve(); } else waiters.push(resolve); });
   const release = () => { const next = waiters.shift(); if (next) next(); else semaphore -= 1; };
 
+  /* the cache is bounded: a market-wide sweep touches hundreds of names, and an option chain is the heaviest thing kept, so chains
+     are capped on their own (oldest out) and the whole store is capped after that; memory stays flat instead of growing per sweep */
+  const CHAIN_CAP = Number(process.env.SML_ACADEMY_CHAIN_CACHE) || 36, STORE_CAP = 900;
+  function bound(key) {
+    if (!(cacheStore instanceof Map)) return;
+    if (String(key).startsWith('oc:')) { const chains = [...cacheStore.keys()].filter((k) => k.startsWith('oc:')); for (let i = 0; i < chains.length - CHAIN_CAP; i++) cacheStore.delete(chains[i]); }
+    if (cacheStore.size > STORE_CAP) for (const k of [...cacheStore.keys()].slice(0, cacheStore.size - STORE_CAP)) cacheStore.delete(k);
+  }
   const cached = async (key, ttl, fn) => {
     const hit = cacheStore.get(key);
     if (hit && hit.until > now()) return hit.value;
     if (inflight.has(key)) return inflight.get(key);
-    const p = (async () => { await acquire(); try { const value = await fn(); cacheStore.set(key, { value, until: now() + ttl }); return value; } catch (error) { if (hit) return hit.value; return null; } finally { release(); } })();
+    const p = (async () => { await acquire(); try { const value = await fn(); cacheStore.set(key, { value, until: now() + ttl }); bound(key); return value; } catch (error) { if (hit) return hit.value; return null; } finally { release(); } })();
     inflight.set(key, p); try { return await p; } finally { inflight.delete(key); }
   };
   const wp = async (path) => {

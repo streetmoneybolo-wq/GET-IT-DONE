@@ -82,6 +82,7 @@
     if (d.building && d.phase === 'quick') { t = 'Sweep: pre-screening ' + d.quickTotal + ' names on fuel' + (d.quickCached ? ' (' + d.quickCached + ' from memory)' : '') + ' · ' + d.quickDone + ' done'; pct = d.quickTotal ? d.quickDone / d.quickTotal * 30 : 0; }
     else if (d.building) { t = 'Sweep: reading the top ' + d.total + ' in full (book, tape, chain, gamma) · ' + d.done + ' done'; pct = 30 + (d.total ? d.done / d.total * 70 : 0); }
     else if (d.error) t = d.error === 'no_universe' ? 'The scanner has no names right now.' : 'The last sweep failed; rescan.';
+    if (d.building && d.paused) t += ' · paused a moment for memory';
     if (d.building) t += S.shown && S.shown.length ? ' · the list updates when the sweep completes' : ' · filling in';
     const html = esc(t) + (pct != null ? '<span class="bar"><i style="width:' + Math.round(pct) + '%"></i></span>' : '');
     if (el.st.innerHTML !== html) el.st.innerHTML = html;

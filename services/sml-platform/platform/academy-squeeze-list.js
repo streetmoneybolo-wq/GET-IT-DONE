@@ -18,9 +18,9 @@ const num = (v, d = null) => { if (v == null || v === '') return d; const n = Nu
 /* a row's float when the scanner knows it (site rows carry the hub's float; Massive-only rows do not) */
 const floatOf = (row) => (row ? (num(row.sharesFloat) > 0 ? num(row.sharesFloat) : num(row.sharesOutstanding) > 0 ? num(row.sharesOutstanding) : null) : null);
 
-function createSqueezeList({ insight, quick = null, universe, store = null, quickStore = null, quickTtlMs = 6 * 3_600_000, now = Date.now, logger = () => {}, ttlMs = 10 * 60_000, concurrency = 3, quickConcurrency = 8, maxSymbols = 80, limit = 20, perSymbolMs = 20_000, quickMs = 8_000, lowFloatMax = 50e6, lowFloatExtra = 30, keepWarmMs = 60 * 60_000 } = {}) {
+function createSqueezeList({ insight, quick = null, universe, store = null, quickStore = null, quickTtlMs = 6 * 3_600_000, now = Date.now, logger = () => {}, ttlMs = 10 * 60_000, concurrency = 3, quickConcurrency = 4, maxSymbols = 80, limit = 20, perSymbolMs = 20_000, quickMs = 8_000, lowFloatMax = 50e6, lowFloatExtra = 30, keepWarmMs = 60 * 60_000, memoryOk = null, pauseMs = 3_000 } = {}) {
   if (typeof insight !== 'function') throw new TypeError('insight_required');
-  const state = { at: 0, startedAt: 0, rows: [], done: 0, total: 0, building: false, error: '', lowFloat: 0, phase: '', quickDone: 0, quickTotal: 0, quickCached: 0, fromStore: false, lastMs: 0 };
+  const state = { at: 0, startedAt: 0, rows: [], done: 0, total: 0, building: false, error: '', lowFloat: 0, phase: '', quickDone: 0, quickTotal: 0, quickCached: 0, fromStore: false, lastMs: 0, paused: false };
   let run = null, lastLookAt = 0, warmTimer = null, restored = null;
   /* the quick reads are kept (in memory, and in the quick store across restarts) for quickTtlMs: the short feed settles twice a
      month and the float barely moves, so a name screened an hour ago needs no new site call */
@@ -58,9 +58,12 @@ function createSqueezeList({ insight, quick = null, universe, store = null, quic
     };
   }
 
+  /* back-pressure: while the process is short of memory (memoryOk() false) the workers wait before the next name, so a sweep
+     slows down rather than pushing the server over its limit */
   async function pool(items, n, fn) {
-    let i = 0;
-    const worker = async () => { while (i < items.length) { const it = items[i++]; await fn(it); } };
+    let i = 0, waits = 0;
+    const breathe = async () => { while (typeof memoryOk === 'function' && !memoryOk() && waits < 60) { waits += 1; state.paused = true; await new Promise((r) => { const h = setTimeout(r, pauseMs); if (h.unref) h.unref(); }); } state.paused = false; };
+    const worker = async () => { while (i < items.length) { await breathe(); if (i >= items.length) break; const it = items[i++]; await fn(it); } };
     await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, worker));
   }
   const within = (p, ms) => Promise.race([p, new Promise((res) => { const h = setTimeout(() => res(null), ms); if (h.unref) h.unref(); })]);
@@ -153,7 +156,7 @@ function createSqueezeList({ insight, quick = null, universe, store = null, quic
     void restore();
     const stale = !state.at || now() - state.at > ttlMs || state.fromStore;
     if ((stale || refresh) && !run) start(); else if (touch) arm();
-    return { ok: true, rows: state.rows, building: state.building, phase: state.phase, done: state.done, total: state.total, quickDone: state.quickDone, quickTotal: state.quickTotal, quickCached: state.quickCached, lowFloat: state.lowFloat, fromStore: state.fromStore, lastMs: state.lastMs, asOf: state.at || null, startedAt: state.startedAt || null, error: state.error || '', limit,
+    return { ok: true, rows: state.rows, building: state.building, phase: state.phase, done: state.done, total: state.total, quickDone: state.quickDone, quickTotal: state.quickTotal, quickCached: state.quickCached, paused: state.paused, lowFloat: state.lowFloat, fromStore: state.fromStore, lastMs: state.lastMs, asOf: state.at || null, startedAt: state.startedAt || null, error: state.error || '', limit,
       note: 'SQUEEZE RISK 0-100 = fuel (short % of float, the float\'s size, the cover ratio = shares owed per free share, float turnover, dollar float, days to cover, burn rate, short volume, short interest vs price, synthetic shorts) x spark (the 20-day high, the Massive tape, sweeps, the Level 3 book, dark pool DIX, worked orders, icebergs, pulled orders, VPIN, the flow ledger, relative volume, chatter, a dated catalyst) + the GAMMA SQUEEZE (negative dealer gamma, calls stacked above spot, the call wall, call buyers today, the gamma flip, hedge pressure, 0DTE) - trap (shorts winning). The scan pre-screens the whole active market plus a low-float lane (floats under ' + Math.round(lowFloatMax / 1e6) + 'M) on fuel, then reads the top names in full. Q = the probabilistic state read. Fuel, a spark and the gamma ramp, not a prediction. Educational only.' };
   }
   return { list, build, start, restore, state };
