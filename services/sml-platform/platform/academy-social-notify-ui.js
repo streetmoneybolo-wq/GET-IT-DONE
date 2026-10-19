@@ -15,7 +15,7 @@
   var esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var token = function () { return String(window.smlAcademySessionToken || ''); };
   var ago = function (iso) { var d = (Date.now() - Date.parse(iso)) / 60000; if (!(d >= 0)) return ''; if (d < 1) return 'now'; if (d < 60) return Math.round(d) + 'm'; if (d < 36 * 60) return Math.round(d / 60) + 'h'; return Math.round(d / 1440) + 'd'; };
-  var S = { items: [], unread: 0, more: false, shown: false, seenIds: {}, polling: false, readTimer: 0, followed: {}, firstLoad: true, host: null, bell: null, lastAsk: 0 };
+  var S = { items: [], unread: 0, more: false, shown: false, seenIds: {}, polling: false, readTimer: 0, followed: {}, firstLoad: true, host: null, bell: null, lastAsk: 0, phoneHas: false };
   var STANDALONE = !!LK.standalone;
 
   var css = document.createElement('style');
@@ -82,6 +82,55 @@
       default: return '';
     }
   }
+  /* the same words without markup, for the phone's own Alerts list */
+  function plainText(it) {
+    var r = it.ref || {}, q = it.body ? ' \u201c' + it.body.slice(0, 120) + (it.body.length > 120 ? '\u2026' : '') + '\u201d' : '';
+    switch (it.kind) {
+      case 'follow': return 'started following you in the Academy.';
+      case 'wall_comment': return 'wrote on your Trading Wall:' + q;
+      case 'post': return r.source === 'chat' ? 'posted in #' + (r.room || 'chat') + ':' + q : 'posted on $' + (r.symbol || '') + ':' + q;
+      case 'like': return 'liked your ' + (r.kind === 'wall' ? 'wall ' : '') + 'comment' + (r.symbol ? ' on $' + r.symbol : '') + ':' + q;
+      case 'reply': return 'replied to your $' + (r.symbol || '') + ' comment:' + q;
+      default: return '';
+    }
+  }
+  function ctaOf(it) {
+    var r = it.ref || {};
+    switch (it.kind) {
+      case 'follow': return 'VIEW PROFILE \u2192';
+      case 'wall_comment': return 'OPEN MY WALL \u2192';
+      case 'post': return r.source === 'chat' ? 'OPEN THE CHAT \u2192' : 'OPEN ON $' + (r.symbol || '') + ' \u2192';
+      case 'like': return r.kind === 'wall' ? 'OPEN THE WALL \u2192' : 'OPEN ON $' + (r.symbol || '') + ' \u2192';
+      case 'reply': return 'OPEN ON $' + (r.symbol || '') + ' \u2192';
+      default: return 'OPEN IN THE ACADEMY \u2192';
+    }
+  }
+  /* the phone shows these in its own Alerts tab, folded preview and badge (LoopKickPhone: sml-loop-kick:academy-notifications) */
+  function sendToPhone() {
+    if (typeof LK.send !== 'function') return false;
+    return LK.send('academy-notifications', { items: S.items.slice(0, 60).map(function (it) {
+      return { id: String(it.id), kind: it.kind, actorId: it.actorId || '', title: it.actorName || 'A trader', text: plainText(it), createdAt: it.createdAt, read: !!it.read, cta: ctaOf(it), canFollowBack: it.kind === 'follow' && !S.followed[it.actorId] };
+    }) });
+  }
+  /* the one tap an item stands for (the phone asks for it by id) */
+  function openItem(it) {
+    if (!it || !hasAcademy()) return;
+    var r = it.ref || {};
+    switch (it.kind) {
+      case 'follow': if (window.smlAcademyProfile && window.smlAcademyProfile.open) void window.smlAcademyProfile.open(it.actorId); break;
+      case 'wall_comment': if (window.smlAcademyProfile && window.smlAcademyProfile.me) void window.smlAcademyProfile.me(); break;
+      case 'post':
+        if (r.source === 'chat') { if (typeof window.smlAcademyChatOpen === 'function') window.smlAcademyChatOpen(r.room || 'global'); }
+        else if (window.smlTickerTalk && window.smlTickerTalk.openComment) void window.smlTickerTalk.openComment(r.symbol, r.id); else if (window.smlAcademyNavigateMarket && r.symbol) window.smlAcademyNavigateMarket(r.symbol);
+        break;
+      case 'like':
+        if (r.kind === 'wall') { if (window.smlAcademyProfile && window.smlAcademyProfile.open) void window.smlAcademyProfile.open(r.profileId); }
+        else if (window.smlTickerTalk && window.smlTickerTalk.openComment) void window.smlTickerTalk.openComment(r.symbol, r.rootId || r.id);
+        break;
+      case 'reply': if (window.smlTickerTalk && window.smlTickerTalk.openComment) void window.smlTickerTalk.openComment(r.symbol, r.rootId || r.id); break;
+      default: break;
+    }
+  }
   function itemHtml(it) {
     var initial = esc(String(it.actorName || 'A').slice(0, 1).toUpperCase());
     return '<div class="lk-nt' + (it.read ? '' : ' new') + '" data-nid="' + esc(it.id) + '"><span class="ava" data-uid="' + esc(it.actorId || '') + '">' + initial + '</span><div class="bd"><div class="tx">' + textOf(it) + '</div><div class="mt"><span>' + esc(ago(it.createdAt)) + '</span><span class="sp"></span>' + actionsOf(it) + '</div></div></div>';
@@ -101,6 +150,7 @@
     paintAvatars();
     if (S.bell) { S.bell.classList.toggle('has', S.unread > 0); S.bell.querySelector('.n').textContent = S.unread > 99 ? '99+' : String(S.unread); }
     if (typeof LK.setAcademyUnread === 'function') LK.setAcademyUnread(S.unread);
+    sendToPhone();
   }
 
   /* ---- reading ---- */
@@ -122,7 +172,7 @@
     if (!r.ok) return;
     S.items = r.items || []; S.unread = Number(r.unread) || 0; S.more = !!r.more;
     paint();
-    if (S.unread > 0 && LK.isOpen && LK.isOpen() && !S.shown && !S.dismissed) showFeed(); // the phone is open and there is news: show it
+    if (S.unread > 0 && LK.isOpen && LK.isOpen() && !S.shown && !S.dismissed && !S.phoneHas) showFeed(); // the phone is open and there is news: show it (unless the phone itself is showing it)
     if (S.shown) scheduleRead();
   }
   function scheduleRead() {
@@ -144,8 +194,8 @@
 
   /* ---- showing ---- */
   function showFeed() { ensureUi(); S.shown = true; S.host.classList.add('on'); paint(); scheduleRead(); }
-  function hideFeed() { S.shown = false; S.dismissed = true; if (S.host) S.host.classList.remove('on'); clearTimeout(S.readTimer); }
-  function toggleFeed() { if (S.shown) hideFeed(); else { S.dismissed = false; showFeed(); void poll(true); } }
+  function hideFeed() { S.shown = false; S.dismissed = true; S.pinned = false; if (S.host) S.host.classList.remove('on'); clearTimeout(S.readTimer); }
+  function toggleFeed() { if (S.shown) { S.pinned = false; hideFeed(); } else { S.dismissed = false; S.pinned = true; showFeed(); void poll(true); } }
 
   async function onClick(e) {
     var t = e.target.closest ? e.target.closest('[data-hide],[data-read],[data-more],[data-act]') : null;
@@ -171,8 +221,24 @@
   /* ---- entry points ---- */
   window.addEventListener('sml-loop-kick-panel', function (e) {
     var open = e && e.detail && e.detail.open;
-    if (open) { ensureUi(); S.dismissed = false; void poll(true); if (S.unread > 0) showFeed(); }
+    if (open) { ensureUi(); S.dismissed = false; S.phoneHas = false; void poll(true); if (S.unread > 0 && !S.phoneHas) showFeed(); }
     else hideFeed();
+  });
+  /* the phone woke up: hand it the feed */
+  window.addEventListener('sml-loop-kick-frame', function () { setTimeout(sendToPhone, 200); setTimeout(sendToPhone, 1500); });
+  /* the phone acting on an Academy notification: read, open, follow back, or saying it now shows them */
+  window.addEventListener('sml-loop-kick-academy', function (e) {
+    var d = (e && e.detail) || {}, t = String(d.type || '').replace('sml-loop-kick:academy-', '');
+    if (t === 'ack') { S.phoneHas = true; if (S.shown && !S.pinned) hideFeed(); return; }
+    if (t === 'read') {
+      var ids = Array.isArray(d.ids) ? d.ids.map(String) : [];
+      if (d.all) S.items.forEach(function (it) { it.read = true; }); else S.items.forEach(function (it) { if (ids.indexOf(String(it.id)) >= 0) it.read = true; });
+      S.unread = S.items.filter(function (it) { return !it.read; }).length; paint();
+      void api('/academy-activity/notify/read', 'POST', d.all ? { all: true } : { ids: ids }).then(function (r) { if (r && r.ok) { S.unread = Number(r.unread) || 0; paint(); } });
+      return;
+    }
+    if (t === 'open') { var it = S.items.filter(function (x) { return String(x.id) === String(d.id); })[0]; if (it) { hideFeed(); openItem(it); } return; }
+    if (t === 'follow-back' && /^\d{15,25}$/.test(String(d.actorId || ''))) { void api('/academy-activity/community/follow', 'POST', { user: String(d.actorId), on: true }).then(function (r) { if (r && r.ok) { S.followed[String(d.actorId)] = true; paint(); } }); }
   });
   window.addEventListener('sml-academy-session', function () { setTimeout(function () { void poll(true); }, 1500); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) void poll(); });

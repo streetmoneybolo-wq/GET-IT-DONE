@@ -2125,6 +2125,8 @@ test('the option-bars route serves one contract\'s candles to members only, with
   assert.match(html, /window\.smlLoopKick = \{/, 'LOOP-KICK exposes its panel, grip and badge to the Academy notifications feed');
   assert.match(html, /window\.smlAcademyNotify = \{/, 'the Academy notifications feed (followers, wall comments, posts by followed traders, likes) ships inside LOOP-KICK');
   assert.ok(html.indexOf('window.smlLoopKick = {') < html.indexOf('window.__smlSocialNotifyUi'), 'the feed loads after the LOOP-KICK module it attaches to');
+  assert.match(html, /LK\.send\('academy-notifications'/, 'the feed hands its items to the phone, which shows them in its own Alerts tab');
+  assert.match(html, /d\.type\.indexOf\('sml-loop-kick:academy-'\) === 0/, 'the phone\'s taps on Academy alerts (read, open, follow back) come back to the page');
   assert.match(html, /data-like="' \+ esc\(c\.id\)/, 'Ticker Talk comments carry a like button');
   assert.match(html, /data-pv="walllike"/, 'Trading Wall comments carry a like button');
   assert.ok(html.indexOf('window.smlChartLock = {') < html.indexOf('const DOCKABLE = ['), 'the chart lock is defined before the chart dock reads it');
