@@ -2,6 +2,7 @@
 
 const { createOrderFlow } = require('./academy-order-flow');
 const { depthInsights } = require('./academy-depth-insights');
+const { createSweepWallTracker } = require('./academy-sweep-wall');
 
 const SYMBOL = /^[A-Z0-9.:-]{1,10}$/;
 /* the full book (moomoo's ceiling for US stocks is 60 levels a side) is kept for the depth insights: the last two dozen snapshots and the
@@ -16,7 +17,7 @@ const HEAT_EVERY_MS = 5000, HEAT_COLUMNS = 240, HEAT_LEVELS = 30;
  * WordPress sees a steady trickle instead of a burst. Symbols nobody looks at for two minutes are dropped; SPY and QQQ stay warm.
  * Every event is stored with its price so a job can record the 5-minute outcome, which is how the signals get measured before anyone leans on them.
  */
-function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logger = () => {}, now = Date.now, pollMs = 2500, idleMs = 120000, closedPollMs = 30000, alwaysOn = ['SPY', 'QQQ'], maxSymbols = 8, outcomeMs = 300000, fastPollMs = 1000, fastWindowMs = 15000, timeoutMs = 15000, depthLevels = 60, timers = { setTimeout, clearTimeout } } = {}) {
+function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logger = () => {}, now = Date.now, pollMs = 2500, idleMs = 120000, closedPollMs = 30000, alwaysOn = ['SPY', 'QQQ'], maxSymbols = 8, outcomeMs = 300000, fastPollMs = 1000, fastWindowMs = 15000, timeoutMs = 15000, depthLevels = 60, tape = null, timers = { setTimeout, clearTimeout } } = {}) {
   const engines = new Map();   // symbol -> { flow, lastTouch, nextAt, failures, closed, lastError, lastOk }
   const pending = [];          // { id, symbol, price0, side, dueAt }
   let running = false, timer = null, warnedAt = 0;
@@ -32,7 +33,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
         if (!victim) throw new TypeError('too_many_symbols');
         engines.delete(victim[0]);
       }
-      e = { flow: createOrderFlow(), lastTouch: now(), nextAt: 0, failures: 0, closed: false, lastError: '', lastOk: 0, lastPush: 0, latest: null, tape: [], seen: new Set(), seq: 0, deep: [], prints: [], insights: null, insightsAt: 0, heat: [], heatAt: 0 };
+      e = { flow: createOrderFlow(), lastTouch: now(), nextAt: 0, failures: 0, closed: false, lastError: '', lastOk: 0, lastPush: 0, latest: null, tape: [], seen: new Set(), seq: 0, deep: [], prints: [], insights: null, insightsAt: 0, heat: [], heatAt: 0, sw: createSweepWallTracker(), swPrintT: 0 };
       engines.set(symbol, e);
     }
     e.lastTouch = now();
@@ -61,20 +62,13 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
       /* Poll fast for whoever is watching (live view), but feed the order-flow model at its calibrated ~2.5 s cadence so its windows keep their meaning. */
       const cadence = now() - e.lastTouch < fastWindowMs ? fastPollMs : pollMs;
       e.nextAt = now() + Math.max(cadence, e.slowMs || 0);
-      absorbLive(e, data);
+      absorbLive(symbol, e, data);
       if (now() - e.lastPush < pollMs - 150) return;
       e.lastPush = now();
       const r = e.flow.push(data);
       if (!r.ok) return;
       const reading = r.emitted.length ? e.flow.analyze(now()) : null;
-      for (const ev of r.emitted) {
-        const price0 = reading && reading.book ? reading.book.mid : ev.price;
-        if (store) {
-          store.recordEvent({ symbol, ts: ev.t, kind: ev.kind, side: ev.side, price: ev.price || price0, strength: ev.strength, score: reading ? reading.score : 0, features: { note: ev.note } })
-            .then((id) => { if (id) pending.push({ id, symbol, price0: price0, side: ev.side, dueAt: now() + outcomeMs }); })
-            .catch((error) => { if (now() - warnedAt > 300000) { warnedAt = now(); logger('warn', 'orderflow_record_failed', { error }); } });
-        }
-      }
+      for (const ev of r.emitted) recordEvent(symbol, ev, reading && reading.book ? reading.book.mid : ev.price, reading ? reading.score : 0);
     } catch (error) {
       e.failures++; e.lastError = String(error && error.message || error).slice(0, 80);
       e.nextAt = now() + Math.min(60000, pollMs * 2 ** Math.min(5, e.failures));
@@ -82,8 +76,16 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     }
   }
 
+  /* an event (the Level 2 reader's or a sweep-versus-wall case) goes to the research log with its five-minute outcome to follow */
+  function recordEvent(symbol, ev, price0, score) {
+    if (!store) return;
+    store.recordEvent({ symbol, ts: ev.t, kind: ev.kind, side: ev.side, price: ev.price || price0, strength: ev.strength, score: score || 0, features: { note: ev.note, ...(ev.outcome ? { outcome: ev.outcome, sweep: ev.sweep, wall: ev.wall } : {}) } })
+      .then((id) => { if (id) pending.push({ id, symbol, price0, side: ev.side, dueAt: now() + outcomeMs }); })
+      .catch((error) => { if (now() - warnedAt > 300000) { warnedAt = now(); logger('warn', 'orderflow_record_failed', { error }); } });
+  }
+
   /* Keep the newest book and a de-duplicated tape of individual prints for the live view. */
-  function absorbLive(e, data) {
+  function absorbLive(symbol, e, data) {
     e.latest = data; e.seq++;
     for (const k of data.ticks || []) {
       const id = k && (k.id != null ? String(k.id) : [k.timestamp_ms, k.price, k.size].join(':'));
@@ -106,6 +108,18 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     const cutoff = now() - PRINTS_MS;
     if (e.prints.length > PRINTS_MAX || (e.prints.length && e.prints[0].t < cutoff)) { e.prints.sort((a, b) => a.t - b.t); e.prints = e.prints.filter((p) => p.t >= cutoff).slice(-PRINTS_MAX); }
     e.insights = null;
+    /* sweep versus wall: the tape's sweeps (or a burst of prints) against the walls the Level 2 reader tracks, scored on the next snapshots */
+    try {
+      let sweeps = null;
+      if (typeof tape === 'function') { const st = tape(symbol); sweeps = st && Array.isArray(st.sweeps) ? st.sweeps : null; }
+      const fresh = e.prints.filter((p) => p.t > e.swPrintT);
+      if (fresh.length) e.swPrintT = Math.max(e.swPrintT, ...fresh.map((p) => p.t));
+      const asks = data.asks.map((l) => ({ price: Number(l.price), size: Number(l.size) })).filter((l) => l.price > 0).sort((a, b) => a.price - b.price);
+      const bids = data.bids.map((l) => ({ price: Number(l.price), size: Number(l.size) })).filter((l) => l.price > 0).sort((a, b) => b.price - a.price);
+      let tick = 0.01; for (let i = 1; i < Math.min(6, asks.length); i++) { const g = asks[i].price - asks[i - 1].price; if (g > 1e-6 && g < tick) tick = Math.round(g * 1e4) / 1e4; }
+      const r = e.sw.push({ t: data.t, bids, asks, walls: e.flow.walls(), sweeps, prints: fresh, tick });
+      if (r.emitted.length && bids.length && asks.length) { const mid = (bids[0].price + asks[0].price) / 2; for (const ev of r.emitted) recordEvent(symbol, ev, mid, 0); }
+    } catch (error) { if (now() - warnedAt > 300000) { warnedAt = now(); logger('warn', 'sweep_wall_failed', { symbol, error: String(error && error.message || error).slice(0, 160) }); } }
   }
 
   /** The depth reading for a tracked symbol, computed at most every two seconds. */
@@ -159,7 +173,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     const e = touch(symbol);
     const a = e.flow.analyze(now());
     const grades = a.ready ? { long: e.flow.grade(1, now()), short: e.flow.grade(-1, now()) } : null;
-    return { symbol, ...a, grades, depth: insightsFor(e), closed: e.closed, failing: e.failures >= 3, error: e.failures >= 3 ? e.lastError : '', servedAt: now() };
+    return { symbol, ...a, grades, depth: insightsFor(e), sweepWall: e.sw.state(now()), closed: e.closed, failing: e.failures >= 3, error: e.failures >= 3 ? e.lastError : '', servedAt: now() };
   }
 
   /** The depth reading alone (what MEM ALGO's confluence and the chart panels read). */
@@ -188,7 +202,8 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     let tick = 0.01;
     const last = e.heat[e.heat.length - 1];
     if (last) { let g = Infinity; for (const s of [last.b, last.a]) for (let i = 1; i < s.length; i++) { const d = Math.abs(s[i][0] - s[i - 1][0]); if (d > 1e-6 && d < g) g = d; } if (Number.isFinite(g)) tick = Math.round(g * 1e4) / 1e4; }
-    return { symbol, ready: e.heat.length > 0, everyMs: HEAT_EVERY_MS, maxColumns: HEAT_COLUMNS, levels: HEAT_LEVELS, tick, columns, total: e.heat.length, asOf: last ? last.t : null, closed: e.closed, failing: e.failures >= 3, servedAt: now() };
+    const events = e.sw.events().filter((ev) => now() - ev.t <= HEAT_EVERY_MS * HEAT_COLUMNS).map((ev) => ({ t: ev.t, price: ev.price, side: ev.side, outcome: ev.outcome, note: ev.note, strength: ev.strength }));
+    return { symbol, ready: e.heat.length > 0, everyMs: HEAT_EVERY_MS, maxColumns: HEAT_COLUMNS, levels: HEAT_LEVELS, tick, columns, total: e.heat.length, events, asOf: last ? last.t : null, closed: e.closed, failing: e.failures >= 3, servedAt: now() };
   }
 
   /** Order flow for a symbol that is already being tracked (a member has it on the chart); never starts tracking a new one. */

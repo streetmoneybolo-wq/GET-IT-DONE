@@ -4270,7 +4270,11 @@ async function main() {
   }) : null;
   const academyProgress = createAcademyProgress({ pool: database.pool, guildId: config.academyGuildId });
   const orderFlowStore = createOrderFlowStore({ pool: database.pool });
-  const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({ origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log, fetchImpl: (u, o) => dataHealth.guardedFetch('wordpress-orderflow', u, o) });
+  const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({
+    origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log, fetchImpl: (u, o) => dataHealth.guardedFetch('wordpress-orderflow', u, o),
+    /* the Massive tape's sweeps for the sweep-versus-wall reader (the stream is built a few lines down; this is only called once polling runs) */
+    tape: (s) => { try { const p = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(s) : null; return p ? p.stats : null; } catch (_) { return null; } }
+  });
   /* Research desk: the full order book (up to 60 levels a side) for SPY and QQQ, recorded to academy_depth_snapshots during market hours so the
      Level 2 signals can be replayed and measured. ACADEMY_DEPTH_RECORDER=off disables it; see academy-depth-recorder.js for the other settings. */
   const depthStore = createDepthStore({ pool: database.pool });

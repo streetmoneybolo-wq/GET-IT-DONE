@@ -1,6 +1,6 @@
 'use strict';
 
-const KINDS = new Set(['stack', 'pull', 'absorb', 'iceberg', 'flip']);
+const KINDS = new Set(['stack', 'pull', 'absorb', 'iceberg', 'flip', 'sweep']);
 const SIDES = new Set(['bull', 'bear']);
 const SYMBOL = /^[A-Z0-9.:-]{1,10}$/;
 

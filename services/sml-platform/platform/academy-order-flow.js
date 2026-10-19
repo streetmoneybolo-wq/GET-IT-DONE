@@ -222,7 +222,10 @@ function createOrderFlow(options = {}) {
     return { grade: 'neutral', reason: 'the book is not taking a side (' + a.score + ')' };
   }
 
-  return { push, analyze, grade, events: () => events.slice(), size: () => snaps.length, cfg };
+  /** Every wall being tracked (for the sweep-versus-wall reader): side, price, peak size, when it was first and last seen, snapshots seen. */
+  function trackedWalls() { return [...walls.values()].map((w) => ({ side: w.side, price: w.price, max: w.max, first: w.first, last: w.last, seen: w.seen, done: w.done })); }
+
+  return { push, analyze, grade, events: () => events.slice(), walls: trackedWalls, size: () => snaps.length, cfg };
 }
 
 module.exports = { createOrderFlow, DEFAULTS, median };

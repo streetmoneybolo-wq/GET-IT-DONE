@@ -55,7 +55,7 @@
   window.__smlHeatmap = true;
 
   const KEY = 'sml-heatmap-v1';
-  const S = { on: false, sym: '', cols: [], ref: 1, tick: 0.01, everyMs: 5000, busy: false, err: '', note: '', hover: null, off: null, offKey: '' };
+  const S = { on: false, sym: '', cols: [], events: [], ref: 1, tick: 0.01, everyMs: 5000, busy: false, err: '', note: '', hover: null, off: null, offKey: '' };
   try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) S.on = v.on === true; } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on })); } catch (_) { /* ignore */ } };
   const q = () => new URLSearchParams(location.search);
@@ -72,7 +72,7 @@
   async function poll() {
     if (!S.on || S.busy || document.hidden) return;
     const s = sym();
-    if (s !== S.sym) { S.sym = s; S.cols = []; S.offKey = ''; }
+    if (s !== S.sym) { S.sym = s; S.cols = []; S.events = []; S.offKey = ''; }
     S.busy = true;
     try {
       const since = S.cols.length ? S.cols[S.cols.length - 1].t : 0;
@@ -82,6 +82,7 @@
       if (d.tick) S.tick = d.tick; if (d.everyMs) S.everyMs = d.everyMs;
       if (!since && d.total && d.columns.length < d.total) S.cols = []; // a fresh full answer replaces whatever was held
       S.cols = H.mergeColumns(S.cols, d.columns, d.maxColumns || 240);
+      if (Array.isArray(d.events)) S.events = d.events; // sweep-versus-wall events of the window (the server sends the whole list each time)
       S.ref = H.heatScale(S.cols);
       S.err = ''; S.note = !d.ready ? (d.closed ? 'No live book while the market is closed.' : 'Collecting the book: the first column lands in a few seconds.') : '';
     } catch (_) { if (!S.cols.length) S.err = 'Heat map not available right now.'; }
@@ -90,7 +91,7 @@
 
   /* the heat itself is rendered once per (data, view) into an offscreen canvas; the on-screen draw composites it and adds the hover readout */
   function renderHeat(M, w, h, dpr) {
-    const key = [S.cols.length, S.cols.length ? S.cols[S.cols.length - 1].t : 0, M.start, M.end, M.lo, M.hi, w, h, dpr].join('|');
+    const key = [S.cols.length, S.cols.length ? S.cols[S.cols.length - 1].t : 0, S.events.length, S.events.length ? S.events[S.events.length - 1].t : 0, M.start, M.end, M.lo, M.hi, w, h, dpr].join('|');
     if (S.off && S.offKey === key) return S.off;
     const off = S.off && S.off.width === Math.round(w * dpr) && S.off.height === Math.round(h * dpr) ? S.off : document.createElement('canvas');
     off.width = Math.round(w * dpr); off.height = Math.round(h * dpr);
@@ -116,6 +117,20 @@
       if (col.b.length && col.a.length) mids.push([x + colW / 2, M.y((col.b[0][0] + col.a[0][0]) / 2)]);
     }
     if (mids.length > 1) { c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 1.2; c.beginPath(); mids.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke(); }
+    /* sweep-versus-wall markers at the wall's price when the case resolved: a filled triangle for a confirmed breakout (pointing the breakout's way),
+       a ring for a sweep the wall absorbed, a cross for a false break; coloured by the event's side */
+    for (const ev of S.events) {
+      const xi = M.idxOfTime(ev.t); if (!fin(xi) || !(ev.price >= M.lo && ev.price <= M.hi)) continue;
+      const x = M.x(xi), y = M.y(ev.price), col = ev.side === 'bull' ? '#5df0b0' : '#ff8ea1';
+      if (x < pad.l - 10 || x > right + 10) continue;
+      c.save(); c.globalCompositeOperation = 'source-over'; c.lineWidth = 2; c.strokeStyle = col; c.fillStyle = col;
+      if (ev.outcome === 'breakout_confirmed') { c.beginPath(); if (ev.side === 'bull') { c.moveTo(x, y - 9); c.lineTo(x - 7, y + 5); c.lineTo(x + 7, y + 5); } else { c.moveTo(x, y + 9); c.lineTo(x - 7, y - 5); c.lineTo(x + 7, y - 5); } c.closePath(); c.fill(); }
+      else if (ev.outcome === 'sweep_absorbed') { c.beginPath(); c.arc(x, y, 6.5, 0, Math.PI * 2); c.stroke(); c.beginPath(); c.arc(x, y, 2, 0, Math.PI * 2); c.fill(); }
+      else { c.beginPath(); c.moveTo(x - 6, y - 6); c.lineTo(x + 6, y + 6); c.moveTo(x + 6, y - 6); c.lineTo(x - 6, y + 6); c.stroke(); }
+      c.font = '800 9px ui-monospace,monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = col;
+      c.fillText(ev.outcome === 'breakout_confirmed' ? 'SWEEP ✓' : ev.outcome === 'sweep_absorbed' ? 'ABSORBED' : 'FALSE BREAK', x, ev.side === 'bull' ? y + 17 : y - 17);
+      c.restore();
+    }
     c.restore();
     S.off = off; S.offKey = key;
     return off;

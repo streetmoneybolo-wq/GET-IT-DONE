@@ -300,6 +300,28 @@ test('the full-depth reading scores for the trade side, costs a wall in front, f
   assert.ok(wf.pts <= 7, 'the wall in front costs points: ' + wf.pts + ' ' + wf.detail);
 });
 
+test('sweep versus wall: a confirmed breakout with the trade adds to the depth factor, a sweep absorbed against it costs points and flags the exit watch', () => {
+  const bars = regimes(); const now = Date.now();
+  const depth = { ready: true, pressure: { score: 30, label: 'buying pressure' }, flow: { divergence: null }, walls: [] };
+  const withBreak = algo.analyze(bars, 'swing', { minScore: 0 }, '1D', fullCtx(bars, { now, orderFlow: { ready: true, bias: 'bullish', score: 20, depth, sweepWall: { events: [{ t: now - 60_000, side: 'bull', outcome: 'breakout_confirmed', price: 101.5 }] } } }));
+  const sLong = withBreak.signals.find((x) => x.dir > 0); assert.ok(sLong, 'a long signal');
+  const f1 = sLong.conf.factors.find((x) => x.key === 'depth');
+  assert.equal(f1.pts, 7, 'pressure 30 (5) + breakout confirmed (2)'); assert.match(f1.detail, /breakout confirmed/);
+  const absorbed = algo.analyze(bars, 'swing', { minScore: 0 }, '1D', fullCtx(bars, { now, orderFlow: { ready: true, bias: 'bullish', score: 20, depth, sweepWall: { events: [{ t: now - 60_000, side: 'bear', outcome: 'sweep_absorbed', price: 101.5 }] } } }));
+  const f2 = absorbed.signals.find((x) => x.dir > 0).conf.factors.find((x) => x.key === 'depth');
+  assert.equal(f2.pts, 2, '5 - 3 for the absorbed sweep'); assert.match(f2.detail, /absorbed by the wall at 101.50/);
+  // the exit watch reads for the last kept signal's direction: an absorbed sweep on the other side is the flag
+  const ld = absorbed.confluence.exitWatch.dir, against = ld > 0 ? 'bear' : 'bull';
+  const watched = algo.analyze(bars, 'swing', { minScore: 0 }, '1D', fullCtx(bars, { now, orderFlow: { ready: true, bias: 'bullish', score: 20, depth, sweepWall: { events: [{ t: now - 60_000, side: against, outcome: 'sweep_absorbed', price: 101.5 }] } } }));
+  assert.ok(watched.confluence.exitWatch.flags.some((x) => /absorbed by the wall at 101.50/.test(x)), JSON.stringify(watched.confluence.exitWatch));
+  // an old event no longer counts; without the depth reading the sweep alone still makes the factor available
+  const stale = algo.analyze(bars, 'swing', { minScore: 0 }, '1D', fullCtx(bars, { now, orderFlow: { ready: true, bias: 'bullish', score: 20, depth, sweepWall: { events: [{ t: now - 20 * 60_000, side: 'bear', outcome: 'sweep_absorbed', price: 101.5 }] } } }));
+  assert.equal(stale.signals.find((x) => x.dir > 0).conf.factors.find((x) => x.key === 'depth').pts, 5);
+  const only = algo.analyze(bars, 'swing', { minScore: 0 }, '1D', fullCtx(bars, { now, orderFlow: { ready: true, bias: 'bullish', score: 20, sweepWall: { events: [{ t: now - 1000, side: 'bull', outcome: 'breakout_confirmed', price: 101.5 }] } } }));
+  const f3 = only.signals.find((x) => x.dir > 0).conf.factors.find((x) => x.key === 'depth');
+  assert.equal(f3.available, true); assert.equal(f3.pts, 5, 'neutral 3 + 2'); assert.match(f3.detail, /book pressure not available/);
+});
+
 test('the week (daily flow ledger) scores for the trade side with its divergence, flags the exit watch, and needs two days before it counts', () => {
   const bars = regimes();
   const week = (score, divergence, days = 5) => ({ ok: true, window: { available: true, days, score, label: score >= 25 ? 'accumulation' : score <= -25 ? 'distribution' : 'balanced', divergence } });

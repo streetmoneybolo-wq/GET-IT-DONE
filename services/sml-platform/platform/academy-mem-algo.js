@@ -232,6 +232,10 @@ function buildConfluence(bars, p, ind, tf, ctx) {
   const ofData = ctx.orderFlow && ctx.orderFlow.ready ? ctx.orderFlow : null;
   /* the full-depth reading (academy-depth-insights.js): passed on its own or riding on the order-flow answer */
   const deepData = ctx.depth && ctx.depth.ready ? ctx.depth : (ctx.orderFlow && ctx.orderFlow.depth && ctx.orderFlow.depth.ready ? ctx.orderFlow.depth : null);
+  /* sweep-versus-wall events of the last ten minutes (academy-sweep-wall.js): a confirmed breakout with the trade helps, a sweep absorbed against it hurts */
+  const swAll = ctx.orderFlow && ctx.orderFlow.sweepWall && Array.isArray(ctx.orderFlow.sweepWall.events) ? ctx.orderFlow.sweepWall.events : [];
+  const swNow = Number.isFinite(Number(ctx.now)) ? Number(ctx.now) : Date.now();
+  const swRecent = swAll.filter((e) => e && Number.isFinite(e.t) && swNow - e.t <= 10 * 60_000);
   /* the week: the daily flow ledger read as a window (academy-flow-read.js); two trading days at least */
   const weekData = ctx.flowDays && ctx.flowDays.ok && ctx.flowDays.window && ctx.flowDays.window.available && ctx.flowDays.window.days >= 2 ? ctx.flowDays.window : null;
   const earnData = ctx.earnings || null;
@@ -302,15 +306,22 @@ function buildConfluence(bars, p, ind, tf, ctx) {
       add('orderflow', 'Order flow', 10, withFlow ? (strong ? 10 : 5) : 0, bias + ' (score ' + sc + ')' + (strong ? ' — strong' : ''));
     }
     /* full-depth book and tape: pressure for the trade's side, a CVD divergence for or against it, and a wall right in front of it */
-    if (!deepData) add('depth', 'Full-depth book & tape', 10, 0, 'full order book not available', false);
+    if (!deepData && !swRecent.length) add('depth', 'Full-depth book & tape', 10, 0, 'full order book not available', false);
     else {
-      const sc = Number(deepData.pressure && deepData.pressure.score) || 0, ps = sc * d;
-      let pts = ps >= 40 ? 7 : ps >= 20 ? 5 : ps > -20 ? 3 : 0; const notes = [(deepData.pressure && deepData.pressure.label) || 'balanced', '(' + (sc > 0 ? '+' : '') + sc + ')'];
-      const div = deepData.flow && deepData.flow.divergence;
+      const sc = deepData ? Number(deepData.pressure && deepData.pressure.score) || 0 : 0, ps = sc * d;
+      let pts = ps >= 40 ? 7 : ps >= 20 ? 5 : ps > -20 ? 3 : 0; const notes = deepData ? [(deepData.pressure && deepData.pressure.label) || 'balanced', '(' + (sc > 0 ? '+' : '') + sc + ')'] : ['book pressure not available'];
+      const div = deepData && deepData.flow && deepData.flow.divergence;
       if (div) { const withDiv = d > 0 ? div === 'bullish' : div === 'bearish'; pts += withDiv ? 3 : -3; notes.push(withDiv ? (d > 0 ? 'the dip is being bought' : 'the lift is being sold into') : (d > 0 ? 'the lift is being sold into' : 'the dip is being bought')); }
       const a = ind.atr[i] > 0 ? ind.atr[i] : bars[i].c * 0.005, c0 = bars[i].c;
-      const front = (deepData.walls || []).find((w) => (d > 0 ? w.kind === 'ask' && w.price > c0 && w.price - c0 <= 0.5 * a : w.kind === 'bid' && w.price < c0 && c0 - w.price <= 0.5 * a));
+      const front = deepData ? (deepData.walls || []).find((w) => (d > 0 ? w.kind === 'ask' && w.price > c0 && w.price - c0 <= 0.5 * a : w.kind === 'bid' && w.price < c0 && c0 - w.price <= 0.5 * a)) : null;
       if (front) { pts -= 2; notes.push((d > 0 ? 'ask' : 'bid') + ' wall ' + Math.round(front.size).toLocaleString() + ' right in front'); }
+      /* sweep versus wall: the latest event decides; a breakout the trade's way confirms, a sweep absorbed or a false break against it warns */
+      const sw = swRecent[0];
+      if (sw) {
+        const mine = d > 0 ? 'bull' : 'bear';
+        if (sw.side === mine && sw.outcome === 'breakout_confirmed') { pts += 2; notes.push('a sweep ate the wall at ' + Number(sw.price).toFixed(2) + ' and price held (breakout confirmed)'); }
+        else if (sw.side !== mine) { pts -= 3; notes.push(sw.outcome === 'sweep_absorbed' ? 'a sweep ' + (d > 0 ? 'up' : 'down') + ' was absorbed by the wall at ' + Number(sw.price).toFixed(2) : sw.outcome === 'false_break' ? 'a false break at ' + Number(sw.price).toFixed(2) + ' against the ' + side : 'a sweep broke the wall at ' + Number(sw.price).toFixed(2) + ' against the ' + side); }
+      }
       add('depth', 'Full-depth book & tape', 10, Math.max(0, Math.min(10, pts)), notes.join(' '));
     }
     /* multi-day flow: the week's accumulation / distribution score for the trade's side, and a multi-day CVD divergence */
@@ -412,6 +423,8 @@ function buildConfluence(bars, p, ind, tf, ctx) {
       const div = deepData.flow && deepData.flow.divergence;
       if (div && (ld > 0 ? div === 'bearish' : div === 'bullish')) flags.push(ld > 0 ? 'CVD divergence: the lift is being sold into' : 'CVD divergence: the dip is being bought');
     }
+    const swAgainst = swRecent.find((e) => e.side !== (ld > 0 ? 'bull' : 'bear'));
+    if (swAgainst) flags.push(swAgainst.outcome === 'sweep_absorbed' ? 'A sweep in your direction was absorbed by the wall at ' + Number(swAgainst.price).toFixed(2) + ' (the level held)' : swAgainst.outcome === 'false_break' ? 'A false break at ' + Number(swAgainst.price).toFixed(2) + ': the wall was eaten, then price came back' : 'A sweep broke the wall at ' + Number(swAgainst.price).toFixed(2) + ' against the position and held');
     if (weekData) {
       const sc = Number(weekData.score) || 0;
       if (sc * ld <= -40) flags.push('The week is against the position: ' + weekData.label + ' over ' + weekData.days + ' days (' + (sc > 0 ? '+' : '') + sc + ')');

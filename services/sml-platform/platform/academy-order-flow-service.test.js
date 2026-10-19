@@ -149,6 +149,33 @@ test('the heat map keeps one column of the book every five seconds, capped, and 
   h.svc.stop();
 });
 
+test('sweep versus wall rides on the service: the tape\'s sweep against a tracked wall becomes a measured event, in the order flow, the heat map and the research log', async () => {
+  let sweeps = [];
+  const h = harness({ tape: () => ({ sweeps }) }); h.svc.start(); h.svc.touch('SPY');
+  // a 5,000 wall sits four levels up the ask for long enough to be tracked
+  const walled = { ask: [500, 400, 300, 5000, 200, 200, 150, 150, 100, 100] };
+  h.setResponder(() => ({ ok: true, json: async () => bookJson(h.now(), walled) }));
+  for (let i = 0; i < 6; i++) { h.advance(2600); await h.svc.tick(); }
+  assert.ok(h.svc.engines.get('SPY').flow.walls().some((w) => w.side === 'ask' && w.price === 100.04 && w.seen >= 3), 'the wall is tracked');
+  // a buy sweep prints at the wall; the book then shows the wall gone and the bid above it
+  sweeps = [{ t: h.now() + 1000, price: 100.04, size: 9000, dir: 'B', legs: 4, exchanges: 3, isw: true }];
+  const lifted = (t) => { const b = bookJson(t, { ask: [200, 300, 300, 300, 200, 200, 150, 150, 100, 100] }); b.book.bids.forEach((l) => { l.price = +(l.price + 0.05).toFixed(2); }); b.book.asks.forEach((l) => { l.price = +(l.price + 0.05).toFixed(2); }); return b; };
+  h.setResponder(() => ({ ok: true, json: async () => lifted(h.now()) }));
+  for (let i = 0; i < 4; i++) { h.advance(2600); await h.svc.tick(); }
+  const r = h.svc.get('SPY');
+  assert.ok(r.sweepWall && Array.isArray(r.sweepWall.events), 'the order flow carries the sweep-versus-wall state');
+  assert.equal(r.sweepWall.events.length, 1);
+  const ev = r.sweepWall.events[0];
+  assert.deepEqual([ev.kind, ev.outcome, ev.side, ev.price], ['sweep', 'breakout_confirmed', 'bull', 100.04]);
+  assert.equal(r.sweepWall.read.bias, 'bull');
+  const logged = h.recorded.find((e) => e.kind === 'sweep');
+  assert.ok(logged && logged.side === 'bull' && logged.features.outcome === 'breakout_confirmed', 'recorded for its five-minute outcome');
+  assert.ok(h.svc.pending.some((p) => p.id && p.side === 'bull'));
+  const hm = h.svc.heatmap('SPY');
+  assert.equal(hm.events.length, 1); assert.equal(hm.events[0].outcome, 'breakout_confirmed');
+  h.svc.stop();
+});
+
 test('a slow origin is polled less often: the next poll waits at least 1.5x the last answer time', async () => {
   const h = harness(); h.svc.start();
   h.setResponder(() => { h.advance(9000); return { ok: true, json: async () => bookJson(h.now(), { ticks: [] }) }; });

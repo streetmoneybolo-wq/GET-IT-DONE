@@ -415,6 +415,7 @@
         + '<div>' + o.book.asks.map((x) => '<div class="a"><i style="width:' + Math.round(x.size / maxSz * 100) + '%"></i><span>' + x.price.toFixed(2) + '</span><span>' + x.size.toLocaleString() + '</span></div>').join('') + '</div></div>';
       if ((o.events || []).length) h += '<div style="margin-top:8px">' + o.events.slice(0, 5).map((e) => '<div class="mem-ev"><u class="' + e.side + '"></u>' + esc(new Date(e.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })) + ' · ' + esc(e.note) + '</div>').join('') + '</div>';
       h += depthHtml(o.depth);
+      h += sweepHtml(o.sweepWall);
       h += '<p class="mem-blurb">Level 2 is a reading of what buyers and sellers are doing, not a prediction. Every signal is being recorded with what price did next, so it can be measured before anyone relies on it.</p>';
     }
     if (h !== S.lastOfHtml) {
@@ -452,6 +453,18 @@
         + '<small>' + esc(wr.note) + '</small></div>';
     }
     return h + '<p class="mem-bdn" style="margin:6px 0 0">Folded once a minute from the tape (Massive when watched, otherwise moomoo prints), the full-depth pressure, the Level 2 events and moomoo\'s size buckets. Educational, not a recommendation.</p></div>';
+  }
+  /* ---- Sweep versus wall (academy-sweep-wall.js): aggressive sweeps against the walls the Level 2 reader tracks, scored on the next snapshots ---- */
+  const SW_LABEL = { breakout_confirmed: 'BREAKOUT CONFIRMED', sweep_absorbed: 'SWEEP ABSORBED', false_break: 'FALSE BREAK' };
+  function sweepHtml(SW) {
+    if (!SW) return '';
+    const ago = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? s + 's ago' : Math.round(s / 60) + 'm ago'; };
+    let h = '<div class="mem-of-row"><b>Sweep vs wall</b>';
+    if (SW.read) h += ' · <span class="mem-of-chip ' + (SW.read.bias === 'bull' ? 'bull' : 'bear') + '">' + esc(SW_LABEL[SW.read.lastOutcome] || SW.read.lastOutcome) + '</span>';
+    if (!SW.events.length && !SW.pending.length) h += '<br><span class="mem-blurb">No sweep has reached a tracked wall yet. When one does, the next snapshots decide: the wall eaten and price holding is a confirmed breakout; the wall refilling and price pushed back is a sweep absorbed.</span>';
+    for (const p of SW.pending) h += '<div class="mem-ev"><u style="background:#ffd166"></u>watching: ' + (p.dir === 'B' ? 'buy' : 'sell') + ' sweep of ' + Number(p.sweepSize).toLocaleString() + ' into the ' + Number(p.wallSize).toLocaleString() + ' wall at ' + Number(p.wall).toFixed(2) + ' · held ' + p.held + ' snapshot' + (p.held === 1 ? '' : 's') + ' · ' + ago(p.since) + '</div>';
+    for (const e of SW.events.slice(0, 5)) h += '<div class="mem-ev"><u class="' + e.side + '"></u><b>' + esc(SW_LABEL[e.outcome] || e.outcome) + '</b> ' + esc(ago(e.t)) + ' · ' + esc(e.note) + '</div>';
+    return h + '</div>';
   }
   /* ---- Level 3: the full book (up to 60 levels with the orders behind each) and the tape, read by academy-depth-insights.js ----
      Pressure with its components, the walls and air pockets, then the hold / add / trim / exit read for the mode that is open and the
