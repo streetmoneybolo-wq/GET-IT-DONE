@@ -31,7 +31,7 @@ test('the trial link: landing, Discord sign-in with a signed state, a 15-day pas
   assert.equal(trial.activityUrl, 'https://discord.com/activities/' + APP);
   // landing
   let res = fakeResponse(); assert.equal(await trial.handle(req('/academy-activity/trial'), res, '/academy-activity/trial', new URL('https://academy.example/academy-activity/trial?via=tiktok')), true);
-  assert.equal(res.status, 200); assert.match(res.body, /FREE TRIAL · 15 DAYS/); assert.match(res.body, /href="\/academy-activity\/trial\/start\?via=tiktok"/); assert.doesNotMatch(res.body, /s3cret/);
+  assert.equal(res.status, 200); assert.match(res.body, /FREE TRIAL · 15 DAYS · NO CARD/); assert.match(res.body, /See what the big money sees\./); assert.match(res.body, /Start my 15 free days/); assert.match(res.body, /href="\/academy-activity\/trial\/start\?via=tiktok"/); assert.doesNotMatch(res.body, /s3cret/);
   // start: a redirect to Discord with identify only and a signed state
   res = fakeResponse(); await trial.handle(req('/academy-activity/trial/start'), res, '/academy-activity/trial/start', new URL('https://academy.example/academy-activity/trial/start?via=tiktok'));
   assert.equal(res.status, 302);

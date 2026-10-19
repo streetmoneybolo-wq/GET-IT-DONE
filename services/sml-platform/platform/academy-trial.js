@@ -121,13 +121,14 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
     + '<meta name="theme-color" content="#00c47d">';
   let bannerBytes = null;
   const banner = () => { if (!bannerBytes) { try { bannerBytes = require('node:fs').readFileSync(require('node:path').join(__dirname, 'assets', 'mem-trial-banner.jpg')); } catch (_) { bannerBytes = false; } } return bannerBytes || null; };
-  const landing = (via) => page(appName + ' · free trial', '<img class="hero" src="' + bannerPath + '" width="2000" height="668" alt="Stock Market Trading Tool">' + '<p class="k">FREE TRIAL · ' + trialDays + ' DAYS</p><h1>' + esc(appName) + '</h1>'
-    + '<p>The live chart lab, every lesson with narration, the scanner, options, Level 2, alerts desk and member profiles. Free for ' + trialDays + ' days on your Discord account, in any Discord server where the Academy runs. No card.</p>'
-    + '<a class="btn" href="/academy-activity/trial/start' + (via ? '?via=' + encodeURIComponent(via) : '') + '">Continue with Discord</a>'
+  const landing = (via) => page(appName + ' · free access', '<img class="hero" src="' + bannerPath + '" width="2000" height="668" alt="Stock Market Trading Tool">' + '<p class="k">FREE TRIAL · ' + trialDays + ' DAYS · NO CARD</p><h1>See what the big money sees.</h1>'
+    + '<p><b>Level 3 data. Dark pool prints. Live order flow and order-book heat maps.</b> Add a scanner that never blinks, an alerts desk, options flow, a live chart lab and every lesson narrated, and you have pro-grade market data running live inside Discord.</p>'
+    + '<p>Most traders never get a look at this. You get ' + trialDays + ' days of all of it, free, on your Discord account. No card. No server to join. One click and you are in.</p>'
+    + '<a class="btn" href="/academy-activity/trial/start' + (via ? '?via=' + encodeURIComponent(via) : '') + '">Start my ' + trialDays + ' free days</a>'
     + '<small>Discord tells us who you are (your id, name and email) so your stockmarketloop.com account is made and connected in the same step; no password, no code to type. One trial per Discord account. Educational content, not financial advice.</small>', previewTags(via));
   const started = (name, pass, site) => page('Your Academy trial is on', '<p class="k">TRIAL STARTED</p><h1>You’re in' + (name ? ', ' + esc(name) : '') + '.</h1>'
-    + '<p>Your ' + trialDays + '-day Academy pass is on your Discord account until <b>' + esc(new Date(pass.expiresAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')) + '</b>. It works wherever you open the Academy.</p>'
-    + launch(site) + '<small>Enjoy the trial. When it ends, the Academy tells you how to keep access.</small>');
+    + '<p><b>The big-money view is yours.</b> Your ' + trialDays + '-day Academy pass is live on your Discord account until <b>' + esc(new Date(pass.expiresAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')) + '</b>. It works wherever you open the Academy.</p>'
+    + launch(site) + '<small>Open it, watch the order flow move, and find your first setup. When the ' + trialDays + ' days are up, the Academy tells you how to keep access.</small>');
   const used = (name, info, site) => page('Trial already used', '<p class="k">ONE TRIAL PER ACCOUNT</p><h1>' + (info.active ? 'Your trial is already running' : 'This account has had its trial') + (name ? ', ' + esc(name) : '') + '.</h1>'
     + (info.active ? '<p>It runs until <b>' + esc(new Date(info.pass.expiresAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')) + '</b>.</p>' + launch(site)
       : '<p>The free trial on this Discord account ended on ' + esc(new Date(info.pass.expiresAt).toUTCString().slice(0, 16)) + '. Academy access is available to members' + (buyUrl ? ':' : '.') + '</p>' + (buyUrl ? '<a class="btn" href="' + esc(buyUrl) + '">Get Academy access</a>' : '')));
