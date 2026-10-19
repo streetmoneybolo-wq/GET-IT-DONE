@@ -2259,3 +2259,45 @@ test('an Academy data route that never answers is cut with a 503 at the route bu
     assert.equal(quick.status, 200, 'a route that answers in time is unaffected');
   });
 });
+
+test('Academy Evolve routes: beacons from anyone, knobs for the page, the brief and the queue for the owner only; every Academy route is timed into the ledger', async () => {
+  const { createEvolve } = require('./academy-evolve');
+  const { OWNER_IDS } = require('./academy-free-users');
+  const academyEvolve = createEvolve({ logger: () => {}, now: Date.now });
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer owner' ? { ok: true, userId: OWNER_IDS[0], tier: 'academy' } : a === 'Bearer member' ? { ok: true, userId: '100000000000000002', tier: 'academy' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  await withServer({ academyOAuth, academyEvolve, getShortInsight: () => ({ insight: async (symbol) => ({ ok: true, symbol }) }) }, async (base) => {
+    const ev = await fetch(`${base}/academy-activity/evolve/event`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ events: [{ kind: 'visit', phone: true, discord: true }, { kind: 'tool', id: 'mem-algo-toggle', on: true, phone: true }, { kind: 'nope' }] }) });
+    assert.equal(ev.status, 204);
+    const cfg = await fetch(`${base}/academy-activity/evolve/config`);
+    assert.equal(cfg.status, 200); const c = await cfg.json(); assert.equal(c.ok, true); assert.equal(c.livePollMs, 2500);
+    assert.equal((await fetch(`${base}/academy-activity/evolve`)).status, 401);
+    const member = await fetch(`${base}/academy-activity/evolve`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(member.status, 403); assert.equal((await member.json()).error, 'owner_only');
+    assert.deepEqual(await (await fetch(`${base}/academy-activity/evolve?probe=1`, { headers: { authorization: 'Bearer member' } })).json(), { ok: true, owner: false });
+    await fetch(`${base}/academy-activity/short-insight?symbol=SPY`, { headers: { authorization: 'Bearer owner' } });
+    const snap = await (await fetch(`${base}/academy-activity/evolve`, { headers: { authorization: 'Bearer owner' } })).json();
+    assert.equal(snap.ok, true); assert.equal(snap.today.devices.phone, 1); assert.equal(snap.today.tools[0].id, 'mem-algo-toggle');
+    assert.ok(snap.today.busiest.some((r) => r.route === 'short-insight' && r.n === 1), 'the short-insight call was timed');
+    assert.ok(snap.today.busiest.some((r) => r.route === 'evolve/event'), 'so was the beacon');
+    const run = await fetch(`${base}/academy-activity/evolve/run`, { method: 'POST', headers: { authorization: 'Bearer owner', 'content-type': 'application/json' }, body: '{}' });
+    assert.equal(run.status, 200); const r = await run.json(); assert.equal(r.ok, true); assert.equal(r.brief.model, 'rules');
+    const after = await (await fetch(`${base}/academy-activity/evolve`, { headers: { authorization: 'Bearer owner' } })).json();
+    assert.ok(after.brief && after.brief.summary.includes('visits'));
+    if (after.proposals.length) {
+      const set = await fetch(`${base}/academy-activity/evolve/proposal`, { method: 'POST', headers: { authorization: 'Bearer owner', 'content-type': 'application/json' }, body: JSON.stringify({ id: after.proposals[0].id, status: 'approved' }) });
+      assert.equal((await set.json()).proposal.status, 'approved');
+    }
+    const knob = await fetch(`${base}/academy-activity/evolve/knob`, { method: 'POST', headers: { authorization: 'Bearer owner', 'content-type': 'application/json' }, body: JSON.stringify({ knob: 'livePollMs', value: 4000, pinned: true }) });
+    assert.deepEqual((await knob.json()).knob, { value: 4000, pinned: true });
+    assert.equal((await (await fetch(`${base}/academy-activity/evolve/config`)).json()).livePollMs, 4000, 'the page reads the turned knob');
+    assert.equal((await fetch(`${base}/academy-activity/evolve/proposal`, { method: 'POST', headers: { authorization: 'Bearer owner', 'content-type': 'application/json' }, body: JSON.stringify({ id: 'nope', status: 'approved' }) })).status, 404);
+    assert.equal((await fetch(`${base}/academy-activity/evolve/other`, { headers: { authorization: 'Bearer owner' } })).status, 404);
+    const queue = await (await fetch(`${base}/academy-activity/evolve/queue`)).json();
+    assert.equal(queue.ok, true); assert.ok(Array.isArray(queue.proposals) && Array.isArray(queue.briefs) && queue.briefs.length === 1, 'the builder reads the queue without a session');
+    assert.equal(JSON.stringify(queue).includes('busiest'), false, 'the queue carries no telemetry');
+  });
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  assert.match(html, /\/academy-activity\/evolve\/event/, 'the page carries the beacons');
+  assert.match(html, /id = 'evolve-btn'/, 'and the owner panel');
+  assert.match(require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-live.js'), 'utf8'), /smlEvolveConfig\.livePollMs/, 'the live poll reads its cadence from the knob');
+});

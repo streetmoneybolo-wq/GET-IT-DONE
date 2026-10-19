@@ -135,5 +135,5 @@
     // a dropped stream comes back quickly at first (3 s, 6 s, 12 s ...) and only after repeated drops waits the full five minutes
     es.onerror = () => { if (es.readyState === 2) { if (sse.es === es) sse.es = null; sse.fails = Math.min(sse.fails + 1, 7); sse.retryAt = Date.now() + Math.min(300000, 3000 * 2 ** (sse.fails - 1)); } };
   }
-  (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } if (!document.hidden) openStream(); const pushing = sse.es && Date.now() - sse.okAt < 5000; const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : pushing ? 2500 : 700; once().finally(() => setTimeout(loop, wait)); })();
+  (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } if (!document.hidden) openStream(); const pushing = sse.es && Date.now() - sse.okAt < 5000; const base = Math.min(8000, Math.max(2000, Number(window.smlEvolveConfig && window.smlEvolveConfig.livePollMs) || 2500)); /* the cadence is an Evolve knob (academy-evolve.js) */ const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : pushing ? base : Math.min(2000, Math.max(700, base - 1800)); once().finally(() => setTimeout(loop, wait)); })();
 })();

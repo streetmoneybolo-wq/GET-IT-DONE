@@ -82,6 +82,7 @@ const { createEarningsInsight } = require('./academy-earnings-insight');
 const { createShortInsight } = require('./academy-short-insight');
 const { createSqueezeList } = require('./academy-squeeze-list');
 const { createPageAssets } = require('./academy-page-assets');
+const { createEvolve } = require('./academy-evolve');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
@@ -764,6 +765,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const darkPool = fs.readFileSync(pathModule.join(__dirname, 'academy-dark-pool.js'), 'utf8');
     const shortSale = fs.readFileSync(pathModule.join(__dirname, 'academy-short-sale.js'), 'utf8');
     const squeezeListUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-squeeze-list-ui.js'), 'utf8'); } catch (_) { return ''; } })();
+    const evolveUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-evolve-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const earningsPanel = fs.readFileSync(pathModule.join(__dirname, 'academy-earnings-panel.js'), 'utf8');
     const earningsInsightUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-earnings-insight-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const catalystsPanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-catalysts-panel.js'), 'utf8'); } catch (_) { return ''; } })();
@@ -787,7 +789,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>',
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>',
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -1938,7 +1940,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getSqueezeList = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null,
-  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS,
+  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -2052,14 +2054,19 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   };
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
-    if (path.startsWith('/academy-activity/') && path !== '/academy-activity/') {
-      const watchdog = setTimeout(() => {
+    if (path.startsWith('/academy-activity/')) {
+      /* every Academy route is timed into the Evolve ledger (academy-evolve.js); a data route that has not answered by the budget is cut with a 503 */
+      const startedAt = now();
+      let timedOut = false;
+      const watchdog = path === '/academy-activity/' ? null : setTimeout(() => {
         if (response.headersSent || response.writableEnded) return;
+        timedOut = true;
         logger('warn', 'academy_route_timeout', { path: path.slice(0, 80), method: request.method });
         try { sendJson(response, 503, { ok: false, error: 'timeout' }); } catch (_) { try { response.destroy(); } catch (__) {} }
       }, routeBudgetMs);
-      if (watchdog.unref) watchdog.unref();
-      response.once('close', () => clearTimeout(watchdog));
+      if (watchdog && watchdog.unref) watchdog.unref();
+      response.once('close', () => { if (watchdog) clearTimeout(watchdog); });
+      if (academyEvolve) response.once('finish', () => { try { academyEvolve.observeRoute(path, response.statusCode, now() - startedAt, { timeout: timedOut }); } catch (_) {} });
     }
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
     const connectOptions = { billingApiSecret, pool, logger, now };
@@ -4116,6 +4123,68 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     /* The owner's squeeze list (academy-squeeze-list.js): the top 20 SQUEEZE RISK names across the active market. The GET says whether the
        account is the owner (the button shows on that); everyone else is refused. */
+    /* ACADEMY EVOLVE (academy-evolve.js): the page's beacons (anyone), the knobs (anyone), the brief and the proposal queue (owner only) */
+    if (request.method === 'POST' && path === '/academy-activity/evolve/event') {
+      if (!academyEvolve) { sendJson(response, 204, {}); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.writeHead(429, { 'retry-after': String(gate.retryAfterSec) }); response.end(); return; }
+      const body = await readRequestBody(request, 8192);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      let input = null;
+      try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+      const events = input && Array.isArray(input.events) ? input.events.slice(0, 40) : (input && typeof input === 'object' ? [input] : []);
+      let taken = 0;
+      for (const ev of events) if (academyEvolve.observeEvent(ev)) taken += 1;
+      response.writeHead(204, { 'cache-control': 'no-store' }); response.end();
+      void taken;
+      return;
+    }
+    if (request.method === 'GET' && path === '/academy-activity/evolve/config') {
+      if (!academyEvolve) { sendJson(response, 503, { ok: false, error: 'evolve_unavailable' }); return; }
+      sendJson(response, 200, { ok: true, ...academyEvolve.config() });
+      return;
+    }
+    /* the builder session reads this over plain HTTPS: proposals and brief summaries only, nothing a member wrote */
+    if (request.method === 'GET' && path === '/academy-activity/evolve/queue') {
+      if (!academyEvolve) { sendJson(response, 503, { ok: false, error: 'evolve_unavailable' }); return; }
+      sendJson(response, 200, await academyEvolve.queue());
+      return;
+    }
+    if (path === '/academy-activity/evolve' || path.startsWith('/academy-activity/evolve/')) {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const owner = OWNER_IDS.includes(String(session.userId));
+      const eq = new URL(request.url || '/', 'http://localhost').searchParams;
+      if (!owner) { sendJson(response, eq.get('probe') ? 200 : 403, { ok: !!eq.get('probe'), owner: false, error: eq.get('probe') ? undefined : 'owner_only' }); return; }
+      if (eq.get('probe')) { sendJson(response, 200, { ok: true, owner: true }); return; }
+      if (!academyEvolve) { sendJson(response, 503, { ok: false, error: 'evolve_unavailable' }); return; }
+      if (request.method === 'GET' && path === '/academy-activity/evolve') { sendJson(response, 200, await academyEvolve.snapshot()); return; }
+      if (request.method === 'POST') {
+        if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+        const body = await readRequestBody(request, 4096);
+        if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+        let input = {};
+        try { input = JSON.parse(body.rawBody) || {}; } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+        if (path === '/academy-activity/evolve/run') {
+          try { const brief = await academyEvolve.runBrief({ reason: 'owner' }); sendJson(response, 200, { ok: true, brief }); }
+          catch (error) { logger('error', 'academy_evolve_run_failed', { error: String((error && error.message) || error) }); sendJson(response, 503, { ok: false, error: 'brief_failed' }); }
+          return;
+        }
+        if (path === '/academy-activity/evolve/proposal') {
+          const row = academyEvolve.setProposal(String(input.id || ''), String(input.status || ''));
+          sendJson(response, row ? 200 : 404, row ? { ok: true, proposal: row } : { ok: false, error: 'not_found' });
+          return;
+        }
+        if (path === '/academy-activity/evolve/knob') {
+          const k = academyEvolve.setKnob(String(input.knob || ''), input.value, { pinned: typeof input.pinned === 'boolean' ? input.pinned : null });
+          sendJson(response, k ? 200 : 404, k ? { ok: true, knob: k } : { ok: false, error: 'not_found' });
+          return;
+        }
+      }
+      sendJson(response, 404, { ok: false, error: 'not_found' });
+      return;
+    }
     if (request.method === 'GET' && path === '/academy-activity/squeeze-list') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -4747,7 +4816,14 @@ async function main() {
   const sentimentClassifier = config.anthropicApiKey && process.env.SML_ACADEMY_AI_SENTIMENT !== 'off'
     ? createClassifier({ apiKey: config.anthropicApiKey, model: String(process.env.SML_ACADEMY_SENTIMENT_MODEL || 'claude-haiku-5-5'), logger: log })
     : null;
-  const academySentiment = academyAlerts ? createSentimentService({
+  /* ACADEMY EVOLVE: the Academy learns from its own use (academy-evolve.js); its knobs feed the services created below */
+  const academyEvolve = createEvolve({
+    store: createPgStateStore({ pool: database.pool, key: 'academy-evolve', defaultValue: () => ({}), logger: log }),
+    ai: config.anthropicApiKey ? { apiKey: config.anthropicApiKey, model: config.academyAskModel } : null, logger: log,
+    sources: { data: async () => dataStatusSummary(), outcomes: async () => (academySignalOutcomes && typeof academySignalOutcomes.summary === 'function' ? academySignalOutcomes.summary(7) : null) }
+  });
+  await academyEvolve.load();
+  const academySentiment = academyAlerts ? createSentimentService({ ttlMs: academyEvolve.knob('sentimentTtlMs'),
     news: (s) => academyAlerts.newsFor(s), chain: (s) => academyAlerts.chainFor(s), market: () => marketGauges.get(), classifier: sentimentClassifier,
     social: async (s) => { const [st, rd] = await Promise.all([academyAlerts.socialFor(s).catch(() => null), academyReddit.posts(s)]); return mergeSocial(st, rd); },
     quote: async (s) => changeFromDaily((await sentimentCandles(s, '1D')).bars),
@@ -4831,7 +4907,7 @@ async function main() {
   const getSqueezeList = () => {
     if (squeezeList) return squeezeList;
     const si = getShortInsight(); if (!si) return null;
-    squeezeList = createSqueezeList({ insight: (s) => si.insight(s), universe: async () => { const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(120) : await getAcademyScanner(); return w && Array.isArray(w.rows) ? w.rows : []; }, logger: log });
+    squeezeList = createSqueezeList({ concurrency: academyEvolve.knob('squeezeConcurrency'), maxSymbols: academyEvolve.knob('squeezeMaxSymbols'), insight: (s) => si.insight(s), universe: async () => { const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(120) : await getAcademyScanner(); return w && Array.isArray(w.rows) ? w.rows : []; }, logger: log });
     return squeezeList;
   };
   const getFdaService = () => {
@@ -5378,7 +5454,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, pageAssets: createPageAssets({ logger: log }),
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, pageAssets: createPageAssets({ logger: log }), academyEvolve,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,
@@ -5415,7 +5491,10 @@ async function main() {
     log('info', 'api_started', { port: config.port, memory: memorySample() });
     /* one line a minute on what the process weighs, so a climb toward the 512 MB kill line is visible in the log before it happens */
     try { loopMonitor = monitorEventLoopDelay({ resolution: 20 }); loopMonitor.enable(); } catch (_) { loopMonitor = null; }
-    const memoryTimer = setInterval(() => { const m = memorySample(); log(m.rss >= 440 || (m.loopP99 || 0) >= 500 ? 'warn' : 'info', 'memory_sample', m); }, 60_000);
+    const memoryTimer = setInterval(() => { const m = memorySample(); academyEvolve.observeMemory(m); log(m.rss >= 440 || (m.loopP99 || 0) >= 500 ? 'warn' : 'info', 'memory_sample', m); }, 60_000);
+    /* the daily brief runs in the quiet hour; a crash in it is logged and never stops the server */
+    const evolveTimer = setInterval(() => { if (academyEvolve.due()) academyEvolve.runBrief({ reason: 'scheduled' }).catch((error) => log('warn', 'academy_evolve_brief_failed', { error: String((error && error.message) || error) })); }, 10 * 60_000);
+    if (evolveTimer.unref) evolveTimer.unref();
     if (memoryTimer.unref) memoryTimer.unref();
     startAcademyChartWarmers(log, marketHistory);
     if (academyOrderFlow) {
