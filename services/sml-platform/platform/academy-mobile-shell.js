@@ -2,7 +2,8 @@
  *
  * On a phone every tool used to open as a sheet or a floating panel over the chart (the quote column, MEM ALGO, SIRE, the
  * Smart-money map, Ticker Talk), and the twenty tool buttons were one long scrolling rail. This file turns the phone into a
- * workspace of six tabs along the bottom, each with its own related modules as sub-tabs, and puts every panel in the page
+ * workspace laid out like a stock page: QUOTES (the default) and STOCK along the bottom, and under the symbol and price a tab
+ * strip (Chart, Flow, Options, Algo, Comments), each tab with its related modules as sub-tabs. Every panel sits in the page
  * flow UNDER the chart instead of on top of it:
  *
  *   QUOTES   the default: the live quotes (scanner) on top, the Academy chat below
@@ -39,7 +40,8 @@
     algo: [['mem', 'MEM ALGO', 'mem-algo-toggle'], ['smc', 'SMC', 'smc-toggle'], ['sire', 'SIRE', 'sire-toggle'], ['market', 'MARKET', ''], ['earn', 'EARNINGS', 'earnings-toggle'], ['cat', 'CATALYSTS', 'catalysts-toggle'], ['paper', 'PAPER', 'paper-toggle'], ['chal', 'CHALLENGE', 'challenge-toggle']],
     talk: [['comments', 'COMMENTS', 'talk-btn'], ['chat', 'CHAT', '']]
   };
-  const S = { tab: 'quotes', sub: { flow: 'quote', options: 'chain', algo: 'mem', talk: 'comments' } };
+  const STOCK_TABS = [['chart', 'Chart'], ['flow', 'Flow'], ['options', 'Options'], ['algo', 'Algo'], ['talk', 'Comments']];
+  const S = { tab: 'quotes', stock: 'chart', sub: { flow: 'quote', options: 'chain', algo: 'mem', talk: 'comments' } };
   const isOn = (b) => !!b && (b.classList.contains('on') || b.classList.contains('active') || b.getAttribute('aria-pressed') === 'true');
   const shown = (b) => !!b && getComputedStyle(b).display !== 'none';
   const ensureOn = (id) => { const b = byId(id); if (b && !isOn(b)) b.click(); };
@@ -82,6 +84,12 @@
     T('quotes', 'main .chart') + '{display:block!important;padding-bottom:0!important}',
     tool('main .chart .academy-chart-stage') + ',' + tool('main .chart>canvas#chart') + '{height:clamp(190px,31svh,270px)!important;min-height:0!important}',
     tool('main .chart>.academy-chart-tools') + ',' + tool('main .toolbar .academy-brokers') + ',' + tool('.academy-intelligence') + '{display:none!important}',
+    /* the stock tabs sit right under the symbol and price, like a stock page: Chart . Flow . Options . Algo . Comments */
+    '#ms-top{display:none}' + A + ':not([data-ms-tab=quotes]) #ms-top{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:0 4px;margin:0 0 2px;border-bottom:1px solid #16303b;background:#07101a}',
+    A + ' #ms-top::-webkit-scrollbar{display:none}' + A + ' #ms-top button{flex:1 0 auto;position:relative;padding:10px 12px 9px;border:0;background:none;color:#8fa6b3;font:700 .86rem system-ui,sans-serif;white-space:nowrap}',
+    A + ' #ms-top button.on{color:#fff;font-weight:900}' + A + ' #ms-top button.on:after{content:"";position:absolute;left:30%;right:30%;bottom:0;height:3px;border-radius:2px;background:#00c47d}',
+    T('chart', 'main .chart') + '{display:flex!important;flex-direction:column!important;grid-template-rows:none!important;height:auto!important;min-height:0!important}',
+    T('chart', 'main .chart>*') + '{flex:none;min-width:0}',
     /* ---- QUOTES (the default): quotes on top, chat below, no page scroll ---- */
     T('quotes', 'main .chart>:not(.toolbar)') + ',' + T('quotes', 'main .shell>.side') + ',' + T('quotes', '.academy-intelligence') + ',' + T('quotes', '#academy-below>:not(#academy-scanner-host):not(.academy-chat)') + '{display:none!important}',
     T('quotes', 'main .toolbar>:not(#symbol):not(.quote-chip)') + '{display:none!important}',
@@ -138,16 +146,19 @@
   style.textContent = '@media(max-width:720px){' + css.join('\n') + '}';
   document.head.appendChild(style);
 
-  let nav = null, sub = null, more = null;
+  let nav = null, sub = null, more = null, top = null;
   function build() {
     if (nav) return;
     nav = document.createElement('nav'); nav.id = 'ms-nav'; nav.setAttribute('aria-label', 'Academy sections');
-    nav.innerHTML = TABS.map((t) => '<button type="button" data-tab="' + t.id + '"><i>' + t.ico + '</i>' + t.label + '</button>').join('') + '<button type="button" data-more="1"><i>\u22EF</i>MORE</button>';
+    nav.innerHTML = '<button type="button" data-tab="quotes"><i>\uD83D\uDCC8</i>QUOTES</button><button type="button" data-stock="1"><i>\uD83D\uDD6F</i>STOCK</button><button type="button" data-proxy="academy-alerts-fab"><i>\uD83D\uDD14</i>ALERTS</button><button type="button" data-proxy="lesson-toggle"><i>\uD83C\uDF93</i>LESSONS</button><button type="button" data-more="1"><i>\u22EF</i>MORE</button>';
+    top = document.createElement('div'); top.id = 'ms-top'; top.setAttribute('role', 'tablist');
+    top.innerHTML = STOCK_TABS.map(([id, label]) => '<button type="button" role="tab" data-tab="' + id + '">' + label + '</button>').join('');
+    top.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button[data-tab]'); if (b) setTab(b.dataset.tab); });
     more = document.createElement('div'); more.id = 'ms-more'; document.body.appendChild(more);
     more.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button[data-fab]'); if (!b) return; const t = byId(b.dataset.fab); setMore(false); if (t) t.click(); });
     sub = document.createElement('div'); sub.id = 'ms-sub'; sub.setAttribute('role', 'tablist');
     document.body.appendChild(sub); document.body.appendChild(nav);
-    nav.addEventListener('click', (e) => { const m = e.target.closest && e.target.closest('button[data-more]'); if (m) { setMore(!more.classList.contains('open')); return; } const b = e.target.closest && e.target.closest('button[data-tab]'); if (b) { setMore(false); setTab(b.dataset.tab); } });
+    nav.addEventListener('click', (e) => { const m = e.target.closest && e.target.closest('button[data-more]'); if (m) { setMore(!more.classList.contains('open')); return; } const px = e.target.closest && e.target.closest('button[data-proxy]'); if (px) { setMore(false); const t = byId(px.dataset.proxy); if (t) t.click(); return; } const st = e.target.closest && e.target.closest('button[data-stock]'); if (st) { setMore(false); setTab(S.tab === 'quotes' ? S.stock : S.tab); return; } const b = e.target.closest && e.target.closest('button[data-tab]'); if (b) { setMore(false); setTab(b.dataset.tab); } });
     sub.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button[data-sub]'); if (b) pickSub(b.dataset.sub); });
   }
   const FABS = [['sml-settings-btn', '\u2699', 'Settings'], ['academy-profile-btn', '\uD83D\uDC64', 'My profile'], ['aa-btn', 'Aa', 'Appearance'], ['lb-btn', '\uD83C\uDFC6', 'Leaderboard'], ['academy-ask-btn', '\uD83D\uDCAC', 'Ask the Academy']];
@@ -160,6 +171,8 @@
   /* a slot under the chart for the Smart-money map card (academy-smart-money-ui.js moves its card in) */
   function slots() {
     const chart = document.querySelector('main .chart'); if (!chart) return;
+    const tb = chart.querySelector(':scope>.toolbar');
+    if (top && tb && top.previousElementSibling !== tb) tb.after(top);
     if (!byId('ms-slot-smc')) { const d = document.createElement('div'); d.id = 'ms-slot-smc'; chart.appendChild(d); }
   }
   function measure() {
@@ -179,13 +192,14 @@
     const body = document.body;
     body.dataset.msTab = S.tab; body.dataset.msSub = S.sub[S.tab] || '';
     body.classList.toggle('ms-tool', ['flow', 'options', 'algo', 'talk'].includes(S.tab));
-    nav.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab));
+    nav.querySelectorAll('button[data-tab],button[data-stock]').forEach((b) => b.classList.toggle('on', b.dataset.stock ? S.tab !== 'quotes' : b.dataset.tab === S.tab));
+    if (top) top.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab));
     renderSub(); measure();
   }
   function setTab(id) {
     if (!TABS.some((t) => t.id === id)) return;
     const leaving = S.tab;
-    S.tab = id;
+    S.tab = id; if (id !== 'quotes') S.stock = id;
     /* leaving a tab closes what it switched on that would otherwise take room elsewhere */
     if (leaving === 'talk' && id !== 'talk') { const p = byId('talk-panel'); if (p && p.classList.contains('open')) ensureOff('talk-btn'); }
     if (id === 'options') { ensureOff('chain-toggle'); const v = document.querySelector('.academy-view-cycle [data-view="options"]'); if (v) v.click(); }
