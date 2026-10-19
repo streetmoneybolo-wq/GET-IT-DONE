@@ -26,6 +26,20 @@ test('the squeeze list: scans the universe a few at a time in the background, ra
   svc.list({ refresh: true }); await new Promise((r) => setTimeout(r, 400)); assert.equal(calls, 93, 'refresh forces a rescan');
 });
 
+test('the low-float lane: names below the active cut with a small float are read too, marked, and carry the supply numbers', async () => {
+  const universe = Array.from({ length: 12 }, (_, i) => ({ symbol: 'A' + i, volume: 1e6 * (12 - i), sharesFloat: i === 9 ? 8e6 : i === 11 ? 30e6 : i === 10 ? 900e6 : null, sharesOutstanding: i === 7 ? 40e6 : null }));
+  const seen = [];
+  const svc = createSqueezeList({ universe: async () => universe, maxSymbols: 5, lowFloatMax: 50e6, lowFloatExtra: 2, concurrency: 3, logger: () => {}, insight: async (s) => { seen.push(s); return fake(s, s === 'A9' ? 80 : 40, { model: { fuel: { score: 90, floatShares: s === 'A9' ? 8e6 : 100e6, floatBand: s === 'A9' ? 'low float' : 'mid float', floatKey: s === 'A9' ? 'low' : 'mid', coverRatio: s === 'A9' ? 1.1 : 0.2, floatTurn: 1.4, dollarFloat: 50e6 }, spark: { score: 50 }, accelerant: { score: 10 }, trap: { score: 5 }, qstate: { dominant: 'squeeze', probs: { squeeze: 0.6 }, entropy: 0.4 }, band: 'loaded', coverage: 0.8, why: { fuel: [], spark: [] } } }); } });
+  svc.list(); await new Promise((r) => setTimeout(r, 200));
+  const out = svc.list();
+  assert.equal(out.total, 7, 'five active names plus two low-float names'); assert.equal(out.lowFloat, 2);
+  assert.deepEqual(seen.filter((s) => ['A7', 'A9', 'A10', 'A11'].includes(s)).sort(), ['A7', 'A9'], 'the first two small floats past the cut (A10 is a 900M float, A11 comes after the lane is full)');
+  const top = out.rows[0];
+  assert.equal(top.symbol, 'A9'); assert.equal(top.lane, 'low-float'); assert.equal(top.floatShares, 8e6); assert.equal(top.floatBand, 'low float'); assert.equal(top.coverRatio, 1.1); assert.equal(top.floatTurn, 1.4);
+  assert.equal(out.rows.find((r) => r.symbol === 'A0').lane, 'active');
+  assert.match(out.note, /cover ratio = shares owed per free share/); assert.match(out.note, /low-float lane \(floats under 50M\)/);
+});
+
 test('an empty or broken universe is reported, not thrown; a slow symbol is skipped', async () => {
   const empty = createSqueezeList({ universe: async () => { throw new Error('down'); }, insight: async () => fake('X', 50), logger: () => {} });
   empty.list(); await new Promise((r) => setTimeout(r, 30));

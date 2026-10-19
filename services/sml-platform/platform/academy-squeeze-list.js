@@ -10,16 +10,21 @@
 const SYMBOL = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 const num = (v, d = null) => { if (v == null || v === '') return d; const n = Number(v); return Number.isFinite(n) ? n : d; };
 
-function createSqueezeList({ insight, universe, now = Date.now, logger = () => {}, ttlMs = 10 * 60_000, concurrency = 3, maxSymbols = 80, limit = 20, perSymbolMs = 20_000 } = {}) {
+/* a row's float when the scanner knows it (site rows carry the hub's float; Massive-only rows do not) */
+const floatOf = (row) => (row ? (num(row.sharesFloat) > 0 ? num(row.sharesFloat) : num(row.sharesOutstanding) > 0 ? num(row.sharesOutstanding) : null) : null);
+
+function createSqueezeList({ insight, universe, now = Date.now, logger = () => {}, ttlMs = 10 * 60_000, concurrency = 3, maxSymbols = 80, limit = 20, perSymbolMs = 20_000, lowFloatMax = 50e6, lowFloatExtra = 30 } = {}) {
   if (typeof insight !== 'function') throw new TypeError('insight_required');
-  const state = { at: 0, startedAt: 0, rows: [], done: 0, total: 0, building: false, error: '' };
+  const state = { at: 0, startedAt: 0, rows: [], done: 0, total: 0, building: false, error: '', lowFloat: 0 };
   let run = null;
 
   function rowOf(symbol, meta, r) {
     const sq = r.squeeze || {}, pr = r.pressing || {}, it = r.interest || {}, svp = r.shortVsPrice || {}, px = r.price || {}, v = r.verdict && r.verdict.long ? r.verdict.long : {};
     const top = (sq.components || []).filter((c) => c.pts > 0).sort((a, b) => b.pts - a.pts).slice(0, 3).map((c) => c.label + ': ' + c.detail);
+    const fu = r.model && r.model.fuel ? r.model.fuel : {};
     return {
       symbol, name: meta && meta.name ? String(meta.name).slice(0, 60) : '', squeeze: num(sq.score), pressing: num(pr.score),
+      floatShares: num(fu.floatShares) ?? floatOf(meta), floatBand: fu.floatBand || null, floatKey: fu.floatKey || null, coverRatio: num(fu.coverRatio), floatTurn: num(fu.floatTurn), dollarFloat: num(fu.dollarFloat), lane: meta && meta.__lane ? meta.__lane : 'active',
       daysToCover: num(it.daysToCover), shortInterest: num(it.shortInterest), siChangePct: num(it.siChangePct), shortRatio: num(svp.avgRatio), shortRatioTrend: num(svp.trendPts), shortVsPrice: svp.tone || 'neutral',
       close: num(px.close), hi20: num(px.hi20), lo20: num(px.lo20), aboveHigh: num(px.close) != null && num(px.hi20) != null && px.close > px.hi20,
       changePct: meta ? num(meta.changePct ?? meta.change_pct ?? meta.change) : null, volume: meta ? num(meta.volume) : null, relVol: meta ? num(meta.relVol ?? meta.relativeVolume ?? meta.rvol) : null,
@@ -35,9 +40,19 @@ function createSqueezeList({ insight, universe, now = Date.now, logger = () => {
     let list = [];
     try { list = (await universe()) || []; } catch (error) { logger('warn', 'squeeze_list_universe_failed', { error: String(error && error.message || error) }); }
     const metas = new Map();
-    for (const row of list) { const s = String((row && (row.symbol || row.ticker)) || '').toUpperCase(); if (SYMBOL.test(s) && !metas.has(s)) metas.set(s, row); if (metas.size >= maxSymbols) break; }
+    const symOf = (row) => String((row && (row.symbol || row.ticker)) || '').toUpperCase();
+    for (const row of list) { const s = symOf(row); if (SYMBOL.test(s) && !metas.has(s)) metas.set(s, row); if (metas.size >= maxSymbols) break; }
+    /* the LOW-FLOAT lane: names further down the live ranking whose float is small enough that the supply math can squeeze them;
+       the active lane alone is the market's biggest movers, which skews to large floats */
+    let lowFloat = 0;
+    for (const row of list) {
+      if (lowFloat >= lowFloatExtra) break;
+      const s = symOf(row); if (!SYMBOL.test(s) || metas.has(s)) continue;
+      const fl = floatOf(row); if (!(fl > 0 && fl < lowFloatMax)) continue;
+      metas.set(s, { ...row, __lane: 'low-float' }); lowFloat += 1;
+    }
     const symbols = [...metas.keys()];
-    state.building = true; state.startedAt = t; state.total = symbols.length; state.done = 0; state.error = symbols.length ? '' : 'no_universe';
+    state.building = true; state.startedAt = t; state.total = symbols.length; state.done = 0; state.lowFloat = lowFloat; state.error = symbols.length ? '' : 'no_universe';
     const found = [];
     let i = 0;
     const worker = async () => {
@@ -55,14 +70,14 @@ function createSqueezeList({ insight, universe, now = Date.now, logger = () => {
     state.rows = rank(found); state.at = now(); state.building = false;
     logger('info', 'squeeze_list_built', { symbols: symbols.length, scored: found.length, ms: now() - t });
   }
-  function rank(found) { return found.slice().sort((a, b) => (b.squeeze - a.squeeze) || (((b.qstate && b.qstate.squeeze) || 0) - ((a.qstate && a.qstate.squeeze) || 0)) || ((b.daysToCover || 0) - (a.daysToCover || 0))).slice(0, limit).map((r, k) => ({ ...r, rank: k + 1 })); }
+  function rank(found) { return found.slice().sort((a, b) => (b.squeeze - a.squeeze) || (((b.qstate && b.qstate.squeeze) || 0) - ((a.qstate && a.qstate.squeeze) || 0)) || ((b.coverRatio || 0) - (a.coverRatio || 0)) || ((b.daysToCover || 0) - (a.daysToCover || 0))).slice(0, limit).map((r, k) => ({ ...r, rank: k + 1 })); }
 
   /* the list as it stands; a stale or missing one starts a sweep in the background and says so */
   function list({ refresh = false } = {}) {
     const stale = !state.at || now() - state.at > ttlMs;
     if ((stale || refresh) && !run) { state.building = true; state.done = 0; state.error = ''; run = build().catch((error) => { logger('error', 'squeeze_list_failed', { error: String(error && error.message || error) }); state.building = false; state.error = 'build_failed'; }).finally(() => { run = null; }); }
-    return { ok: true, rows: state.rows, building: state.building, done: state.done, total: state.total, asOf: state.at || null, startedAt: state.startedAt || null, error: state.error || '', limit,
-      note: 'SQUEEZE RISK 0-100 = fuel (short % of float, days to cover, burn rate, short volume, short interest vs price, synthetic shorts) x spark (the 20-day high, the Massive tape, sweeps, the Level 3 book, dark pool DIX, worked orders, icebergs, pulled orders, VPIN, the flow ledger, relative volume, chatter, a dated catalyst) + accelerant (dealer gamma, the call wall, 0DTE) - trap (shorts winning). Q = the probabilistic state read. Fuel and a spark, not a prediction. Educational only.' };
+    return { ok: true, rows: state.rows, building: state.building, done: state.done, total: state.total, lowFloat: state.lowFloat, asOf: state.at || null, startedAt: state.startedAt || null, error: state.error || '', limit,
+      note: 'SQUEEZE RISK 0-100 = fuel (short % of float, the float\'s size, the cover ratio = shares owed per free share, float turnover, dollar float, days to cover, burn rate, short volume, short interest vs price, synthetic shorts) x spark (the 20-day high, the Massive tape, sweeps, the Level 3 book, dark pool DIX, worked orders, icebergs, pulled orders, VPIN, the flow ledger, relative volume, chatter, a dated catalyst) + accelerant (dealer gamma, the call wall, 0DTE) - trap (shorts winning). The scan reads the market\'s most active names plus a low-float lane (floats under ' + Math.round(lowFloatMax / 1e6) + 'M). Q = the probabilistic state read. Fuel and a spark, not a prediction. Educational only.' };
   }
   return { list, build, state };
 }

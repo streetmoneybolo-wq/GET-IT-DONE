@@ -5039,8 +5039,19 @@ async function main() {
     /* the scanner row for a symbol: float, shares outstanding, today's volume and relative volume (the wide scanner first, then the hub scanner) */
     const scannerRow = async (sym) => {
       const pick = (rows) => (Array.isArray(rows) ? rows.find((r) => String(r && r.symbol || '').toUpperCase() === sym) : null);
-      try { if (typeof academyWideScanner !== 'undefined' && academyWideScanner) { const w = await academyWideScanner.get(400); const r = pick(w && w.rows); if (r) return r; } } catch (_) { /* fall through */ }
-      try { const sc = await getAcademyScanner(); return pick(sc && sc.rows) || null; } catch (_) { return null; }
+      let row = null;
+      try { if (typeof academyWideScanner !== 'undefined' && academyWideScanner) { const w = await academyWideScanner.get(400); row = pick(w && w.rows) || null; } } catch (_) { row = null; }
+      if (!row) { try { const sc = await getAcademyScanner(); row = pick(sc && sc.rows) || null; } catch (_) { row = null; } }
+      if (row && (Number(row.sharesFloat) > 0 || Number(row.sharesOutstanding) > 0)) return row;
+      /* a Massive-only row (or no row) has no float: the company record's shares outstanding stand in, so the squeeze
+         model's supply math (float size, cover ratio, float turnover) still has a number to work with */
+      try {
+        const co = await settleWithin(academyAlerts.company(sym), 3_000).catch(() => null);
+        const c = co && typeof co === 'object' ? (co.results || co.company || co) : null;
+        const shares = c ? Number(c.share_class_shares_outstanding ?? c.weighted_shares_outstanding ?? c.sharesOutstanding ?? c.shares_outstanding) : NaN;
+        if (Number.isFinite(shares) && shares > 0) return { ...(row || { symbol: sym }), sharesOutstanding: shares, marketCap: Number(c.market_cap ?? c.marketCap) || (row && row.marketCap) || null };
+      } catch (_) { /* no company record */ }
+      return row;
     };
     /* the smart-money intent read for the squeeze model (academy-smart-intent.js over the signed tape, the full book, the gamma walls and the volume profile) */
     const smartIntentFor = async (sym) => {
@@ -5071,7 +5082,7 @@ async function main() {
   const getSqueezeList = () => {
     if (squeezeList) return squeezeList;
     const si = getShortInsight(); if (!si) return null;
-    squeezeList = createSqueezeList({ concurrency: academyEvolve.knob('squeezeConcurrency'), maxSymbols: academyEvolve.knob('squeezeMaxSymbols'), insight: (s) => si.insight(s), universe: async () => { const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(120) : await getAcademyScanner(); return w && Array.isArray(w.rows) ? w.rows : []; }, logger: log });
+    squeezeList = createSqueezeList({ concurrency: academyEvolve.knob('squeezeConcurrency'), maxSymbols: academyEvolve.knob('squeezeMaxSymbols'), insight: (s) => si.insight(s), universe: async () => { const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(400) : await getAcademyScanner(); return w && Array.isArray(w.rows) ? w.rows : []; }, logger: log });
     return squeezeList;
   };
   const getFdaService = () => {

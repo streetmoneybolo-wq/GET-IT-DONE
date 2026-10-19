@@ -2,9 +2,10 @@
 /* SQUEEZE RISK, rebuilt: the fuel, the spark, the accelerant and the trap, scored separately and combined non-linearly, from
  * everything the Academy gathers, with a probabilistic state read on top.
  *
- *   FUEL        how much forced buying is stored in the name: short % of float, days to cover, how fast today's volume could turn
- *               the whole short position over (burn), the 10-day short-volume ratio, short interest added into strength, synthetic
- *               shorts in the chain (put-heavy open interest, put skew)
+ *   FUEL        how much forced buying is stored in the name, and how small the supply it must come out of: short % of float, the
+ *               float's size (micro / low / small / mid / large), the cover ratio (shares owed per share freely available), float
+ *               turnover today, the dollar float, days to cover, how fast today's volume could turn the whole short position over
+ *               (burn), the 10-day short-volume ratio, short interest added into strength, synthetic shorts in the chain
  *   SPARK       whether the buying that lights it is here now: the 20-day high taken or reclaimed, aggressor buying on the Massive
  *               tape, sweeps bought, full-depth pressure and bid walls, CVD divergence, absorption on the bid, dark-pool buying (DIX),
  *               a worked buy order on the tape (persistence), hidden bids (icebergs), pulled asks (spoofs), toxic one-sided flow
@@ -39,12 +40,32 @@ function settle(b) {
   return { score: maxKnown > 0 ? Math.round(clamp(100 * got / maxKnown, 0, 100)) : null, coverage: maxAll > 0 ? r2(maxKnown / maxAll) : 0, components: b.L };
 }
 
+/* SUPPLY: how small the pile of shares is that shorts must buy back from. The same short % of float is a different animal on a
+ * 6M float and a 600M float: the smaller the free supply, the less buying it takes to move price, and the less price has to move
+ * before shorts are forced. The cover ratio is the supply-and-demand number: shares that MUST be bought back (the short
+ * position) per share freely available (the float that is not already sold short); above 1 there are more shares owed than
+ * exist free. Float turnover (today's volume over the float) says how fast that supply is changing hands. */
+const FLOAT_BANDS = [[5e6, 'micro float', 20], [10e6, 'low float', 17], [20e6, 'low float', 13], [50e6, 'small float', 8], [150e6, 'mid float', 3], [Infinity, 'large float', 0]];
+function floatBand(shares) { if (!(shares > 0)) return null; const b = FLOAT_BANDS.find((x) => shares < x[0]); return { label: b[1], pts: b[2], key: b[1].split(' ')[0] }; }
+
 function fuel({ it, svp, float: fl, scanner, chain }) {
   const F = block('fuel');
   const si = it && num(it.shortInterest), shares = fl && (num(fl.sharesFloat) || num(fl.sharesOutstanding)), floatKind = fl && num(fl.sharesFloat) ? 'float' : fl && num(fl.sharesOutstanding) ? 'shares outstanding' : null;
   const pctFloat = si != null && shares > 0 ? pctOf(si, shares) : null;
   if (pctFloat != null) F.add('pctFloat', 'Short % of ' + floatKind, 30, pctFloat >= 30 ? 30 : pctFloat >= 20 ? 24 : pctFloat >= 12 ? 16 : pctFloat >= 6 ? 8 : pctFloat >= 3 ? 3 : 0, r1(pctFloat) + '% of the ' + floatKind + ' is sold short (' + big(si) + ' of ' + big(shares) + ')');
   else F.add('pctFloat', 'Short % of float', 30, 0, si != null ? 'short interest ' + big(si) + ', float unknown' : 'short interest unknown', false);
+  const band = floatBand(shares);
+  if (band) F.add('floatSize', 'Float size', 20, band.pts, big(shares) + ' shares (' + band.label + ')' + (band.pts >= 13 ? ': thin supply, little buying moves it' : band.pts >= 8 ? ': modest supply' : ''));
+  else F.add('floatSize', 'Float size', 20, 0, 'float unknown', false);
+  const free = si != null && shares > 0 ? shares - si : null, coverRatio = free != null && free > 0 ? si / free : free != null && si > 0 ? 9.99 : null;
+  if (coverRatio != null) F.add('coverRatio', 'Cover ratio (owed per free share)', 15, coverRatio >= 1 ? 15 : coverRatio >= 0.5 ? 11 : coverRatio >= 0.3 ? 7 : coverRatio >= 0.15 ? 3 : 0, r2(coverRatio) + ' shares must be bought back for every share freely available' + (coverRatio >= 1 ? ': more owed than exist free' : coverRatio >= 0.5 ? ': supply is tight against the demand to cover' : ''));
+  else F.add('coverRatio', 'Cover ratio (owed per free share)', 15, 0, 'needs short interest and the float', false);
+  const todayVol0 = scanner && num(scanner.volume), floatTurn = todayVol0 > 0 && shares > 0 ? todayVol0 / shares : null;
+  if (floatTurn != null) F.add('floatTurn', 'Float turnover today', 10, floatTurn >= 1 ? 10 : floatTurn >= 0.5 ? 7 : floatTurn >= 0.25 ? 4 : floatTurn >= 0.1 ? 1 : 0, 'the ' + floatKind + ' traded ' + r2(floatTurn) + 'x today' + (floatTurn >= 1 ? ': the whole supply changed hands' : ''));
+  else F.add('floatTurn', 'Float turnover today', 10, 0, 'needs the float and today\'s volume', false);
+  const price = scanner && (num(scanner.price) ?? num(scanner.last) ?? num(scanner.close)), dollarFloat = shares > 0 && price > 0 ? shares * price : null;
+  if (dollarFloat != null) F.add('dollarFloat', 'Dollar float', 5, dollarFloat < 50e6 ? 5 : dollarFloat < 200e6 ? 3 : dollarFloat < 1e9 ? 1 : 0, '$' + big(dollarFloat) + ' buys the whole ' + floatKind + (dollarFloat < 200e6 ? ': cheap to move' : ''));
+  else F.add('dollarFloat', 'Dollar float', 5, 0, 'needs the float and a price', false);
   const dtc = it && num(it.daysToCover);
   if (dtc != null) F.add('dtc', 'Days to cover', 25, dtc >= 10 ? 25 : dtc >= 7 ? 20 : dtc >= 5 ? 15 : dtc >= 3 ? 8 : dtc >= 1.5 ? 3 : 0, dtc + ' days of average volume to cover');
   else F.add('dtc', 'Days to cover', 25, 0, 'unknown', false);
@@ -58,7 +79,8 @@ function fuel({ it, svp, float: fl, scanner, chain }) {
   else F.add('siTrend', 'Short interest vs price', 15, 0, 'no settlements to compare', false);
   if (chain && num(chain.putCallOi) != null) { const pc = num(chain.putCallOi), skew = num(chain.putSkewPts); F.add('synthetic', 'Synthetic shorts in the chain', 10, clamp((pc - 1) * 8, -4, 8) + (skew != null && skew >= 2 ? 2 : 0), 'put/call open interest ' + pc + (skew != null ? ', put skew ' + skew + ' pts' : '') + (pc >= 1.3 ? ': puts to unwind if it runs' : '')); }
   else F.add('synthetic', 'Synthetic shorts in the chain', 10, 0, 'no chain', false);
-  return { ...settle(F), pctFloat: r1(pctFloat), floatKind, burn: si != null && todayVol > 0 ? r2(todayVol / si) : null };
+  return { ...settle(F), pctFloat: r1(pctFloat), floatKind, burn: si != null && todayVol > 0 ? r2(todayVol / si) : null,
+    floatShares: shares > 0 ? Math.round(shares) : null, floatBand: band ? band.label : null, floatKey: band ? band.key : null, coverRatio: r2(coverRatio), floatTurn: r2(floatTurn), dollarFloat: dollarFloat != null ? Math.round(dollarFloat) : null };
 }
 
 function spark({ svp, bars, depth, l2, tape, flowDays, intent, scanner, sentiment, earnings, marketOpen }) {
@@ -180,6 +202,7 @@ function computeSqueeze(inputs = {}) {
   const lines = [];
   lines.push(score == null ? 'Not enough data to score a squeeze.' : 'SQUEEZE RISK ' + score + ' (' + band + '): fuel ' + (F.score ?? '–') + ', spark ' + (S.score ?? '–') + ', accelerant ' + (A.score ?? '–') + ', trap ' + (T.score ?? '–') + '.');
   if (F.pctFloat != null) lines.push(F.pctFloat + '% of the ' + F.floatKind + ' is short' + (F.burn != null ? ' and today\'s volume is ' + F.burn + 'x the whole position' : '') + '.');
+  if (F.floatShares != null) lines.push('Supply: ' + big(F.floatShares) + ' shares (' + F.floatBand + ')' + (F.coverRatio != null ? ', ' + F.coverRatio + ' owed per free share' : '') + (F.floatTurn != null ? ', the ' + F.floatKind + ' turned ' + F.floatTurn + 'x today' : '') + '.');
   if (missing.length) lines.push('What is missing: ' + missing.join('; ') + '.');
   lines.push('Q-STATE: ' + q.dominant.toUpperCase() + ' ' + Math.round(q.probs[q.dominant] * 100) + '% (squeeze ' + Math.round(q.probs.squeeze * 100) + '%, press ' + Math.round(q.probs.press * 100) + '%, chop ' + Math.round(q.probs.chop * 100) + '%, trap ' + Math.round(q.probs.trap * 100) + '%), entropy ' + q.entropy + '. ' + q.collapse);
   const top = (b) => b.components.filter((c) => c.known && c.pts > 0).sort((x, y) => y.pts - x.pts).slice(0, 3).map((c) => c.label + ': ' + c.detail);
@@ -230,4 +253,4 @@ function createSqueezeBrief({ ai = null, fetchImpl = globalThis.fetch, now = Dat
   return { brief, on };
 }
 
-module.exports = { computeSqueeze, fuel, spark, accelerant, trap, qstate, createSqueezeBrief, aiPrompt, parseBrief, AI_SYSTEM };
+module.exports = { computeSqueeze, fuel, spark, accelerant, trap, qstate, floatBand, createSqueezeBrief, aiPrompt, parseBrief, AI_SYSTEM };
