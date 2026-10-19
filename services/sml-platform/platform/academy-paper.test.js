@@ -85,3 +85,23 @@ test('service: load/create, order with live quotes, snapshot marks, month and da
 });
 
 function r(v) { return Math.round(v * 100) / 100; }
+
+test('every member starts with $25,000; an account opened at the old $1,000 is topped up once, as a deposit; the challenge account is left alone', async () => {
+  assert.equal(paper.RULES.startCash, 25_000);
+  const fresh = paper.createAccount('u:new', { now: REG });
+  assert.equal(fresh.cash, 25_000); assert.equal(fresh.startCash, 25_000); assert.equal(fresh.deposits[0].amount, 25_000);
+  const old = paper.createAccount('u:old', { cash: 1000, now: REG - 10 * D }); old.cash = 1234.56; // traded for a while at the old start
+  const challenge = paper.createAccount('challenge', { cash: 1000, now: REG - 10 * D });
+  const saved = { 'u:old': JSON.parse(JSON.stringify(old)), challenge: JSON.parse(JSON.stringify(challenge)) };
+  const storeFor = (id) => ({ read: async () => saved[id] || null, write: async (v) => { saved[id] = JSON.parse(JSON.stringify(v)); } });
+  const svc = paper.createPaperService({ storeFor, quote: async () => ({ bid: 50, ask: 50.2, last: 50.1 }), now: () => REG });
+  const a = await svc.load('u:old');
+  assert.equal(a.cash, 25_234.56); assert.equal(a.startCash, 25_000);
+  assert.equal(a.deposits.filter((d) => d.kind === 'start-adjust').length, 1, 'one top-up deposit of the difference');
+  assert.equal(a.deposits.find((d) => d.kind === 'start-adjust').amount, 24_000);
+  assert.equal(saved['u:old'].cash, 25_234.56, 'persisted');
+  const s = paper.summary(a, REG); assert.equal(s.deposited, 25_000); assert.equal(s.pnl, 234.56, 'P&L is measured against everything deposited, so the top-up is not a gain');
+  const svc2 = paper.createPaperService({ storeFor, quote: async () => ({ bid: 50, ask: 50.2 }), now: () => REG + D });
+  const again = await svc2.load('u:old'); assert.equal(again.deposits.filter((d) => d.kind === 'start-adjust').length, 1, 'never twice');
+  const c = await svc2.load('challenge', { cash: 1000 }); assert.equal(c.cash, 1000, 'the 1K -> 100K challenge keeps its $1,000');
+});

@@ -86,12 +86,14 @@ const { createAppApi } = require('./app-api');
 const academyDataLimit = createDataRateLimit({ limit: Math.max(30, Number(process.env.ACADEMY_DATA_RATE_PER_MIN) || 240) });
 const ACADEMY_LIMITED_PATHS = new Set(['/academy-activity/market', '/academy-activity/scanner', '/academy-activity/orderflow', '/academy-activity/live', '/academy-activity/data/short', '/academy-activity/data/earnings']);
 let dataStatusExtras = () => ({});
-const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin, resampleBars, TIMEFRAMES: MASSIVE_TIMEFRAMES, DERIVED_TIMEFRAMES: MASSIVE_DERIVED_TIMEFRAMES } = require('./market-data-service');
+const { createMassiveHistory, createMassiveOptions, createMassiveOptionBars, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin, resampleBars, TIMEFRAMES: MASSIVE_TIMEFRAMES, DERIVED_TIMEFRAMES: MASSIVE_DERIVED_TIMEFRAMES } = require('./market-data-service');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
 const { createClickAlertService, createClickAlertStore } = require('./academy-click-alert');
 const { createAutoPtService } = require('./academy-auto-pt');
 const { createHedgeService } = require('./academy-hedge');
+/* every member's paper trading account starts with this much; the owner's 1K -> 100K Challenge account keeps its own $1,000 */
+const PAPER_START_CASH = require('./academy-paper').RULES.startCash;
 const { createProfileService } = require('./academy-profile');
 const { createProfilePages, MAX_UPLOAD_BYTES: PROFILE_UPLOAD_MAX } = require('./academy-profile-pages');
 const { createSnapshotService } = require('./academy-snapshot');
@@ -733,6 +735,12 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const tickerTalkUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-ticker-talk-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const optionContract = fs.readFileSync(pathModule.join(__dirname, 'academy-option-contract.js'), 'utf8');
     const optionsBrokers = fs.readFileSync(pathModule.join(__dirname, 'academy-options-brokers.js'), 'utf8');
+    /* buy-button preferences (one button for my broker, or one per broker), the Settings button beside Customize, and the options desk: the CHAIN
+       toggle that puts the chain where the candles are, the contract mini chart, and one-click Buy / Sell on contracts */
+    const buyPrefsSrc = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-buy-prefs.js'), 'utf8'); } catch (_) { return ''; } })();
+    const buyPrefs = buyPrefsSrc ? '(function(){var module={exports:{}},exports=module.exports;' + buyPrefsSrc + '\nwindow.SmlBuyPrefs=module.exports;})();' : '';
+    const settingsUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-settings-ui.js'), 'utf8'); } catch (_) { return ''; } })();
+    const optionsDesk = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-options-desk.js'), 'utf8'); } catch (_) { return ''; } })();
     const alertsUi = fs.readFileSync(pathModule.join(__dirname, 'academy-alerts-ui.js'), 'utf8');
     const sirePanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-sire-panel.js'), 'utf8'); } catch (_) { return ''; } })();
     const liveCells = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-live-cells.js'), 'utf8'); } catch (_) { return ''; } })();
@@ -761,7 +769,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + '<script>' + belowCycle + '</script>',
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + '<script>' + belowCycle + '</script>',
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -1869,7 +1877,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   memberEmail = null, siteExportSink = null, linkTracker = null, verifyGate = null,
   appApi = null,
   /* Academy data services and the challenge/paper surfaces live in main(); the handler only sees what is passed here */
-  academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null, academyFlowDaily = null, academySignalOutcomes = null,
+  academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null, academyFlowDaily = null, academySignalOutcomes = null, optionBars = null,
   getEarningsPlaybook = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null,
@@ -3904,6 +3912,25 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* One options contract's own candles (the premium), for the mini chart that opens on a double-click in the chain.
+       Members only, like the chain itself; the contract is the OCC symbol (SPY251219C00600000) the chain row names. */
+    if (request.method === 'GET' && path === '/academy-activity/option-bars') {
+      if (!academyOAuth || !optionBars || !optionBars.enabled) { sendJson(response, 503, { ok: false, error: 'option_bars_unavailable' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const obq = new URL(request.url || '/', 'http://localhost').searchParams;
+      try {
+        const result = await optionBars.get(obq.get('contract'), obq.get('tf') || '5m');
+        sendJson(response, result.status || (result.ok ? 200 : 503), result.ok ? { ok: true, ...result.data } : { ok: false, error: result.code });
+      } catch (error) {
+        if (error instanceof TypeError) { sendJson(response, 400, { ok: false, error: error.message }); return; }
+        logger('error', 'academy_option_bars_failed', { error });
+        sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+      }
+      return;
+    }
+
     if (request.method === 'GET' && /^\/academy-activity\/data\/(options|earnings)$/.test(path)) {
       if (!academyOAuth || !academyDataBridge) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -4074,7 +4101,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const sub = path.slice('/academy-activity/paper'.length);
       if (pq.get('account') === 'challenge' && !owner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
       const accountOf = (name) => (name === 'challenge' ? 'challenge' : 'u:' + session.userId);
-      const opts = (name) => (name === 'challenge' ? { cash: 1000, name: "Grandmaster-obi's Challenge", owner: OWNER_IDS[0] || '' } : { cash: 1000, name: 'My paper account', owner: String(session.userId) });
+      const opts = (name) => (name === 'challenge' ? { cash: 1000, name: "Grandmaster-obi's Challenge", owner: OWNER_IDS[0] || '' } : { cash: PAPER_START_CASH, name: 'My paper account', owner: String(session.userId) });
       try {
         if (request.method === 'GET' && sub === '') { const name = pq.get('account') === 'challenge' ? 'challenge' : 'me'; const snap = await academyPaper.snapshot(accountOf(name), opts(name)); sendJson(response, 200, { ...snap, account: name, me: { owner } }); return; }
         if (request.method === 'GET' && sub === '/calendar') { const name = pq.get('account') === 'challenge' ? 'challenge' : 'me'; sendJson(response, 200, await academyPaper.month(accountOf(name), pq.get('month'))); return; }
@@ -4397,6 +4424,8 @@ async function main() {
     return out;
   };
   const marketHistory = createMassiveHistory({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-rest', u, o), sanitize: (bars, tf) => sanitizeBars(bars, tf) });
+  /* one contract's own candles for the options mini chart (same Massive key and breaker as the stock history) */
+  const optionBars = createMassiveOptionBars({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-rest', u, o) });
   /* Each member picks their own alert sources (servers -> channels or posters); SML_ACADEMY_ALERT_SOURCES=off brings back the fixed two-stream desk. */
   const perMemberAlerts = process.env.SML_ACADEMY_ALERT_SOURCES !== 'off';
   const academyAlerts = process.env.ACADEMY_ALERTS === 'off' ? null : createAlertsService({
@@ -5048,7 +5077,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,

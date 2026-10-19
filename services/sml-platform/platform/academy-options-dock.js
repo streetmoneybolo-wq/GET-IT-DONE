@@ -153,7 +153,12 @@
     const td = e.target.closest && e.target.closest('td'), tr = td && td.parentElement; if (!tr || !tr.cells || tr.cells.length < 21) return;
     const strike = num(tr.cells[10].textContent); if (strike == null) return;
     const exp = $('options-expiry'), m = /\d{4}-\d{2}-\d{2}/.exec(exp ? (exp.value || (exp.selectedOptions[0] || {}).textContent || '') : ''); if (!m) return;
-    if (!alertMode) { window.dispatchEvent(new CustomEvent('sml-click-alert-contract', { detail: { type: td.cellIndex > 10 ? 'put' : 'call', strike, expiry: m[0] } })); return; }
+    /* ALERT mode off: a double-click opens the contract's own chart with Buy / Sell buttons (academy-options-desk.js); the options
+       desk reads the row itself. Without the desk on the page the old path (Click-to-Alert for the contract) still runs. */
+    if (!alertMode) {
+      if (window.__smlOptionsDesk && td.cellIndex !== 10) { window.dispatchEvent(new CustomEvent('sml-option-mini', { detail: { td } })); return; }
+      window.dispatchEvent(new CustomEvent('sml-click-alert-contract', { detail: { type: td.cellIndex > 10 ? 'put' : 'call', strike, expiry: m[0] } })); return;
+    }
     if (td.cellIndex === 10) { hintText('Double-click the call side (left) or the put side (right) of a strike to alert that contract.'); return; }
     const type = td.cellIndex > 10 ? 'put' : 'call';
     const symbol = chainSymbol || cleanSym(($('symbol') || {}).value) || symbolNow();

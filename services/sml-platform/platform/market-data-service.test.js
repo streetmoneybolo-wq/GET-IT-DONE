@@ -180,3 +180,31 @@ test('a member waiting on a click goes ahead of background sweeps, and a backgro
   await queued.get('options', 'BAD');
   assert.equal(order.filter((s) => s === 'BAD').length, 3, 'after the window a sweep tries once more');
 });
+
+test('option contract bars: O:<OCC> aggregates with bearer auth, strict OCC validation, a short cache and a bounded map', async () => {
+  const { createMassiveOptionBars, cleanOcc, OPTION_BARS_CACHE_MAX } = require('./market-data-service');
+  let calls = 0, clock = Date.UTC(2026, 9, 19, 15, 0, 0);
+  const bars = createMassiveOptionBars({ apiKey: 'secret', now: () => clock, maxEntries: 3, fetchImpl: async (url, options) => {
+    calls += 1;
+    assert.match(url, /\/v2\/aggs\/ticker\/O%3ASPY251219C00600000\/range\/5\/minute\/2026-10-05\/2026-10-19\?/);
+    assert.equal(options.headers.authorization, 'Bearer secret');
+    return new Response(JSON.stringify({ results: [{ t: 1000, o: 3.1, h: 3.4, l: 3.0, c: 3.3, v: 120 }, { t: 1300, o: 3.3, h: 3.5, l: 3.2, c: 3.45, v: 80 }] }), { status: 200 });
+  } });
+  const first = await bars.get('spy251219c00600000', '5m');
+  assert.equal(first.ok, true); assert.equal(first.data.contract, 'SPY251219C00600000'); assert.equal(first.data.ticker, 'O:SPY251219C00600000'); assert.equal(first.data.bars.length, 2); assert.equal(first.data.lastBarAt, 1300);
+  const second = await bars.get('O:SPY251219C00600000', '5m'); assert.equal(second.cached, true); assert.equal(calls, 1);
+  clock += 31_000; await bars.get('SPY251219C00600000', '5m'); assert.equal(calls, 2, 'refreshed after the 5m ttl');
+  await assert.rejects(() => bars.get('SPY', '5m'), /invalid_contract/);
+  await assert.rejects(() => bars.get('SPY251219C00600000/../x', '5m'), /invalid_contract/);
+  await assert.rejects(() => bars.get('SPY251219C00600000', '3m'), /invalid_timeframe/);
+  assert.equal(cleanOcc('o:aapl260116p00180000'), 'AAPL260116P00180000');
+  assert.throws(() => cleanOcc('AAPL260116X00180000'), /invalid_contract/);
+  for (const k of ['A', 'B', 'C', 'D']) await bars.get(k + '251219C00600000', '1D');
+  assert.ok(bars.cache.size <= 3, 'the map never grows past maxEntries'); assert.equal(typeof OPTION_BARS_CACHE_MAX, 'number');
+  const empty = createMassiveOptionBars({ apiKey: 'k', now: () => clock, fetchImpl: async () => new Response(JSON.stringify({ results: [] }), { status: 200 }) });
+  const none = await empty.get('SPY251219C00600000', '1m'); assert.equal(none.ok, true); assert.deepEqual(none.data.bars, []); assert.equal(none.data.lastBarAt, null);
+  const off = createMassiveOptionBars({ apiKey: '' }); assert.equal(off.enabled, false); assert.equal((await off.get('SPY251219C00600000')).code, 'massive_unconfigured');
+  let fail = false; const flaky = createMassiveOptionBars({ apiKey: 'k', now: () => clock, fetchImpl: async () => { if (fail) throw new Error('down'); return new Response(JSON.stringify({ results: [{ t: 1, o: 1, h: 1, l: 1, c: 1, v: 1 }] }), { status: 200 }); } });
+  await flaky.get('SPY251219C00600000', '1m'); fail = true; clock += 60_000;
+  const stale = await flaky.get('SPY251219C00600000', '1m'); assert.equal(stale.ok, true); assert.equal(stale.data.stale, true, 'the last good copy is served, marked stale, while the provider is down');
+});
