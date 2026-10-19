@@ -67,7 +67,15 @@ test('the Loop Letters blocks carry the prose as reader blocks and each module a
   const types = a.blocks.map((b) => b.type);
   assert.equal(types[0], 'custom_code'); assert.ok(types.filter((t) => t === 'custom_code').length === a.modules.length);
   assert.ok(a.blocks.some((b) => b.type === 'heading' && b.text === 'What the smart money is doing')); assert.ok(a.blocks.some((b) => b.type === 'list'));
-  const chartBlock = a.blocks.find((b) => b.id === 'mod-chart'); assert.match(chartBlock.html, /<svg class="mem-chart"/); assert.equal(chartBlock.css, a.css); assert.ok(chartBlock.height >= 400);
+  /* the letters sanitizer drops svg, iframe, script, input and details: no module block may depend on them */
+  for (const b of a.blocks.filter((x) => x.type === 'custom_code')) assert.ok(!/<svg|<iframe|<script|<input|<details|style="/.test(b.html), b.id + ' is sanitizer-safe');
+  const chartBlock = a.blocks.find((b) => b.id === 'mod-chart'); assert.match(chartBlock.html, /<img src="https:\/\/stockmarketloop\.com\/wp-content\/uploads\/p\.png"/); assert.match(chartBlock.html, /CHART · AS OF PUBLICATION/); assert.ok(chartBlock.css.startsWith(a.css)); assert.ok(chartBlock.height >= 400);
+  const meters = a.blocks.find((b) => b.id === 'mod-meters'); assert.match(meters.html, /class="mem-ring r0"/); assert.match(meters.css, /\.mem-ring\.r0\{background:conic-gradient\(#ffb04a 64%/); assert.match(meters.css, /\.mem-ring\.r1\{background:conic-gradient\(#19c37d 71%/);
+  const tabs = a.blocks.find((b) => b.id === 'mod-tabs'); assert.match(tabs.html, /class="mem-strip"/); assert.match(tabs.html, /<h3>TAPE<\/h3>/);
+  const track = a.blocks.find((b) => b.id === 'mod-tracker'); assert.match(track.css, /\.mem-track-bar i\{left:[\d.]+%\}/); assert.ok(!/data-live/.test(track.html));
+  const kill = a.blocks.find((b) => b.id === 'mod-killswitch'); assert.match(kill.html, /class="mem-check"/);
+  const poll = a.blocks.find((b) => b.id === 'mod-poll'); assert.match(poll.html, /href="https:\/\/discord\.gg\/makingeasymoney"/);
+  assert.match(a.bodyHtml, /<iframe class="mem-chart-embed" [^>]*src="https:\/\/sml-platform-api\.onrender\.com\/academy-activity\/article-chart-embed\?symbol=ABCD"/, 'the page keeps the embed, at the right path');
   const faqHeading = a.blocks.find((b) => b.type === 'heading' && b.level === 3 && /Is \$ABCD a buy/.test(b.text)); assert.ok(faqHeading, 'faq questions become headings');
   assert.ok(a.blocks.some((b) => b.type === 'paragraph' && b.spans.some((s) => s.mark === 'link' && /sec\.gov/.test(s.href))), 'links survive into spans');
   assert.ok(!a.blocks.some((b) => b.type === 'paragraph' && b.spans.some((s) => /<|>/.test(s.text))), 'no tag soup in spans');
@@ -79,6 +87,7 @@ test('a thin dossier still composes: no insight sections, the modules that have 
   const a = D.composeArticle({ story: st, c: thin, dossier: {}, asOf: Date.UTC(2026, 9, 19, 14, 30), topic: 'crude oil' });
   assert.match(a.title, /^Crude oil through \$ABCD: /); assert.ok(!a.sections.includes('What the smart money is doing') && !a.sections.includes('The crowd'));
   assert.deepEqual(a.modules, ['board', 'chart', 'tabs', 'bullbear', 'tracker', 'killswitch', 'poll']); assert.ok(a.wordCount >= 700, String(a.wordCount));
+  assert.ok(!a.blocks.some((b) => b.id === 'mod-chart'), 'no poster, no chart block in the letter'); assert.ok(a.blocks.some((b) => b.id === 'mod-tabs'));
   assert.match(a.bodyHtml, /<figure class="mem-chartbox" data-symbol="ABCD">/, 'no endpoint, no live polling attribute');
   const b = D.bullBear(st, thin, {}, 1); assert.ok(b.bull.length >= 1 && b.bear.length >= 1);
 });

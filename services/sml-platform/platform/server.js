@@ -54,6 +54,7 @@ const { cleanLayout: cleanAcademyLayout, cleanScope: cleanLayoutScope, layoutKey
 const { createCandleRecap } = require('./academy-candle-recap');
 const { createMarketDirectionV2 } = require('./academy-market-direction-v2');
 const { createStoryDesk, createLettersPublisher, createPolisher } = require('./academy-story-desk');
+const articleChart = require('./academy-article-chart');
 const { createNewsHeat } = require('./academy-story-engine');
 const POPOUT_BASE = (() => { const u = String(process.env.SML_ACADEMY_POPOUT_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, ''); return /^https:\/\/[a-z0-9.-]+$/i.test(u) ? u : 'https://sml-platform-api.onrender.com'; })();
 const { createPgStateStore } = require('./academy-state-store');
@@ -4411,6 +4412,24 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     /* The Article Desk's live chart feed (academy-article-desk.js): a published piece on stockmarketloop.com polls this for
        the last price and the recent candles, so its chart and price chips move. Public by design (the article is public),
        one symbol per call, rate-limited, cached 30 s, and answered with CORS for the site's origin only. */
+    /* one symbol's chart feed: the recent daily and intraday candles and the last price, cached 30 s, or null */
+    const articleChartPayload = async (symbol) => {
+      const hit = articleChartCache.get(symbol);
+      if (hit && hit.until > Date.now()) return hit.payload;
+      const candlesOf = async (tf) => { if (marketHistory && marketHistory.enabled) { const r = await marketHistory.get(symbol, tf); if (r && r.ok) return r.data; } return getAcademyCandles(symbol, tf); };
+      const [dailyP, intraP] = await Promise.all([settledValue(candlesOf('1D'), 4_000), settledValue(candlesOf('5m'), 4_000)]);
+      const pack = (r, n) => (r && Array.isArray(r.bars) ? r.bars.slice(-n).map((b) => [Number(b.t), Number(b.o), Number(b.h), Number(b.l), Number(b.c), Number(b.v) || 0]) : []);
+      const daily = pack(dailyP, 80), intraday = pack(intraP, 160);
+      const peek = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(symbol) : null;
+      const lastBar = intraday.length ? intraday[intraday.length - 1] : (daily.length ? daily[daily.length - 1] : null);
+      const last = peek && Number(peek.last) > 0 ? Number(peek.last) : (lastBar ? lastBar[4] : null);
+      const prevClose = daily.length >= 2 ? daily[daily.length - 2][4] : null;
+      if (last == null) return null;
+      const payload = { ok: true, symbol, asOf: Date.now(), quote: { last, prevClose, changePct: prevClose ? Math.round((last / prevClose - 1) * 10000) / 100 : null, source: peek && Number(peek.last) > 0 ? 'live' : 'bars' }, daily, intraday };
+      articleChartCache.set(symbol, { until: Date.now() + 30_000, payload });
+      if (articleChartCache.size > 300) articleChartCache.delete(articleChartCache.keys().next().value);
+      return payload;
+    };
     if (request.method === 'GET' && path === '/academy-activity/article-chart') {
       const origin = String(request.headers.origin || '');
       const allowed = origin && (origin === SITE_ORIGIN || /^https:\/\/([a-z0-9-]+\.)*stockmarketloop\.com$/i.test(origin) || /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin));
@@ -4421,34 +4440,30 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const cq = new URL(request.url || '/', 'http://localhost').searchParams;
       const symbol = String(cq.get('symbol') || '').toUpperCase();
       if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { send(400, { ok: false, error: 'invalid_symbol' }); return; }
-      const hit = articleChartCache.get(symbol);
-      if (hit && hit.until > Date.now()) { send(200, hit.payload); return; }
       try {
-        const candlesOf = async (tf) => { if (marketHistory && marketHistory.enabled) { const r = await marketHistory.get(symbol, tf); if (r && r.ok) return r.data; } return getAcademyCandles(symbol, tf); };
-        const [dailyP, intraP] = await Promise.all([settledValue(candlesOf('1D'), 4_000), settledValue(candlesOf('5m'), 4_000)]);
-        const pack = (r, n) => (r && Array.isArray(r.bars) ? r.bars.slice(-n).map((b) => [Number(b.t), Number(b.o), Number(b.h), Number(b.l), Number(b.c), Number(b.v) || 0]) : []);
-        const daily = pack(dailyP, 80), intraday = pack(intraP, 160);
-        const peek = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(symbol) : null;
-        const lastBar = intraday.length ? intraday[intraday.length - 1] : (daily.length ? daily[daily.length - 1] : null);
-        const last = peek && Number(peek.last) > 0 ? Number(peek.last) : (lastBar ? lastBar[4] : null);
-        const prevClose = daily.length >= 2 ? daily[daily.length - 2][4] : null;
-        if (last == null) { send(503, { ok: false, error: 'no_data' }); return; }
-        const payload = { ok: true, symbol, asOf: Date.now(), quote: { last, prevClose, changePct: prevClose ? Math.round((last / prevClose - 1) * 10000) / 100 : null, source: peek && Number(peek.last) > 0 ? 'live' : 'bars' }, daily, intraday };
-        articleChartCache.set(symbol, { until: Date.now() + 30_000, payload });
-        if (articleChartCache.size > 300) articleChartCache.delete(articleChartCache.keys().next().value);
+        const payload = await articleChartPayload(symbol);
+        if (!payload) { send(503, { ok: false, error: 'no_data' }); return; }
         send(200, payload);
       } catch (error) { logger('warn', 'academy_article_chart_failed', { symbol, error: String(error && error.message || error) }); send(503, { ok: false, error: 'temporary_unavailable' }); }
       return;
     }
-    /* A Loop Letters custom-code block may retain markup but remove inline scripts.  This small same-origin document is
-       the durable fallback: it owns its script, reads the already rate-limited article-chart feed and draws the exact
-       public daily series in an iframe.  The article's inline enhancement hides it after its own live feed succeeds. */
+    /* The chart as a small page of its own, for places that allow an iframe but no script (and for anyone who opens the
+       link): the candles and the last price drawn on the server from the same feed, fresh at every load, with a script
+       that keeps the price line moving where script is allowed. Any page may frame it: it is public data and does nothing. */
     if (request.method === 'GET' && path === '/academy-activity/article-chart-embed') {
       const symbol = String(new URL(request.url || '/', 'http://localhost').searchParams.get('symbol') || '').toUpperCase();
-      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }); response.end('Invalid symbol'); return; }
-      const safe = symbol.replace(/[&<>"']/g, '');
-      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>$${safe} live chart</title><style>html,body{margin:0;background:#0b1119;color:#dbe6ee;font-family:system-ui,sans-serif}#s{min-height:260px;display:grid;place-items:center;color:#8aa0ad;font:700 12px ui-monospace,monospace;letter-spacing:.08em}svg{display:block;width:100%;height:auto}</style></head><body><div id="s">LOADING LIVE CHART</div><script>(function(){var s=document.getElementById("s"),q="${encodeURIComponent(symbol)}";function n(v){return Number(v)||0}function esc(v){return String(v).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}function draw(j){var b=j.daily||[];if(b.length<5){s.textContent="CHART TEMPORARILY UNAVAILABLE";return}var W=960,H=500,L=14,R=78,T=46,B=34,p=b.slice(-60).map(function(x){return {t:n(x[0]),o:n(x[1]),h:n(x[2]),l:n(x[3]),c:n(x[4]),v:n(x[5])}}),lo=Math.min.apply(null,p.map(function(x){return x.l})),hi=Math.max.apply(null,p.map(function(x){return x.h})),d=Math.max(hi-lo,hi*.02);lo-=d*.06;hi+=d*.06;var y=function(v){return T+(hi-v)/(hi-lo)*(H-T-B)},slot=(W-L-R)/p.length,cw=Math.max(2,Math.min(14,slot*.62)),a=['<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="$'+esc(q)+' live daily chart" xmlns="http://www.w3.org/2000/svg"><rect width="'+W+'" height="'+H+'" rx="14" fill="#0b1119"/><text x="14" y="23" fill="#fff" font-size="15" font-weight="800">$'+esc(q)+' LIVE DAILY</text><text x="14" y="39" fill="#8aa0ad" font-size="11">Last $'+n(j.quote.last).toFixed(2)+' · '+(n(j.quote.changePct)>=0?'+':'')+n(j.quote.changePct).toFixed(2)+'%</text>'];p.forEach(function(x,i){var X=L+slot*(i+.5),up=x.c>=x.o,col=up?'#19c37d':'#ff5c7a',top=y(Math.max(x.o,x.c)),bh=Math.max(1,Math.abs(y(x.o)-y(x.c)));a.push('<line x1="'+X.toFixed(1)+'" x2="'+X.toFixed(1)+'" y1="'+y(x.h).toFixed(1)+'" y2="'+y(x.l).toFixed(1)+'" stroke="'+col+'"/><rect x="'+(X-cw/2).toFixed(1)+'" y="'+top.toFixed(1)+'" width="'+cw.toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="'+col+'"/>')});var py=y(n(j.quote.last));a.push('<line x1="'+L+'" x2="'+(W-R)+'" y1="'+py.toFixed(1)+'" y2="'+py.toFixed(1)+'" stroke="#fff" opacity=".8"/><text x="'+(W-R+6)+'" y="'+(py+4).toFixed(1)+'" fill="#fff" font-size="11" font-weight="800">$'+n(j.quote.last).toFixed(2)+'</text></svg>');s.innerHTML=a.join('')}function load(){fetch('/academy-activity/article-chart?symbol='+encodeURIComponent(q),{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.ok)draw(j);else s.textContent='CHART TEMPORARILY UNAVAILABLE'}).catch(function(){s.textContent='CHART TEMPORARILY UNAVAILABLE'})}load();setInterval(load,30000)})();</script></body></html>`;
-      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=30', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; frame-ancestors https://stockmarketloop.com https://*.stockmarketloop.com" }); response.end(html); return;
+      const sendHtml = (status, html) => { response.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=30', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; frame-ancestors *" }); response.end(html); };
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendHtml(400, '<!doctype html><title>Invalid symbol</title><p>Invalid symbol</p>'); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendHtml(429, '<!doctype html><title>Busy</title><p>Busy, try again shortly.</p>'); return; }
+      let payload = null;
+      try { payload = await articleChartPayload(symbol); } catch (error) { logger('warn', 'academy_article_chart_failed', { symbol, error: String(error && error.message || error) }); }
+      const bars = payload ? payload.daily.map((b) => ({ t: b[0], o: b[1], h: b[2], l: b[3], c: b[4], v: b[5] })) : [];
+      const drawn = payload ? articleChart.candleChart({ symbol, bars, price: payload.quote.last, count: 60, title: `$${symbol} daily`, subtitle: `Last ${payload.quote.last >= 1 ? '$' + Number(payload.quote.last).toFixed(2) : '$' + Number(payload.quote.last).toFixed(4)}${payload.quote.changePct != null ? ' · ' + (payload.quote.changePct >= 0 ? '+' : '') + Number(payload.quote.changePct).toFixed(2) + '%' : ''}. Delayed or as of the last trade. Not advice.` }) : { ok: false };
+      const body = drawn.ok ? drawn.svg : '<div id="s">CHART TEMPORARILY UNAVAILABLE</div>';
+      const script = drawn.ok ? `<script>(function(){var q=${JSON.stringify(symbol)};function px(v){return (Math.abs(v)>=1?'$'+Number(v).toFixed(2):'$'+Number(v).toFixed(4))}function move(p){var s=document.querySelector('svg.mem-chart');if(!s)return;var lo=+s.getAttribute('data-ymin'),hi=+s.getAttribute('data-ymax'),top=+s.getAttribute('data-top'),h=+s.getAttribute('data-h');if(!(hi>lo))return;var y=top+(hi-Math.min(hi,Math.max(lo,p)))/(hi-lo)*h,g=s.querySelector('.mem-live');if(!g)return;var ln=g.querySelector('line'),rc=g.querySelector('rect'),tx=g.querySelector('text');if(ln){ln.setAttribute('y1',y.toFixed(1));ln.setAttribute('y2',y.toFixed(1))}if(rc)rc.setAttribute('y',(y-9).toFixed(1));if(tx){tx.setAttribute('y',(y+4).toFixed(1));tx.textContent=px(p)}}function load(){fetch('/academy-activity/article-chart?symbol='+encodeURIComponent(q),{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.ok&&j.quote&&j.quote.last>0)move(j.quote.last)}).catch(function(){})}setInterval(load,30000)})();</script>` : '';
+      sendHtml(drawn.ok ? 200 : 503, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>$${symbol} chart</title><style>html,body{margin:0;background:#0b1119;color:#dbe6ee;font-family:system-ui,sans-serif}svg{display:block;width:100%;height:auto}#s{min-height:220px;display:grid;place-items:center;color:#8aa0ad;font:700 12px ui-monospace,monospace;letter-spacing:.08em}</style></head><body>${body}${script}</body></html>`);
+      return;
     }
     if (request.method === 'GET' && path === '/academy-activity/intent') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }

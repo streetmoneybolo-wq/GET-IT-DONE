@@ -274,7 +274,7 @@ function nextSession(st, c, d) {
 }
 
 /* ---------- the modules ---------- */
-function modChart(st, c, d, chartEndpoint) {
+function modChart(st, c, d, chartEndpoint, imageUrl = '') {
   const levels = [];
   if (c.gamma && c.gamma.callWall && num(c.gamma.callWall.strike) != null) levels.push({ label: 'CALL WALL', price: c.gamma.callWall.strike, kind: 'resistance' });
   if (c.gamma && c.gamma.putWall && num(c.gamma.putWall.strike) != null) levels.push({ label: 'PUT WALL', price: c.gamma.putWall.strike, kind: 'support' });
@@ -284,13 +284,20 @@ function modChart(st, c, d, chartEndpoint) {
   for (const l of mapLv) if (num(l.price) != null && levels.length < 5) levels.push({ label: (l.labels && l.labels[0] ? plain(l.labels[0]).toUpperCase().slice(0, 18) : 'MAP LEVEL'), price: l.price, kind: l.price > c.price ? 'resistance' : 'support' });
   const ch = chart.candleChart({ symbol: c.symbol, bars: c.daily, price: c.price, target: st.pt, stop: st.stop, levels, path: st.path, lean: st.lean, count: 60, title: `$${c.symbol} daily: the path to ${px(st.pt)}`, subtitle: `${engine.ANGLES[st.angle].label} scenario. Real candles, then the move the setup needs. Speculative, not advice.` });
   if (!ch.ok) return null;
-  const embed = chartEndpoint ? chartEndpoint.replace(/\/article-chart(?:\?.*)?$/, '/academy-activity/article-chart-embed') + '?symbol=' + encodeURIComponent(c.symbol) : '';
+  const embed = chartEndpoint ? chartEndpoint.replace(/\/article-chart(?:\?.*)?$/, '/article-chart-embed') + '?symbol=' + encodeURIComponent(c.symbol) : '';
   const html = `<figure class="mem-chartbox" data-symbol="${esc(c.symbol)}"${chartEndpoint ? ` data-live-endpoint="${esc(chartEndpoint)}"` : ''}>
 <div class="mem-chiprow"><span class="mem-chip mem-chip-live"><i></i>LIVE CHART</span><span class="mem-chip">$${esc(c.symbol)} <b data-live="price">${esc(px(c.price))}</b> <em data-live="change" class="${num(c.changePct, 0) >= 0 ? 'up' : 'dn'}">${num(c.changePct) != null ? esc(pct(c.changePct)) : ''}</em></span><span class="mem-chip mem-chip-mut" data-live="updated">as of publication</span></div>
 ${ch.svg}
 ${embed ? `<iframe class="mem-chart-embed" title="$${esc(c.symbol)} live price fallback" loading="lazy" src="${esc(embed)}"></iframe>` : ''}
 <figcaption>Daily candles with the levels that matter and the scenario path: ${esc((st.path || []).map((p) => p.label.toLowerCase()).concat('target').join(', '))}. The white line is the last price and moves with the tape where the page can run script. Not a forecast.</figcaption></figure>`;
-  return { html, height: 560 };
+  /* the Loop Letters sanitizer keeps img and drops svg, iframe and script: the letter block carries the uploaded poster
+     (the same scenario, drawn as a still) under a chip that says what it is; no poster, no chart block (the GIF image
+     block in the body still shows the path) */
+  const letter = imageUrl ? `<figure class="mem-chartbox mem-chartimg" data-symbol="${esc(c.symbol)}">
+<div class="mem-chiprow"><span class="mem-chip">CHART · AS OF PUBLICATION</span><span class="mem-chip">$${esc(c.symbol)} <b>${esc(px(c.price))}</b> <em class="${num(c.changePct, 0) >= 0 ? 'up' : 'dn'}">${num(c.changePct) != null ? esc(pct(c.changePct)) : ''}</em></span></div>
+<img src="${esc(imageUrl)}" alt="$${esc(c.symbol)} daily chart with the scenario path to ${esc(px(st.pt))}" width="1200" height="675" loading="lazy">
+<figcaption>The candles as published, the levels that matter and the scenario path to ${esc(px(st.pt))}. Not a forecast.</figcaption></figure>` : '';
+  return { html, height: 560, letter, letterHeight: imageUrl ? 760 : 0 };
 }
 function modBoard(parts, c) {
   const rows = [['PRICE', px(parts.price), '', 'price'], ...(Number.isFinite(parts.changePct) ? [['TODAY', pct(parts.changePct), parts.changePct >= 0 ? 'up' : 'dn', 'change']] : []), ...(Number.isFinite(parts.relVol) ? [['REL VOLUME', parts.relVol.toFixed(1) + 'x', '', '']] : []), ['SCENARIO TARGET', px(parts.pt) + ' (' + pct(parts.ptPct) + ')', parts.ptPct >= 0 ? 'up' : 'dn', ''], ...(Number.isFinite(parts.stop) ? [['INVALIDATION', px(parts.stop), '', '']] : []), ...(parts.keyStat ? [[parts.keyStat.label, parts.keyStat.value, '', '']] : [])];
@@ -303,7 +310,14 @@ function modMeter(intentSec, shortSec, sentSec) {
   if (shortSec && shortSec.squeeze != null) g.push(chart.gauge({ score: shortSec.squeeze, label: 'SQUEEZE RISK', caption: shortSec.pressing != null ? 'Shorts pressing ' + Math.round(shortSec.pressing) : '' }));
   if (sentSec) g.push(chart.gauge({ score: sentSec.score, label: 'SENTIMENT', caption: 'Crowd composite' }));
   if (!g.length) return null;
-  return { html: `<div class="mem-meters" aria-label="Meters">${g.join('')}</div>`, height: 190 };
+  /* the letter variant: a conic-gradient ring per meter (no svg), the ring's value set by a rule in the block's own css */
+  const specs = [];
+  if (intentSec) specs.push({ score: intentSec.strength, label: 'SMART MONEY', caption: `${cap(intentSec.phase)}${intentSec.side && intentSec.side !== 'neither' ? ' · ' + intentSec.side : ''}` });
+  if (shortSec && shortSec.squeeze != null) specs.push({ score: shortSec.squeeze, label: 'SQUEEZE RISK', caption: shortSec.pressing != null ? 'Shorts pressing ' + Math.round(shortSec.pressing) : '' });
+  if (sentSec) specs.push({ score: sentSec.score, label: 'SENTIMENT', caption: 'Crowd composite' });
+  const ringCss = specs.map((m, i) => { const v = Math.max(0, Math.min(100, Math.round(num(m.score, 0)))); const col = v >= 70 ? '#19c37d' : v >= 45 ? '#ffb04a' : v >= 25 ? '#5cc8ff' : '#ff5c7a'; return `.mem-ring.r${i}{background:conic-gradient(${col} ${v}%,rgba(255,255,255,.12) 0)}.mem-ring.r${i} b{color:${col}}`; }).join('');
+  const letter = `<div class="mem-rings" aria-label="Meters">${specs.map((m, i) => `<div class="mem-ring r${i}"><div class="mem-ring-in"><b>${Math.round(num(m.score, 0))}</b><span>${esc(m.label)}</span></div></div><small>${esc(m.caption || '')}</small>`).map((h, i) => `<div class="mem-ring-cell">${h}</div>`).join('')}</div>`;
+  return { html: `<div class="mem-meters" aria-label="Meters">${g.join('')}</div>`, height: 190, letter, letterHeight: 200, css: ringCss };
 }
 function modTabs(st, c, d, id) {
   const tabs = [];
@@ -314,7 +328,8 @@ function modTabs(st, c, d, id) {
   if (c.smc) { const m = c.smc, ev = (m.structure || [])[0], sw = (m.sweeps || [])[0], ob = (m.orderBlocks || [])[0], g = (m.fvgs || [])[0]; tabs.push(['STRUCTURE', dl([['Last event', ev ? `${ev.type} ${ev.dir > 0 ? 'up' : 'down'} at ${px(ev.level)}` : null], ['Last sweep', sw ? `${sw.kind} at ${px(sw.level)}` : null], ['Order block', ob ? `${px(ob.bottom)} to ${px(ob.top)}` : null], ['Open imbalance', g ? `${px(g.bottom)} to ${px(g.top)}` : null], ['Range position', m.range && num(m.range.pos) != null ? Math.round(m.range.pos * 100) + '% up from the low' : null], ['VWAP', m.vwap ? `${px(m.vwap.level)} (${m.vwap.above ? 'above' : 'below'})` : null]])]); }
   if (!tabs.length) return null;
   const name = 'mem-tab-' + id;
-  return { html: `<div class="mem-tabs" aria-label="The data by desk">${tabs.map(([t], i) => `<input type="radio" name="${name}" id="${name}-${i}"${i === 0 ? ' checked' : ''}><label for="${name}-${i}">${esc(t)}</label>`).join('')}${tabs.map(([, body], i) => `<section class="mem-tabpane" data-i="${i}">${body}</section>`).join('')}</div>`, height: 300 };
+  const letter = `<div class="mem-strip" aria-label="The data by desk">${tabs.map(([t, body]) => `<section><h3>${esc(t)}</h3>${body}</section>`).join('')}</div>`;
+  return { html: `<div class="mem-tabs" aria-label="The data by desk">${tabs.map(([t], i) => `<input type="radio" name="${name}" id="${name}-${i}"${i === 0 ? ' checked' : ''}><label for="${name}-${i}">${esc(t)}</label>`).join('')}${tabs.map(([, body], i) => `<section class="mem-tabpane" data-i="${i}">${body}</section>`).join('')}</div>`, height: 300, letter, letterHeight: 120 + tabs.length * 150 };
 }
 function modVs(bb) {
   return { html: `<div class="mem-vs" aria-label="Bull case versus bear case"><div class="mem-vs-col mem-vs-bull"><h3>THE BULL CASE</h3><ul>${bb.bull.map((x) => `<li>${esc(x)}</li>`).join('') || '<li>Thin. The data does not make a strong long case here.</li>'}</ul></div><div class="mem-vs-col mem-vs-bear"><h3>THE BEAR CASE</h3><ul>${bb.bear.map((x) => `<li>${esc(x)}</li>`).join('') || '<li>Thin. The data does not make a strong short case here.</li>'}</ul></div></div>`, height: 360 };
@@ -323,18 +338,22 @@ function modTrack(st, c) {
   const stop = num(st.stop), pt = num(st.pt), p = num(c.price); if (stop == null || pt == null || p == null || stop === pt) return null;
   const lo = Math.min(stop, pt), hi = Math.max(stop, pt), pos = Math.max(0, Math.min(100, (p - lo) / (hi - lo) * 100));
   const bearish = st.lean === 'bearish';
-  return { html: `<div class="mem-track${bearish ? ' bearish' : ''}" data-stop="${esc(stop)}" data-target="${esc(pt)}" aria-label="Path tracker"><div class="mem-track-head"><span>PATH TRACKER</span><b data-live="price">${esc(px(p))}</b></div><div class="mem-track-bar"><i style="left:${pos.toFixed(1)}%"></i></div><div class="mem-track-ends"><span class="${bearish ? 'tg' : 'st'}">${esc(px(lo))} ${bearish ? 'target' : 'invalidation'}</span><span class="${bearish ? 'st' : 'tg'}">${esc(px(hi))} ${bearish ? 'invalidation' : 'target'}</span></div><p>The marker is the last price between the line that kills the idea and the line where it pays. ${esc(bearish ? 'Lower is the trade working.' : 'Higher is the trade working.')}</p></div>`, height: 150 };
+  return { html: `<div class="mem-track${bearish ? ' bearish' : ''}" data-stop="${esc(stop)}" data-target="${esc(pt)}" aria-label="Path tracker"><div class="mem-track-head"><span>PATH TRACKER</span><b data-live="price">${esc(px(p))}</b></div><div class="mem-track-bar"><i style="left:${pos.toFixed(1)}%"></i></div><div class="mem-track-ends"><span class="${bearish ? 'tg' : 'st'}">${esc(px(lo))} ${bearish ? 'target' : 'invalidation'}</span><span class="${bearish ? 'st' : 'tg'}">${esc(px(hi))} ${bearish ? 'invalidation' : 'target'}</span></div><p>The marker is the last price between the line that kills the idea and the line where it pays. ${esc(bearish ? 'Lower is the trade working.' : 'Higher is the trade working.')}</p></div>`, height: 150,
+    letter: `<div class="mem-track${bearish ? ' bearish' : ''}" aria-label="Path tracker"><div class="mem-track-head"><span>PATH TRACKER · AS OF PUBLICATION</span><b>${esc(px(p))}</b></div><div class="mem-track-bar"><i></i></div><div class="mem-track-ends"><span class="${bearish ? 'tg' : 'st'}">${esc(px(lo))} ${bearish ? 'target' : 'invalidation'}</span><span class="${bearish ? 'st' : 'tg'}">${esc(px(hi))} ${bearish ? 'invalidation' : 'target'}</span></div><p>The marker is the price at publication between the line that kills the idea and the line where it pays. ${esc(bearish ? 'Lower is the trade working.' : 'Higher is the trade working.')}</p></div>`,
+    letterHeight: 150, css: `.mem-track-bar i{left:${pos.toFixed(1)}%}` };
 }
 function modKill(st, c, items) {
-  return { html: `<div class="mem-kill" data-key="mem-kill-${esc(c.symbol)}" aria-label="Kill switch checklist"><h3>KILL SWITCH</h3><p>Tick what you have seen. Any one of these and the thesis is over, no averaging down, no renaming it.</p><ul>${items.map((t, i) => `<li><label><input type="checkbox" data-i="${i}"><span>${esc(t)}</span></label></li>`).join('')}</ul></div>`, height: 110 + items.length * 34 };
+  return { html: `<div class="mem-kill" data-key="mem-kill-${esc(c.symbol)}" aria-label="Kill switch checklist"><h3>KILL SWITCH</h3><p>Tick what you have seen. Any one of these and the thesis is over, no averaging down, no renaming it.</p><ul>${items.map((t, i) => `<li><label><input type="checkbox" data-i="${i}"><span>${esc(t)}</span></label></li>`).join('')}</ul></div>`, height: 110 + items.length * 34,
+    letter: `<div class="mem-kill" aria-label="Kill switch checklist"><h3>KILL SWITCH</h3><p>Any one of these and the thesis is over, no averaging down, no renaming it.</p><ul class="mem-check">${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>`, letterHeight: 110 + items.length * 34 };
 }
 function modCountdown(er, c) {
   if (!er || !er.date || num(er.daysAway) == null || er.daysAway < 0 || er.daysAway > 60) return null;
   return { html: `<div class="mem-count" data-date="${esc(String(er.date).slice(0, 10))}" aria-label="Earnings countdown"><span>EARNINGS COUNTDOWN · $${esc(c.symbol)}</span><b data-count="1">${er.daysAway === 0 ? 'today' : er.daysAway + ' day' + (er.daysAway === 1 ? '' : 's')}</b><small>${esc(String(er.date).slice(0, 10))}${er.timing && er.timing !== 'UNSPECIFIED' ? ' · ' + esc(er.timing) : ''}</small></div>`, height: 110 };
 }
-function modPoll(st, c, id) {
+function modPoll(st, c, id, discordUrl = '') {
   const name = 'mem-poll-' + id;
-  return { html: `<div class="mem-poll" data-key="mem-poll-${esc(c.symbol)}" aria-label="Bull or bear poll"><h3>YOUR CALL ON $${esc(c.symbol)}</h3><p>The desk leans <b>${esc(st.lean)}</b>. Where do you land?</p><div class="mem-poll-row"><input type="radio" name="${name}" id="${name}-bull" value="bull"><label for="${name}-bull">BULL</label><input type="radio" name="${name}" id="${name}-bear" value="bear"><label for="${name}-bear">BEAR</label></div><p class="mem-poll-after" data-after="bull">Noted. You and the desk ${st.lean === 'bullish' ? 'agree; the kill switch above is what keeps agreement from becoming a bag' : 'disagree; the bear case above is what the desk would need to be wrong about'}.</p><p class="mem-poll-after" data-after="bear">Noted. You and the desk ${st.lean === 'bearish' ? 'agree; the invalidation level is still the line' : 'disagree; the bull case above is what you would need to be wrong about'}.</p></div>`, height: 170 };
+  return { html: `<div class="mem-poll" data-key="mem-poll-${esc(c.symbol)}" aria-label="Bull or bear poll"><h3>YOUR CALL ON $${esc(c.symbol)}</h3><p>The desk leans <b>${esc(st.lean)}</b>. Where do you land?</p><div class="mem-poll-row"><input type="radio" name="${name}" id="${name}-bull" value="bull"><label for="${name}-bull">BULL</label><input type="radio" name="${name}" id="${name}-bear" value="bear"><label for="${name}-bear">BEAR</label></div><p class="mem-poll-after" data-after="bull">Noted. You and the desk ${st.lean === 'bullish' ? 'agree; the kill switch above is what keeps agreement from becoming a bag' : 'disagree; the bear case above is what the desk would need to be wrong about'}.</p><p class="mem-poll-after" data-after="bear">Noted. You and the desk ${st.lean === 'bearish' ? 'agree; the invalidation level is still the line' : 'disagree; the bull case above is what you would need to be wrong about'}.</p></div>`, height: 170,
+    letter: `<div class="mem-poll" aria-label="Bull or bear"><h3>YOUR CALL ON $${esc(c.symbol)}</h3><p>The desk leans <b>${esc(st.lean)}</b>. ${discordUrl ? `Bull or bear, say so in <a href="${esc(discordUrl)}" rel="noopener" target="_blank">the Making Easy Money Discord</a>, where the alerts land first.` : 'Bull or bear, the kill switch above is what keeps either call honest.'}</p></div>`, letterHeight: 120 };
 }
 function modShare(url, title) {
   const u = encodeURIComponent(url || ''), t = encodeURIComponent(title || '');
@@ -373,6 +392,9 @@ const CSS = [
   '.mem-faq details{margin:8px 0;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-family:system-ui,sans-serif;font-size:15.5px}.mem-faq summary{cursor:pointer;font-weight:800;list-style:none;display:flex;justify-content:space-between;gap:10px}.mem-faq summary:after{content:"+";color:var(--acc);font-weight:900}.mem-faq details[open] summary:after{content:"\\2013"}.mem-faq details p{margin:10px 0 0;color:var(--ink)}',
   '.mem-share{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:22px 0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-family:system-ui,sans-serif}.mem-share span{font:800 11px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--mut);margin-right:auto}.mem-share a,.mem-share button{padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--ink);font:700 12px/1 system-ui,sans-serif;text-decoration:none;cursor:pointer}.mem-share button.done{border-color:var(--acc);color:var(--acc)}',
   '.mem-sources{font-family:system-ui,sans-serif;font-size:14px}.mem-sources li{margin:4px 0}.mem-sources small{color:var(--mut)}.mem-gloss{font-family:system-ui,sans-serif;font-size:14px;color:var(--mut)}.mem-gloss dt{font-weight:800;color:var(--ink);margin-top:8px}.mem-gloss dd{margin:2px 0 0}',
+  '.mem-letter{padding:0!important}.mem-chartimg img{display:block;width:100%;height:auto}.mem-rings{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--card);font-family:system-ui,sans-serif}.mem-ring-cell{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:120px}.mem-ring{width:112px;height:112px;border-radius:50%;display:grid;place-items:center}.mem-ring-in{width:86px;height:86px;border-radius:50%;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center}.mem-ring-in b{font:900 26px/1 system-ui,sans-serif}.mem-ring-in span{margin-top:3px;font:800 8.5px/1 ui-monospace,monospace;letter-spacing:.08em;color:var(--mut)}.mem-ring-cell small{color:var(--ink);font-size:12px}',
+  '.mem-strip{display:grid;gap:10px;margin:0;font-family:system-ui,sans-serif}.mem-strip section{padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card)}.mem-strip h3{margin:0 0 8px;color:var(--acc)}.mem-strip dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 16px;margin:0}.mem-strip dt{font:800 10.5px/1 ui-monospace,monospace;letter-spacing:.1em;color:var(--mut)}.mem-strip dd{margin:4px 0 0;font:700 15px/1.2 system-ui,sans-serif}',
+  '.mem-check{list-style:none;padding:0;margin:0}.mem-check li{position:relative;padding-left:26px;margin:6px 0}.mem-check li:before{content:"";position:absolute;left:0;top:4px;width:14px;height:14px;border:2px solid var(--acc2);border-radius:4px}',
   '.mem-record{padding:10px 14px;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:0 12px 12px 0;background:var(--card);font:500 14.5px/1.5 system-ui,sans-serif}',
   '.mem-disclosure{margin-top:34px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card);font:400 13.5px/1.55 system-ui,sans-serif;color:var(--mut)}',
   '@media(max-width:620px){.mem-article{padding:0 14px 60px;font-size:17px}.mem-vs{grid-template-columns:1fr}.mem-by .mem-chip-live{margin-left:0}.mem-tabs>label{padding:9px 10px;font-size:11px}}',
@@ -443,20 +465,20 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   const killItems = [cap(plain(st.scenario.invalidation)) + '.', st.lean === 'bearish' ? 'Buyers absorb the selling at a map level and price reclaims it on volume.' : 'Sellers absorb the buying at a map level and price loses it on volume.', 'The tape flips: the sweeps and blocks start printing on the other side.', c.earnings && num(c.earnings.daysAway) != null && c.earnings.daysAway <= 10 ? 'The earnings print gaps the stock through the invalidation.' : 'Two sessions of price moving against the read with no new fuel.'];
 
   /* modules */
-  const chartMod = modChart(st, c, d, chartEndpoint), meter = modMeter(intentSec, shortSec, sentSec), tabs = modTabs(st, c, d, id), vs = modVs(bb), track = modTrack(st, c), kill = modKill(st, c, killItems), count = modCountdown(c.earnings, c), pollMod = modPoll(st, c, id);
+  const chartMod = modChart(st, c, d, chartEndpoint, imageUrl), meter = modMeter(intentSec, shortSec, sentSec), tabs = modTabs(st, c, d, id), vs = modVs(bb), track = modTrack(st, c), kill = modKill(st, c, killItems), count = modCountdown(c.earnings, c), pollMod = modPoll(st, c, id, discordUrl);
   const board = modBoard(draft.parts, c);
   const takeaways = draft.parts.takeaways || [];
 
   /* chunks: text (goes to reader blocks as prose) and module (custom code) */
   const chunks = [];
   const text = (html) => chunks.push({ kind: 'text', html });
-  const mod = (m, name) => { if (m) chunks.push({ kind: 'module', name, html: m.html, height: m.height || 300 }); };
+  const mod = (m, name) => { if (m) chunks.push({ kind: 'module', name, html: m.html, height: m.height || 300, letter: m.letter === undefined ? m.html : m.letter, letterHeight: m.letterHeight || m.height || 300, css: m.css || '' }); };
 
   const header = `<div class="mem-kick">${esc(draft.parts.kicker)} · ${esc(label.toUpperCase())}</div>
 <h1>${esc(title)}</h1>
 <p class="mem-dek">${esc(draft.dek)}</p>
 <div class="mem-by"><span>By <b>${esc(author)}</b></span><span>${esc(publication)}</span><time datetime="${esc(draft.asOfIso)}">${esc(when)}</time><span>${readMin(1400)} min read</span><span class="mem-chip mem-chip-live"><i></i>LIVE DATA</span></div>`;
-  chunks.push({ kind: 'module', name: 'board', html: board, height: 170 });
+  chunks.push({ kind: 'module', name: 'board', html: board, height: 170, letter: board.replace(/<div class="mem-sparkcell">[\s\S]*?<\/div>/, ''), letterHeight: 170, css: '' });
   text(`<div class="mem-lede">${lede.map((p) => `<p>${esc(p)}</p>`).join('\n')}</div>`);
   mod(chartMod, 'chart');
   text(`<aside class="mem-take"><h3>KEY TAKEAWAYS</h3><ul>${takeaways.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></aside>`);
@@ -502,7 +524,9 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   /* Loop Letters blocks: the prose as reader blocks, each module as custom code with the stylesheet */
   const blocks = [];
   for (const ch of chunks) {
-    if (ch.kind === 'module') blocks.push({ id: 'mod-' + ch.name, type: 'custom_code', html: `<div class="mem-article" data-theme="dark" style="padding:0">${ch.html}</div>`, css: CSS, height: ch.height });
+    /* the letter variant of each module: the letters sanitizer keeps markup but drops svg, iframe, script, input and details,
+       so each module ships a version that needs none of them (a module with nothing safe to show is left out) */
+    if (ch.kind === 'module') { if (ch.letter) blocks.push({ id: 'mod-' + ch.name, type: 'custom_code', html: `<div class="mem-article mem-letter" data-theme="dark">${ch.letter}</div>`, css: CSS + (ch.css ? '\n' + ch.css : ''), height: ch.letterHeight }); }
     else blocks.push(...htmlToBlocks(ch.html.replace(/<(aside|div)[^>]*>|<\/(aside|div)>/g, '').replace(/<details><summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g, '<h3>$1</h3>$2').replace(/<dl[^>]*>([\s\S]*?)<\/dl>/g, (m) => m.replace(/<dt>([\s\S]*?)<\/dt>\s*<dd>([\s\S]*?)<\/dd>/g, '<p><strong>$1:</strong> $2</p>')), { tickers: [c.symbol] }));
   }
   const links = [...bodyInner.matchAll(/href="([^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, '&')).filter((h) => /^https?:/.test(h));

@@ -2489,7 +2489,7 @@ test('Article Desk: the public live-chart feed answers bars and a quote with COR
     assert.equal(foreign.status, 200); assert.equal(foreign.headers.get('access-control-allow-origin'), null, 'no CORS for other origins');
     assert.equal((await fetch(`${base}/academy-activity/article-chart?symbol=bad%20sym`)).status, 400);
     const embed = await fetch(`${base}/academy-activity/article-chart-embed?symbol=ABCD`);
-    assert.equal(embed.status, 200); assert.match(embed.headers.get('content-security-policy'), /frame-ancestors/); assert.match(await embed.text(), /academy-activity\/article-chart/);
+    assert.equal(embed.status, 200); assert.match(embed.headers.get('content-security-policy'), /frame-ancestors \*/); const embedHtml = await embed.text(); assert.match(embedHtml, /<svg class="mem-chart"/, 'the chart is drawn on the server'); assert.match(embedHtml, /academy-activity\/article-chart\?symbol=/); assert.equal((embedHtml.match(/<script/g) || []).length, 1);
     assert.equal((await fetch(`${base}/academy-activity/article-chart-embed?symbol=bad%20sym`)).status, 400);
   });
   const { OWNER_IDS } = require('./academy-free-users');

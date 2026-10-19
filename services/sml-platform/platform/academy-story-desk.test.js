@@ -49,7 +49,10 @@ test('a tick scans the universe, writes the strongest uncovered angle as a draft
   assert.ok(created.l.blocks.some((b) => b.type === 'heading' && b.text === 'What the data says') && created.l.blocks.some((b) => b.type === 'paragraph'), 'reader blocks');
   assert.equal(created.l.blocks[0].type, 'custom_code', 'the styled card leads'); assert.match(created.l.blocks[0].html, /Key takeaways/); assert.match(created.l.blocks[0].css, /\.ad-t/); assert.ok(created.l.blocks[0].height >= 420);
   assert.ok(created.l.blocks.some((b) => b.type === 'heading' && /Why it matters/.test(b.text)) && created.l.blocks.some((b) => b.type === 'heading' && /The bull case and the bear case/.test(b.text)));
-  assert.ok(created.l.blocks.some((b) => b.id === 'mod-chart' && b.type === 'custom_code' && /<svg class="mem-chart"/.test(b.html)), 'the live chart module is a custom-code block');
+  /* the letter's chart block is the uploaded poster (an img: the letters sanitizer drops svg); without the GIF rasterizer there is no poster and no chart block */
+  if (require('./academy-scenario-gif').available()) assert.ok(created.l.blocks.some((b) => b.id === 'mod-chart' && b.type === 'custom_code' && /<img src="https:\/\/stockmarketloop\.com\/wp-content\/uploads\/x\.gif"/.test(b.html)), 'the chart block carries the poster image');
+  assert.ok(created.l.blocks.some((b) => b.id === 'mod-tabs' && /mem-strip/.test(b.html)) && created.l.blocks.some((b) => b.id === 'mod-bullbear'), 'the module blocks are the letter-safe variants');
+  assert.ok(created.l.blocks.filter((b) => b.type === 'custom_code').every((b) => !/<svg|<iframe|<script|<input|<details/.test(b.html)), 'nothing the letters sanitizer would drop');
   assert.match(created.l.html, /class="mem-article"/); assert.match(created.l.html, /sec\.gov/);
   assert.ok(created.l.subtitle.length > 20 && created.l.subtitle.length <= 160);
   assert.equal(created.l.blocks[created.l.blocks.length - 1].type, 'disclosure');
