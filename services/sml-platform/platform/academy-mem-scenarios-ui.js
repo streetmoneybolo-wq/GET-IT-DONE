@@ -117,21 +117,47 @@
   function onClick(action) {
     const [what, id] = String(action || '').split(':');
     const M = window.smlChartModel && window.smlChartModel();
-    if (what === 'show') { S.shown = S.shown === id ? null : id; if (S.shown) makeRoom(); draw(); return true; }
+    if (what === 'show') { S.shown = S.shown === id ? null : id; if (S.shown) makeRoom(); else restoreView(); draw(); return true; }
     if (what === 'pick') { if (M) { S.picks[pickKey(M)] = S.picks[pickKey(M)] === id ? null : id; save(); draw(); } return true; }
-    if (what === 'clear') { S.shown = null; draw(); return true; }
+    if (what === 'clear') { S.shown = null; restoreView(); draw(); return true; }
     if (what === 'snap') { const b = document.getElementById('snap-toggle'); if (b) b.click(); return true; }
     if (what === 'png') { savePng(); return true; }
     return false;
   }
 
-  /* scroll the chart so the projection area to the right of the last candle is wide enough to read */
+  /* Fit the chart to the scenario: enough candles before "now" to show the zones, the pattern and the structure the idea leans on,
+     the whole projection to the right, and the price range set so the stop, the targets and every zone sit inside the plot with
+     a margin. The member's own zoom is remembered and comes back when the scenario is cleared. */
   function makeRoom() {
     const pro = window.smlChartPro, M = window.smlChartModel && window.smlChartModel();
     const sc = current(); if (!pro || !pro.setView || !M || !sc) return;
-    const future = sc.window.future + 3;
-    const n = Math.max(M.slots, Math.ceil(future / 0.33) + 4);
-    pro.setView(n, M.N + future);
+    if (!S.savedView) S.savedView = { n: M.slots, end: pro.view && pro.view.end, manual: pro.view && pro.view.manual ? Object.assign({}, pro.view.manual) : null };
+    const N = M.N, future = sc.window.future + 3;
+    let firstI = N - 1 - Math.round(sc.window.future * 1.6);
+    for (const z of sc.zones) if (Number.isFinite(z.from)) firstI = Math.min(firstI, z.from - 3);
+    if (sc.patternId && S.result && S.result.patterns && S.result.patterns.ok) { const pat = S.result.patterns.charts.find((c) => c.id === sc.patternId); if (pat) firstI = Math.min(firstI, pat.startIdx - 4); }
+    firstI = Math.max(0, Math.min(firstI, N - 1 - Math.round(sc.window.future * 0.8)));
+    const n = Math.max(30, (N - firstI) + future);
+    /* price range: the candles that will be on screen plus every price the drawing needs */
+    const prices = [sc.entry, sc.stop, sc.target, sc.target2].filter(Number.isFinite);
+    for (const z of sc.zones) prices.push(z.top, z.bottom);
+    for (const l of sc.levels) prices.push(l.price);
+    for (const p of sc.path) prices.push(p.p);
+    for (let i = firstI; i < N; i++) { const b = M.bars[i]; if (b) prices.push(+b.l, +b.h); }
+    let lo = Math.min(...prices), hi = Math.max(...prices);
+    if (Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) {
+      const pad2 = (hi - lo) * 0.14; lo -= pad2; hi += pad2 + (hi - lo) * 0.08; // extra room on top for the title and insight cards
+      if (pro.view) { pro.view.manual = { lo: lo - (hi - lo) * 0.16, hi }; } // the bottom slice stays clear of the volume bars
+    }
+    pro.setView(n, N + future);
+  }
+  function restoreView() {
+    const pro = window.smlChartPro; const v = S.savedView; S.savedView = null;
+    if (!pro || !pro.setView) return;
+    if (!v) { pro.resetView(); return; }
+    if (pro.view) pro.view.manual = v.manual;
+    pro.setView(v.n, v.end == null ? undefined : v.end);
+    if (v.end == null && pro.goLatest) pro.goLatest();
   }
   function current() { const r = S.result; return r && S.shown ? r.scenarios.find((x) => x.id === S.shown) || null : null; }
 
@@ -145,9 +171,10 @@
 
   /* ---- drawing ---- */
   const ZONE = { OB: ['77,195,255', '255,170,60'], FVG: ['0,208,132', '255,84,112'], GAP: ['255,209,102', '255,209,102'], RANGE: ['0,208,132', '255,84,112'] };
+  const BIG = 1.35; // everything on this layer is drawn for a snapshot read on a phone, not for a crowded live chart
   function pill(x, y, text, color, bg, size, align) {
     ctx.font = '800 ' + (size || 10) + 'px ui-monospace,monospace';
-    const w = ctx.measureText(text).width + 10, h = (size || 10) + 7;
+    const w = ctx.measureText(text).width + 12, h = (size || 10) + 9;
     let lx = x; if (align === 'right') lx = x - w; else if (align === 'center') lx = x - w / 2;
     ctx.fillStyle = bg || 'rgba(7,16,24,.92)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx, y - h / 2, w, h, 4) : ctx.rect(lx, y - h / 2, w, h); ctx.fill();
     ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
@@ -173,7 +200,7 @@
     if (xe > x0) {
       ctx.fillStyle = 'rgba(255,209,102,.045)'; ctx.fillRect(x0, pad.t, xe - x0, bottom - pad.t);
       ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(255,209,102,.35)'; ctx.beginPath(); ctx.moveTo(x0, pad.t); ctx.lineTo(x0, bottom); ctx.stroke(); ctx.restore();
-      ctx.font = '800 9px ui-monospace,monospace'; ctx.fillStyle = 'rgba(255,209,102,.7)'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText('PROJECTION · ' + sc.window.future + ' candles', x0 + 5, bottom - 6);
+      ctx.font = '800 12px ui-monospace,monospace'; ctx.fillStyle = 'rgba(255,209,102,.85)'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText('PROJECTION · ' + sc.window.future + ' candles', x0 + 6, bottom - 8);
     }
 
     /* zones */
@@ -184,21 +211,21 @@
       const x1 = Math.max(pad.l, x(z.from) - half), x2 = xe;
       ctx.fillStyle = 'rgba(' + col + ',.16)'; ctx.fillRect(x1, y(z.top), x2 - x1, y(z.bottom) - y(z.top));
       ctx.save(); ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(' + col + ',.8)'; ctx.lineWidth = 1.2; ctx.strokeRect(x1, y(z.top), x2 - x1, y(z.bottom) - y(z.top)); ctx.restore();
-      labels.push({ x: Math.max(x1 + 4, x0 - 150), y: y(z.top) + 9, text: z.label.toUpperCase(), color: 'rgb(' + col + ')', size: 9 });
+      labels.push({ x: Math.max(x1 + 4, x0 - 190), y: y(z.top) + 12, text: z.label.toUpperCase(), color: 'rgb(' + col + ')', size: 12, pill: true });
     }
     /* the pattern the idea leans on */
     if (sc.patternId && S.result && S.result.patterns && S.result.patterns.ok) {
       const pat = S.result.patterns.charts.find((c) => c.id === sc.patternId);
-      if (pat) { ctx.save(); ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 2; ctx.setLineDash([]); for (const l of pat.lines || []) { ctx.beginPath(); ctx.moveTo(x(l.i1), y(l.p1)); ctx.lineTo(x(l.i2), y(l.p2)); ctx.stroke(); } ctx.restore(); labels.push({ x: x(pat.startIdx), y: y(pat.points && pat.points.length ? Math.max(...pat.points.map((q) => q.p)) : pat.level) - 10, text: pat.name.toUpperCase(), color: '#c084fc', size: 9 }); }
+      if (pat) { ctx.save(); ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 3; ctx.setLineDash([]); for (const l of pat.lines || []) { ctx.beginPath(); ctx.moveTo(x(l.i1), y(l.p1)); ctx.lineTo(x(l.i2), y(l.p2)); ctx.stroke(); } ctx.restore(); labels.push({ x: x(pat.startIdx), y: y(pat.points && pat.points.length ? Math.max(...pat.points.map((q) => q.p)) : pat.level) - 14, text: pat.name.toUpperCase(), color: '#c084fc', size: 12, pill: true }); }
     }
     /* levels: entry, stop, targets and the idea's own levels */
-    const lines = [{ price: sc.entry, label: 'ENTRY ' + px(sc.entry), color: '#ffffff', dash: [6, 4], width: 1.2 }, { price: sc.stop, label: 'STOP ' + px(sc.stop), color: '#ff5470', dash: [6, 4], width: 1.4 }, { price: sc.target, label: 'TARGET ' + px(sc.target), color: '#00d084', dash: [6, 4], width: 1.4 }];
-    if (sc.target2 != null) lines.push({ price: sc.target2, label: 'T2 ' + px(sc.target2), color: '#00d084', dash: [2, 4], width: 1 });
-    for (const l of sc.levels) if (![sc.entry, sc.stop, sc.target].some((p) => Math.abs(p - l.price) < 1e-9)) lines.push({ price: l.price, label: l.label.toUpperCase() + ' ' + px(l.price), color: l.kind === 'liquidity' ? '#6bd0ff' : l.kind === 'vwap' ? '#ffd166' : l.kind === 'ema' ? '#ffa94d' : '#b9c8d1', dash: [1, 4], width: 1 });
+    const lines = [{ price: sc.entry, label: 'ENTRY ' + px(sc.entry), color: '#ffffff', dash: [8, 5], width: 1.8 }, { price: sc.stop, label: 'STOP ' + px(sc.stop), color: '#ff5470', dash: [8, 5], width: 2.2 }, { price: sc.target, label: 'TARGET ' + px(sc.target), color: '#00d084', dash: [8, 5], width: 2.2 }];
+    if (sc.target2 != null) lines.push({ price: sc.target2, label: 'T2 ' + px(sc.target2), color: '#00d084', dash: [3, 5], width: 1.4 });
+    for (const l of sc.levels) if (![sc.entry, sc.stop, sc.target].some((p) => Math.abs(p - l.price) < 1e-9)) lines.push({ price: l.price, label: l.label.toUpperCase() + ' ' + px(l.price), color: l.kind === 'liquidity' ? '#6bd0ff' : l.kind === 'vwap' ? '#ffd166' : l.kind === 'ema' ? '#ffa94d' : '#b9c8d1', dash: [2, 5], width: 1.4 });
     for (const l of lines) {
       if (!inY(l.price)) continue; const yy = y(l.price);
       ctx.save(); ctx.setLineDash(l.dash); ctx.strokeStyle = l.color; ctx.lineWidth = l.width; ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(right, yy); ctx.stroke(); ctx.restore();
-      labels.push({ x: right - 4, y: yy, text: l.label, color: l.color, size: 9, align: 'right', pill: true });
+      labels.push({ x: right - 6, y: yy, text: l.label, color: l.color, size: 12, align: 'right', pill: true });
     }
     /* invalidation band under the stop */
     if (inY(sc.stop)) { const yy = y(sc.stop); ctx.fillStyle = 'rgba(255,84,112,.08)'; if (s > 0) ctx.fillRect(x0, yy, Math.max(0, xe - x0), Math.max(0, bottom - yy)); else ctx.fillRect(x0, pad.t, Math.max(0, xe - x0), Math.max(0, yy - pad.t)); }
@@ -208,43 +235,62 @@
     if (pts.length > 1) {
       ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
       ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-      ctx.strokeStyle = 'rgba(0,0,0,.65)'; ctx.lineWidth = 6; ctx.stroke();
-      ctx.setLineDash([9, 6]); ctx.strokeStyle = accent; ctx.lineWidth = 2.6; ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 8; ctx.stroke();
+      ctx.setLineDash([12, 8]); ctx.strokeStyle = accent; ctx.lineWidth = 3.6; ctx.stroke();
       ctx.setLineDash([]);
       /* arrow head at the end */
       const a = pts[pts.length - 2], b = pts[pts.length - 1], ang = Math.atan2(b.y - a.y, b.x - a.x);
-      ctx.fillStyle = accent; ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - 11 * Math.cos(ang - 0.45), b.y - 11 * Math.sin(ang - 0.45)); ctx.lineTo(b.x - 11 * Math.cos(ang + 0.45), b.y - 11 * Math.sin(ang + 0.45)); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = accent; ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - 16 * Math.cos(ang - 0.45), b.y - 16 * Math.sin(ang - 0.45)); ctx.lineTo(b.x - 16 * Math.cos(ang + 0.45), b.y - 16 * Math.sin(ang + 0.45)); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
     /* numbered steps */
     sc.steps.forEach((st, k) => {
       const cx = x(st.i), cy = y(st.p);
-      ctx.beginPath(); ctx.arc(cx, cy, 10, 0, 6.3); ctx.fillStyle = k === 0 ? '#ffffff' : accent; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = '#071018'; ctx.font = '900 11px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(st.n), cx, cy + 0.5);
-      const short = st.text.split(/[.:]/)[0].replace(/^Entry [0-9.]+/, 'Entry').slice(0, 34);
-      labels.push({ x: cx + 14, y: cy + (k % 2 ? 14 : -14), text: st.n + ' · ' + short, color: '#eaf3f6', size: 9, pill: true });
+      ctx.beginPath(); ctx.arc(cx, cy, 14, 0, 6.3); ctx.fillStyle = k === 0 ? '#ffffff' : accent; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.fillStyle = '#071018'; ctx.font = '900 15px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(st.n), cx, cy + 0.5);
+      const short = st.text.split(/[.:]/)[0].replace(/^Entry [0-9.]+/, 'Entry').slice(0, 38);
+      labels.push({ x: cx + 18, y: cy + (k % 2 ? 19 : -19), text: st.n + ' · ' + short, color: '#eaf3f6', size: 12, pill: true });
     });
     /* labels, nudged apart when the chart layout helper is present */
-    const boxes = labels.map((l) => { ctx.font = '800 ' + l.size + 'px ui-monospace,monospace'; const tw = ctx.measureText(l.text).width + 10; return { x: l.align === 'right' ? l.x - tw : l.x, y: l.y - (l.size + 7) / 2, w: tw, h: l.size + 7, label: l }; });
+    const boxes = labels.map((l) => { ctx.font = '800 ' + l.size + 'px ui-monospace,monospace'; const tw = ctx.measureText(l.text).width + 12; return { x: l.align === 'right' ? l.x - tw : l.x, y: l.y - (l.size + 9) / 2, w: tw, h: l.size + 9, label: l }; });
     const placed = layout && layout.avoidOverlap ? layout.avoidOverlap(boxes) : boxes;
     for (const b of placed) { const l = b.label; if (l.pill || l.align === 'right') pill(b.x, b.y + b.h / 2, l.text, l.color, 'rgba(7,16,24,.92)', l.size, 'left'); else { ctx.font = '800 ' + l.size + 'px ui-monospace,monospace'; ctx.fillStyle = l.color; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(l.text, b.x, b.y + b.h / 2); } }
     ctx.restore();
 
-    /* title card, top-left: what is drawn, how well the chart supports it, and the member's own call */
+    /* title card, top-left: what is drawn, how well the chart supports it, and the member's own call; under it the insights
+       a reader needs to understand the picture without the panel (the route in short, the invalidation, the options note) */
     const M2 = window.smlChartModel(); const st = E.STRATEGIES[sc.mode] || {};
     const picked = S.picks[M2.symbol + ':' + sc.mode] === sc.id;
-    const t1 = 'SCENARIO ' + sc.rank + ' · ' + sc.title.toUpperCase(), t2 = (st.label || sc.mode) + ' · ' + (sc.side === 'long' ? 'LONG' : 'SHORT') + ' · fit ' + sc.fit + (sc.rr != null ? ' · R:R ' + sc.rr.toFixed(1) : ''), t3 = sc.invalidation.text.replace(/ \(.*\)$/, '');
-    ctx.font = '900 11px system-ui,sans-serif'; const w1 = ctx.measureText(t1).width; ctx.font = '700 9.5px ui-monospace,monospace'; const w2 = Math.max(ctx.measureText(t2).width, ctx.measureText(t3).width);
-    const cw = Math.min(M.pw - 20, Math.max(w1, w2) + 22), ch = picked ? 64 : 52, cx0 = pad.l + 8, cy0 = pad.t + 8;
-    ctx.fillStyle = 'rgba(7,16,24,.93)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx0, cy0, cw, ch, 8) : ctx.rect(cx0, cy0, cw, ch); ctx.fill(); ctx.strokeStyle = picked ? '#ffd166' : accent; ctx.lineWidth = 1.2; ctx.stroke();
+    const wrap = (text, max) => { const out = []; let line = ''; for (const word of String(text).split(/\s+/)) { if ((line + ' ' + word).trim().length > max && line) { out.push(line); line = word; } else line = (line + ' ' + word).trim(); } if (line) out.push(line); return out; };
+    const maxChars = Math.max(34, Math.min(78, Math.floor((M.pw - 40) / 7.4)));
+    const t1 = 'SCENARIO ' + sc.rank + ' · ' + sc.title.toUpperCase();
+    const t2 = '$' + M2.symbol + ' · ' + (st.label || sc.mode) + ' · ' + (sc.side === 'long' ? 'LONG' : 'SHORT') + ' · fit ' + sc.fit + '/100' + (sc.rr != null ? ' · R:R ' + sc.rr.toFixed(1) : '') + ' · entry ' + px(sc.entry) + ' · stop ' + px(sc.stop) + ' · target ' + px(sc.target);
+    const insight = [];
+    sc.steps.slice(0, 4).forEach((s2) => insight.push(...wrap(s2.n + '. ' + s2.text.replace(/\.$/, ''), maxChars).slice(0, 2)));
+    const invLines = wrap('✕ ' + sc.invalidation.text.replace(/ \(.*\)$/, ''), maxChars).slice(0, 2);
+    const whyLines = wrap('Why: ' + sc.why, maxChars).slice(0, 2);
+    const optLine = wrap('Options: ' + sc.options.side + ', ' + sc.options.expiry + ', strike ' + sc.options.strike, maxChars).slice(0, 2);
+    ctx.font = '900 15px system-ui,sans-serif'; const w1 = ctx.measureText(t1).width; ctx.font = '700 12px ui-monospace,monospace';
+    const allLines = [...insight, ...whyLines, ...invLines, ...optLine];
+    const w2 = Math.max(ctx.measureText(t2).width, ...allLines.map((l) => ctx.measureText(l).width));
+    const cw = Math.min(M.pw - 20, Math.max(w1, w2) + 28), lineH = 16;
+    const ch = 46 + (picked ? 20 : 0) + 10 + allLines.length * lineH + 8, cx0 = pad.l + 10, cy0 = pad.t + 10;
+    ctx.fillStyle = 'rgba(7,16,24,.94)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx0, cy0, cw, ch, 10) : ctx.rect(cx0, cy0, cw, ch); ctx.fill(); ctx.strokeStyle = picked ? '#ffd166' : accent; ctx.lineWidth = 1.6; ctx.stroke();
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.font = '900 11px system-ui,sans-serif'; ctx.fillStyle = accent; ctx.fillText(t1, cx0 + 10, cy0 + 17);
-    ctx.font = '700 9.5px ui-monospace,monospace'; ctx.fillStyle = '#dbe6ec'; ctx.fillText(t2, cx0 + 10, cy0 + 31); ctx.fillStyle = '#ffb3c0'; ctx.fillText(t3, cx0 + 10, cy0 + 44);
-    if (picked) { ctx.fillStyle = '#ffd166'; ctx.font = '900 9.5px ui-monospace,monospace'; ctx.fillText('★ MY PICK out of the 5 · MEM ALGO SCENARIOS', cx0 + 10, cy0 + 57); }
+    ctx.font = '900 15px system-ui,sans-serif'; ctx.fillStyle = accent; ctx.fillText(t1, cx0 + 12, cy0 + 22);
+    ctx.font = '700 12px ui-monospace,monospace'; ctx.fillStyle = '#dbe6ec'; ctx.fillText(t2, cx0 + 12, cy0 + 40);
+    let yy2 = cy0 + 40;
+    if (picked) { yy2 += 19; ctx.fillStyle = '#ffd166'; ctx.font = '900 12px ui-monospace,monospace'; ctx.fillText('★ MY PICK out of the 5 · MEM ALGO SCENARIOS', cx0 + 12, yy2); }
+    yy2 += 8; ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx0 + 12, yy2 + 2); ctx.lineTo(cx0 + cw - 12, yy2 + 2); ctx.stroke();
+    ctx.font = '700 12px ui-monospace,monospace';
+    for (const l of insight) { yy2 += lineH; ctx.fillStyle = '#eaf3f6'; ctx.fillText(l, cx0 + 12, yy2); }
+    for (const l of whyLines) { yy2 += lineH; ctx.fillStyle = '#9fe8c0'; ctx.fillText(l, cx0 + 12, yy2); }
+    for (const l of invLines) { yy2 += lineH; ctx.fillStyle = '#ffb3c0'; ctx.fillText(l, cx0 + 12, yy2); }
+    for (const l of optLine) { yy2 += lineH; ctx.fillStyle = '#9cc8ff'; ctx.fillText(l, cx0 + 12, yy2); }
   }
 
   window.addEventListener('sml-chart-view', () => { try { draw(); } catch (_) { /* chart not ready */ } });
   window.addEventListener('sml-mem-algo-state', () => { const r = compute(false); if (r) draw(); });
   window.addEventListener('sml-academy-market', () => { S.shown = null; setTimeout(() => { compute(true); draw(); }, 400); });
-  window.smlMemScenarios = { sectionHtml, onClick, compute, draw, current, clear: () => { S.shown = null; draw(); } };
+  window.smlMemScenarios = { sectionHtml, onClick, compute, draw, current, clear: () => { if (S.shown) { S.shown = null; restoreView(); } draw(); } };
 })();
