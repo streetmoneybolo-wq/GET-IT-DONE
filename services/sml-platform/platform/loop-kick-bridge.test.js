@@ -61,3 +61,21 @@ test('maps network failures and junk answers to loop_kick_unavailable', async ()
   const junk = bridgeWith(async () => ({ ok: true, status: 200, json: async () => ({ nope: 1 }) }));
   assert.equal((await junk.session('123456789012345678')).error, 'loop_kick_unavailable');
 });
+
+test('activity: the linked member\'s recent site activity, signed like profile(); an older site without the route says so', async () => {
+  let seen = null;
+  const bridge = bridgeWith(async (url, init) => { seen = { url, init }; return { ok: true, status: 200, json: async () => ({ ok: true, linked: true, user: { id: 7, handle: 'ana' }, items: [{ kind: 'post', id: '1' }, null, 'x'] }) }; });
+  const r = await bridge.activity('123456789012345678', 5);
+  assert.equal(r.ok, true); assert.equal(r.linked, true); assert.equal(r.user.handle, 'ana'); assert.deepEqual(r.items, [{ kind: 'post', id: '1' }]);
+  assert.equal(seen.url, 'https://site.example/wp-json/sml-loop-kick/v1/discord-activity');
+  assert.deepEqual(JSON.parse(seen.init.body), { discord_user_id: '123456789012345678', limit: 5 });
+  const ts = seen.init.headers['x-sml-lk-timestamp'], bodyHash = crypto.createHash('sha256').update(seen.init.body).digest('hex');
+  assert.equal(seen.init.headers['x-sml-lk-signature'], 'sha256=' + crypto.createHmac('sha256', SECRET).update(`${ts}./wp-json/sml-loop-kick/v1/discord-activity.${bodyHash}`).digest('hex'));
+  assert.equal((await bridge.activity('bad')).error, 'invalid_discord_user');
+  const unlinked = await bridgeWith(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, linked: false }) })).activity('123456789012345678');
+  assert.equal(unlinked.linked, false); assert.deepEqual(unlinked.items, []); assert.equal(unlinked.user, null);
+  const old = await bridgeWith(async () => ({ ok: false, status: 404, json: async () => ({ code: 'rest_no_route' }) })).activity('123456789012345678');
+  assert.equal(old.error, 'activity_unconfigured');
+  const off = await bridgeWith(async () => { throw new Error('nope'); }, { secret: '' }).activity('123456789012345678');
+  assert.equal(off.error, 'loop_kick_unconfigured');
+});

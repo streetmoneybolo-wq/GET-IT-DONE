@@ -176,6 +176,19 @@ function createTickerTalk({ pool = null, now = Date.now, logger = () => {}, link
     return { ok: true, symbol, comments: roots, hasMore, count: total };
   }
 
+  /* one member's comments across every ticker, newest first (their Academy profile page); a reply carries its root's id */
+  async function byAuthor(authorId, limit = 7) {
+    const who = String(authorId || ''); if (!SNOWFLAKE.test(who)) return [];
+    const n = Math.max(1, Math.min(50, Number(limit) || 7));
+    if (db) {
+      try {
+        const r = await db.query('SELECT t.*, (SELECT count(*)::int FROM academy_ticker_talk c WHERE c.parent_id = t.id AND c.deleted_at IS NULL) AS reply_count FROM academy_ticker_talk t WHERE t.author_id = $1 AND t.deleted_at IS NULL ORDER BY t.id DESC LIMIT $2', [who, n]);
+        return r.rows.map((row) => Object.assign(out(row), { replyCount: Number(row.reply_count) || 0 }));
+      } catch (error) { logger('warn', 'academy_ticker_talk_read_failed', { error: String(error && error.message || error) }); return []; }
+    }
+    return mem.filter((m) => m.authorId === who && !m.deletedAt).sort((a, b) => b.id - a.id).slice(0, n).map((m) => Object.assign(memOut(m), { replyCount: mem.filter((c) => String(c.parentId) === String(m.id) && !c.deletedAt).length }));
+  }
+
   async function count(symbolRaw) {
     const symbol = cleanSymbol(symbolRaw); if (!symbol) return 0;
     if (db) { try { return Number((await db.query('SELECT count(*)::int AS n FROM academy_ticker_talk WHERE symbol = $1 AND deleted_at IS NULL', [symbol])).rows[0].n) || 0; } catch (_) { return 0; } }
@@ -225,7 +238,7 @@ function createTickerTalk({ pool = null, now = Date.now, logger = () => {}, link
     const m = media.get(String(id)); return m ? { contentType: m.contentType, bytes: m.bytes } : null;
   }
 
-  return { configured: !!db, ensureSchema, post, list, count, remove, storeImage, image, MAX_BODY, MAX_IMAGE_BYTES, MAX_IMAGES };
+  return { configured: !!db, ensureSchema, post, list, count, byAuthor, remove, storeImage, image, MAX_BODY, MAX_IMAGE_BYTES, MAX_IMAGES };
 }
 
 module.exports = { createTickerTalk, classifyLink, isDiscordLink, extractLinks, extractCashtags, youtubeId, sniffImage, cleanSymbol, MAX_BODY, MAX_IMAGE_BYTES, MAX_IMAGES };

@@ -323,6 +323,13 @@
     logEl.innerHTML = '<p class="academy-chat-empty">Loading…</p>';
     send({ type: 'join', channel: key });
   }
+  /* other modules (the profile page's chat feed) open a room: joined, and scrolled into view */
+  window.smlAcademyChatOpen = (key) => {
+    const k = buttons.has(key) ? key : 'global';
+    if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) connect();
+    join(k);
+    const box = document.querySelector('.academy-chat'); if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   function connect() {
     const token = window.smlAcademySessionToken;

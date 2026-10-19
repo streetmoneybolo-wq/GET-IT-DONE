@@ -1877,7 +1877,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   memberEmail = null, siteExportSink = null, linkTracker = null, verifyGate = null,
   appApi = null,
   /* Academy data services and the challenge/paper surfaces live in main(); the handler only sees what is passed here */
-  academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null, academyFlowDaily = null, academySignalOutcomes = null, optionBars = null,
+  academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null, academyFlowDaily = null, academySignalOutcomes = null, optionBars = null, tickerTalk = null,
   getEarningsPlaybook = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null,
@@ -3738,7 +3738,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     /* Ticker Talk: comments on a ticker's chart. Signed-in members read, post, reply, tag members, attach pictures and links.
        <img> cannot send a header, so the image routes take the session token as ?t= like the profile pages do. */
     if (path === '/academy-activity/talk' || path.startsWith('/academy-activity/talk/')) {
-      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      if (!academyOAuth || !tickerTalk) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const tq = new URL(request.url || '/', 'http://localhost').searchParams;
       const imageRead = request.method === 'GET' && (path === '/academy-activity/talk/link-image' || /^\/academy-activity\/talk\/image\/\d+$/.test(path));
       const authz = request.headers.authorization || (imageRead && tq.get('t') ? 'Bearer ' + tq.get('t') : '');
@@ -4744,7 +4744,7 @@ async function main() {
   void academyProfileWall.ensureSchema();
   const academyProfilePages = process.env.ACADEMY_PROFILE_PAGES === 'off' ? null : createProfilePages({
     pool: database.pool, chat: createChatStore({ pool: database.pool }), paper: academyPaper, tierLive: academyTierLive,
-    directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), wall: academyProfileWall, logger: log
+    directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), wall: academyProfileWall, talk: () => tickerTalk, bridge: loopKickBridge, logger: log
   });
   if (academyProfilePages) void academyProfilePages.ensureSchema();
   const academyProfiles = process.env.ACADEMY_PROFILE_CARDS === 'off' ? null : createProfileService({ directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), bridge: loopKickBridge, logger: log });
@@ -5077,7 +5077,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,

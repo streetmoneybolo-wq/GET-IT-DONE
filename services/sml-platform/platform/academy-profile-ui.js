@@ -72,6 +72,12 @@
     + '.pv-links{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}.pv-link{display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.08);border-radius:10px;overflow:hidden;background:rgba(255,255,255,.03);cursor:pointer;text-align:left;color:inherit;padding:0}.pv-link:hover{border-color:var(--acc,#00c47d)}.pv-link img{width:100%;height:82px;object-fit:cover;display:block;background:#0b1424}.pv-link .ph{height:82px;display:flex;align-items:center;justify-content:center;font:900 1.6rem system-ui;color:var(--acc,#00c47d);background:linear-gradient(135deg,rgba(255,255,255,.04),rgba(255,255,255,.01))}.pv-link .t{padding:7px 9px;font:700 .66rem system-ui,sans-serif;color:#e6eef2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pv-link .t small{display:block;color:#7f95a1;font-weight:500}'
     + '.pv-feed{display:flex;flex-direction:column;gap:8px}.pv-post{padding:9px 11px;border-radius:10px;background:rgba(255,255,255,.035);border-left:3px solid var(--acc,#00c47d)}.pv-post .m{display:flex;gap:8px;align-items:center;font:800 .54rem ui-monospace,monospace;letter-spacing:.08em;color:#7f95a1;margin-bottom:3px}.pv-post .m i{font-style:normal;color:var(--acc,#00c47d)}.pv-post p{margin:0;color:#e6eef2;white-space:pre-wrap;word-break:break-word}'
     + '.pv-empty{color:#7f95a1;font-weight:500}'
+    /* the ACTIVITY module: Ticker Talk comments, Academy chat posts and the member's stockmarketloop.com activity, one tab each */
+    + '.pv-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}.pv-tabs button{border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.04);color:#cfd9e2;padding:5px 11px;font:800 .62rem system-ui,sans-serif;cursor:pointer}.pv-tabs button.on{border-color:var(--acc,#00c47d);color:#fff;background:color-mix(in srgb,var(--acc,#00c47d) 18%,transparent)}.pv-tabs button i{font-style:normal;opacity:.7;margin-left:3px}'
+    + '.pv-acts{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap}.pv-acts button{border:0;background:none;padding:0;color:var(--acc,#00c47d);font:800 .6rem ui-monospace,monospace;cursor:pointer;letter-spacing:.04em}.pv-acts button:hover{text-decoration:underline}'
+    + '.pv-replybox{display:flex;gap:6px;margin-top:6px;align-items:flex-end}.pv-replybox textarea{flex:1;min-height:44px;max-height:140px;resize:vertical;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(0,0,0,.25);color:#e6eef2;padding:6px 8px;font:500 .7rem/1.4 system-ui,sans-serif}'
+    + '.pv-post b.t{display:block;color:#fff;margin:2px 0;font:800 .76rem system-ui,sans-serif}.pv-post small.on{display:block;color:#8fa5b1;margin-top:3px}.pv-post small.on button{border:0;background:none;color:var(--acc,#00c47d);font:700 .62rem system-ui,sans-serif;cursor:pointer;padding:0}.pv-post .m i.sym{cursor:pointer}'
+    + '.pv-site-who{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 8px;color:#cfd9e2}.pv-site-who button{border:1px solid rgba(255,255,255,.14);border-radius:999px;background:rgba(255,255,255,.04);color:#e6eef2;padding:4px 10px;font:800 .6rem system-ui,sans-serif;cursor:pointer}.pv-site-who button:hover{border-color:var(--acc,#00c47d)}'
     + '.pv-srv{display:flex;gap:10px;align-items:center}.pv-srv .ic{width:40px;height:40px;border-radius:12px;background:#5865f2;display:flex;align-items:center;justify-content:center;font:900 1rem system-ui;color:#fff;flex:none}.pv-srv b{display:block;color:#fff;font-size:.82rem}.pv-srv small{color:#8fa5b1}'
     /* fonts */
     + '.pv-root.f-mono{font-family:ui-monospace,Menlo,Consolas,monospace}.pv-root.f-serif{font-family:Georgia,"Times New Roman",serif}.pv-root.f-serif .pv-name{font-family:Georgia,serif;font-weight:700}.pv-root.f-display .pv-name{font-size:2.2rem;letter-spacing:-.03em;text-transform:uppercase}.pv-root.f-rounded{font-family:"Segoe UI Rounded","Nunito",system-ui,sans-serif}.pv-root.f-rounded .pv-sec{border-radius:22px}'
@@ -120,7 +126,7 @@
   let toastTm = 0; const toast = (t) => { toastEl.textContent = t; toastEl.style.display = 'block'; clearTimeout(toastTm); toastTm = setTimeout(() => { toastEl.style.display = 'none'; }, 3800); };
   document.body.appendChild(view); document.body.appendChild(edit); document.body.appendChild(toastEl);
 
-  const S = { open: false, userId: '', data: null, draft: null, saving: false, fx: null };
+  const S = { open: false, userId: '', data: null, draft: null, saving: false, fx: null, tab: 'talk', chatAll: false };
 
   /* ---------- background effects, pulsing with the song when one plays here ---------- */
   const CHN = ['kick', 'bass', 'vocal', 'snare', 'hats'];
@@ -182,6 +188,53 @@
       + (w.more ? '<button type="button" class="pv-btn pv-more" data-pv="wallmore">Load older comments</button>' : '') + '</section>';
   }
   function paintWall() { const d = S.data, host = view.querySelector('.pv-wall-wrap'); if (d && host) host.innerHTML = wallHtml(d); }
+  /* ---------- ACTIVITY: the member's last Ticker Talk comments (the comment section on every chart), their Academy chat posts, and
+     their recent activity on stockmarketloop.com (posts, comments, their social feed; the site answers through the LOOP-KICK bridge for a
+     member who connected their site account). Every item opens where it lives: a Ticker Talk comment opens that chart with the
+     comment in view and can be replied to right here; a chat post opens that room; a site item opens the page on the site. ---------- */
+  const TALK_SHOW = 7, CHAT_SHOW = 7;
+  const SITE_KIND = { post: 'POST', comment: 'COMMENT', stream: 'FEED' };
+  const clip = (t, n) => { const x = String(t || '').replace(/\s+/g, ' ').trim(); return x.length > n ? x.slice(0, n - 1) + '\u2026' : x; };
+  function talkRow(c) {
+    const root = c.parentId || c.id;
+    return '<div class="pv-post pv-talk" data-talk="' + esc(c.id) + '"><div class="m"><i class="sym" data-pv="talkopen" data-sym="' + esc(c.symbol) + '" data-id="' + esc(c.id) + '">$' + esc(c.symbol) + '</i><span>' + esc(ago(c.createdAt)) + '</span>' + (c.parentId ? '<span>reply</span>' : '') + (c.replyCount ? '<span>' + c.replyCount + (c.replyCount === 1 ? ' reply' : ' replies') + '</span>' : '') + (c.images ? '<span>\uD83D\uDDBC ' + c.images + '</span>' : '') + (c.links ? '<span>\uD83D\uDD17 ' + c.links + '</span>' : '') + '</div>'
+      + '<p>' + esc(clip(c.body, 280)) + '</p>'
+      + '<div class="pv-acts"><button type="button" data-pv="talkopen" data-sym="' + esc(c.symbol) + '" data-id="' + esc(c.id) + '">Open on the chart</button><button type="button" data-pv="talkreply" data-id="' + esc(c.id) + '">Reply</button></div>'
+      + '<div class="pv-replybox" hidden><textarea maxlength="2000" placeholder="Reply on $' + esc(c.symbol) + ' Ticker Talk\u2026"></textarea><button type="button" class="pv-btn acc" data-pv="talksend" data-sym="' + esc(c.symbol) + '" data-root="' + esc(root) + '" data-id="' + esc(c.id) + '">Send</button></div></div>';
+  }
+  const chatRow = (p) => '<div class="pv-post"><div class="m"><i>' + esc(ROOMS[p.channel] || p.channel) + '</i><span>' + esc(ago(p.createdAt)) + '</span>' + (p.reply ? '<span>reply</span>' : '') + (p.score ? '<span>\u25B2 ' + p.score + '</span>' : '') + '</div><p>' + esc(p.body) + '</p><div class="pv-acts"><button type="button" data-pv="chatopen" data-room="' + esc(p.channel) + '">Open the room</button></div></div>';
+  function siteRow(x) {
+    const commentUrl = x.kind === 'post' && x.url ? x.url + '#respond' : x.kind === 'comment' && x.post && x.post.url ? x.post.url + '#respond' : '';
+    return '<div class="pv-post pv-site"><div class="m"><i>' + esc(SITE_KIND[x.kind] || 'SITE') + '</i>' + (x.kind === 'post' && x.type ? '<span>' + esc(x.type) + '</span>' : '') + '<span>' + esc(ago(x.date)) + '</span>' + (x.symbol ? '<span>$' + esc(x.symbol) + '</span>' : '') + (x.likes ? '<span>\u2665 ' + x.likes + '</span>' : '') + (x.comments ? '<span>\uD83D\uDCAC ' + x.comments + '</span>' : '') + '</div>'
+      + (x.title ? '<b class="t">' + esc(x.title) + '</b>' : '') + (x.text ? '<p>' + esc(clip(x.text, 240)) + '</p>' : '')
+      + (x.kind === 'comment' && x.post && x.post.title ? '<small class="on">on ' + (x.post.url ? '<button type="button" data-pv="open" data-url="' + esc(x.post.url) + '">' + esc(x.post.title) + '</button>' : esc(x.post.title)) + '</small>' : '')
+      + '<div class="pv-acts">' + (x.url ? '<button type="button" data-pv="open" data-url="' + esc(x.url) + '">Open on stockmarketloop.com \u2197</button>' : '') + (commentUrl ? '<button type="button" data-pv="open" data-url="' + esc(commentUrl) + '">Comment \u2197</button>' : '') + '</div></div>';
+  }
+  function siteHtml(d, site) {
+    if (!site) return '<p class="pv-empty">' + (d.own ? 'Your stockmarketloop.com activity is not available right now.' : 'stockmarketloop.com activity is not available right now.') + '</p>';
+    if (site.unavailable) return '<p class="pv-empty">stockmarketloop.com did not answer just now. It will show here on the next load.</p>';
+    if (!site.linked) return '<p class="pv-empty">' + (d.own ? 'Connect your stockmarketloop.com account (LOOP-KICK \u2192 Connect) and your posts, comments and feed from the site show here.' : 'This member has not connected a stockmarketloop.com account yet.') + '</p>';
+    const u = site.user || {};
+    const who = '<div class="pv-site-who">' + (u.handle ? '<b>@' + esc(u.handle) + '</b>' : '') + (u.name && u.name !== u.handle ? '<span>' + esc(u.name) + '</span>' : '') + (u.profileUrl ? '<button type="button" data-pv="open" data-url="' + esc(u.profileUrl) + '">View on stockmarketloop.com \u2197</button>' : '') + '</div>';
+    const items = site.items || [];
+    return who + (items.length ? items.map(siteRow).join('') : '<p class="pv-empty">No posts or comments on the site yet.</p>');
+  }
+  function activityBody(d) {
+    const s = d.settings, talk = s.flags.showTalk === false ? null : (d.talk || []), chat = s.flags.showFeed === false ? null : (d.posts || []), site = s.flags.showSite === false ? null : (d.site || null);
+    const tabs = [];
+    if (talk) tabs.push(['talk', 'Ticker Talk', talk.length]);
+    if (chat) tabs.push(['chat', 'Academy chat', chat.length + (chat.length >= 30 ? '+' : '')]);
+    if (s.flags.showSite !== false && (site || d.own)) tabs.push(['site', 'stockmarketloop.com', site && site.items ? site.items.length : 0]);
+    if (!tabs.length) return '';
+    if (!tabs.some((t) => t[0] === S.tab)) S.tab = tabs[0][0];
+    let body = '';
+    if (S.tab === 'talk') body = talk.length ? talk.slice(0, TALK_SHOW).map(talkRow).join('') : '<p class="pv-empty">No Ticker Talk comments yet. Open any chart and tap TALK.</p>';
+    else if (S.tab === 'chat') body = chat.length ? (S.chatAll ? chat : chat.slice(0, CHAT_SHOW)).map(chatRow).join('') + (chat.length > CHAT_SHOW && !S.chatAll ? '<button type="button" class="pv-btn pv-more" data-pv="chatall">Show all ' + chat.length + (chat.length >= 30 ? '+' : '') + ' posts</button>' : '') : '<p class="pv-empty">No chat posts yet.</p>';
+    else body = siteHtml(d, site);
+    return '<div class="pv-tabs">' + tabs.map(([k, l, n]) => '<button type="button" data-ptab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + esc(l) + ' <i>' + esc(n) + '</i></button>').join('') + '</div><div class="pv-feed">' + body + '</div>';
+  }
+  /* a tab switch repaints the module's inside only: the desk scene's textures and 3D stay on the section */
+  function paintActivity() { const d = S.data, host = view.querySelector('.pv-sec.feed .pv-act'); if (d && host) host.innerHTML = activityBody(d); }
   /* ---------- rendering ---------- */
   const sec = (name, title, body, hidden) => '<section class="pv-sec ' + name + (hidden ? ' hidden' : '') + '">' + (title ? '<h6>' + esc(title) + '</h6>' : '') + body + '</section>';
   function render() {
@@ -205,8 +258,8 @@
     h += sec('song', 'Song', song ? '<div class="pv-song' + (MU && MU.isPlaying() ? ' playing' : '') + '"><div class="disc"></div><div style="min-width:0;flex:1">' + (canPlay ? '' : '<div class="ttl">' + esc(song.title || 'Profile song') + '</div><div class="sub">Song unavailable</div>') + (canPlay ? '<div class="pv-bars">' + '<i></i>'.repeat(14) + '</div>' : '') + '</div></div>' + (canPlay ? '<div class="pv-slot"></div>' : '') : '<p class="pv-empty">' + (d.own ? 'Add one song in Customize.' : 'No song yet.') + '</p>', !song && !d.own);
     const socials = s.socials || [];
     h += sec('social', 'Links', socials.length ? '<div class="pv-links">' + socials.map((x) => '<button type="button" class="pv-link" data-pv="open" data-url="' + esc(x.url) + '">' + (x.card && x.card.image ? '<img alt="" loading="lazy" src="/academy-activity/profiles/link-image?u=' + encodeURIComponent(x.card.image) + '&t=' + encodeURIComponent(token()) + '">' : '<div class="ph">' + esc(SOCIAL_ICON[x.kind] || '↗') + '</div>') + '<span class="t">' + esc(x.title || (x.card && x.card.title) || x.kind) + '<small>' + esc((x.card && x.card.site) || x.kind) + '</small></span></button>').join('') + '</div>' : '<p class="pv-empty">' + (d.own ? 'Add your social links in Customize.' : 'No links yet.') + '</p>', s.flags.showSocials === false || (!socials.length && !d.own));
-    const posts = d.posts || [];
-    h += sec('feed', 'Posts in the Academy chat', posts.length ? '<div class="pv-feed">' + posts.map((p) => '<div class="pv-post"><div class="m"><i>' + esc(ROOMS[p.channel] || p.channel) + '</i><span>' + esc(ago(p.createdAt)) + '</span>' + (p.reply ? '<span>reply</span>' : '') + (p.score ? '<span>▲ ' + p.score + '</span>' : '') + '</div><p>' + esc(p.body) + '</p></div>').join('') + '</div>' : '<p class="pv-empty">No posts yet.</p>', s.flags.showFeed === false);
+    const act = activityBody(d);
+    h += sec('feed', 'Activity', '<div class="pv-act">' + act + '</div>', !act);
     h += '</div>';
     h += '<div class="pv-wall-wrap">' + wallHtml(d) + '</div>';
     view.innerHTML = h;
@@ -294,7 +347,7 @@
       + deskControls(t)
       + '<h6>SONG (ONE)</h6>' + (d.song && d.song.upload ? '<div class="pv-soc"><span>🎵 Uploaded: ' + esc(d.song.title || 'My song') + '</span><button type="button" data-pv="rmsong">remove</button></div>' : '') + '<div class="pv-row"><button type="button" class="pv-btn acc" data-pv="pickaudio" style="flex:1">⬆ Upload a song from your device</button><input type="file" data-audiofile accept="audio/*,.mp3,.m4a,.aac,.ogg,.wav,.flac,.opus" style="display:none"></div><p class="pv-note" data-upnote>MP3, M4A, AAC, OGG, WAV or FLAC, up to 50 MB. Use music you made or have the rights to. It plays here without any setup, and the page moves to its kick, bass, vocals, snare and hi-hats.</p><p class="pv-note">Or paste a direct link to an MP3/M4A file:</p><input type="url" data-song="url" placeholder="https://… a direct .mp3 or .m4a file" value="' + esc(d.song && !d.song.upload ? d.song.url : '') + '"><div class="pv-row"><input type="text" data-song="title" maxlength="80" placeholder="Song title" value="' + esc(d.song ? d.song.title : '') + '"></div>'
       + '<h6>LINKS</h6>' + LINK_KINDS.map(([k, label, hint]) => { const cur = (d.socials || []).find((x) => x.kind === k); return '<div class="pv-row" style="align-items:center"><span style="flex:none;width:34px;text-align:center;color:#cfe3ea" title="' + esc(label) + '">' + esc(SOCIAL_ICON[k]) + '</span><input type="url" data-link="' + k + '" value="' + esc(cur ? cur.url : '') + '" placeholder="' + esc(label + ' · ' + hint) + '"></div>'; }).join('') + '<p class="pv-note">One link of each kind. Paste the full https:// address; the kind is checked against the site.</p>'
-      + '<h6>SHOW ON MY PAGE</h6>' + [['showPaper', 'Paper trading account and rank'], ['showServer', 'Main Discord server'], ['showSocials', 'Links'], ['showFeed', 'My chat posts'], ['showFollowers', 'Follower counts'], ['showWall', 'Trading Wall (members can leave comments)']].map(([k, l]) => '<label class="pv-chk"><input type="checkbox" data-flag="' + k + '"' + (d.flags[k] === false ? '' : ' checked') + '> ' + l + '</label>').join('')
+      + '<h6>SHOW ON MY PAGE</h6>' + [['showPaper', 'Paper trading account and rank'], ['showServer', 'Main Discord server'], ['showSocials', 'Links'], ['showTalk', 'My Ticker Talk comments'], ['showFeed', 'My chat posts'], ['showSite', 'My stockmarketloop.com activity (posts, comments, feed)'], ['showFollowers', 'Follower counts'], ['showWall', 'Trading Wall (members can leave comments)']].map(([k, l]) => '<label class="pv-chk"><input type="checkbox" data-flag="' + k + '"' + (d.flags[k] === false ? '' : ' checked') + '> ' + l + '</label>').join('')
       + '<div class="pv-ft"><button type="button" class="pv-btn acc" data-pv="save">💾 Save profile</button><button type="button" class="pv-btn" data-pv="cancel">Cancel</button></div>';
   }
   const preview = () => { if (S.data && S.draft) { S.data.settings = JSON.parse(JSON.stringify(S.draft)); render(); } };
@@ -387,9 +440,26 @@
 
   /* ---------- page buttons ---------- */
   view.addEventListener('click', async (e) => {
+    const tab = e.target.closest('[data-ptab]'); if (tab) { S.tab = tab.dataset.ptab; paintActivity(); return; }
     const b = e.target.closest('[data-pv]'); if (!b) return;
     const a = b.dataset.pv;
     if (a === 'close') close();
+    else if (a === 'chatall') { S.chatAll = true; paintActivity(); }
+    else if (a === 'talkopen') { const sym = b.dataset.sym, id = b.dataset.id; close(); if (window.smlTickerTalk && window.smlTickerTalk.openComment) void window.smlTickerTalk.openComment(sym, id); else toast('Open the chart and tap TALK to see Ticker Talk.'); }
+    else if (a === 'talkreply') { const row = b.closest('.pv-talk'), box = row && row.querySelector('.pv-replybox'); if (box) { box.hidden = !box.hidden; if (!box.hidden) { const ta = box.querySelector('textarea'); if (ta) ta.focus(); } } }
+    else if (a === 'talksend') {
+      const box = b.closest('.pv-replybox'), ta = box && box.querySelector('textarea'), body = ta ? String(ta.value || '').trim() : '';
+      if (!body) { toast('Write your reply first.'); return; }
+      b.disabled = true;
+      let r = null;
+      try { const res = await fetch('/academy-activity/talk/' + encodeURIComponent(b.dataset.sym), { method: 'POST', headers: auth({ 'content-type': 'application/json' }), body: JSON.stringify({ body, parentId: b.dataset.root }), cache: 'no-store' }); r = await res.json().catch(() => null); if (!r) r = { ok: false, error: 'http_' + res.status }; } catch (_) { r = { ok: false, error: 'offline' }; }
+      b.disabled = false;
+      if (!r.ok) { toast(r.error === 'slow_down' ? 'Easy: one comment at a time.' : r.error === 'too_many_today' ? 'You have hit the hourly limit.' : r.error === 'discord_links_not_allowed' ? 'Discord links are not allowed there.' : r.error === 'parent_not_found' ? 'That comment is gone.' : 'Could not post the reply right now.'); return; }
+      if (ta) ta.value = ''; box.hidden = true;
+      const c = (S.data && S.data.talk || []).find((x) => x.id === b.dataset.id); if (c && !c.parentId) c.replyCount = (c.replyCount || 0) + 1;
+      paintActivity(); toast('Reply posted on $' + b.dataset.sym + ' Ticker Talk.');
+    }
+    else if (a === 'chatopen') { const room = b.dataset.room; close(); if (typeof window.smlAcademyChatOpen === 'function') window.smlAcademyChatOpen(room); else toast('The chat is further down the page.'); }
     else if (a === 'edit') openEditor();
     else if (a === 'play') { if (window.smlProfileMusic) window.smlProfileMusic.toggle(); }
     else if (a === 'open' && b.dataset.url) openOut(b.dataset.url);

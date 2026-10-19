@@ -98,3 +98,23 @@ test('with a pool the store reads and writes academy_ticker_talk and academy_tic
   const l = await talk.list('SPY'); assert.equal(l.count, 1); assert.equal(l.comments[0].id, '5'); assert.deepEqual(l.comments[0].replies, []);
   assert.match(sql.find((q) => /parent_id IS NULL/.test(q.text)).text, /ORDER BY id DESC LIMIT \$3/);
 });
+
+test('byAuthor: one member\'s comments across every ticker, newest first, with reply counts (profile page feed)', async () => {
+  let t = 1_700_000_000_000;
+  const talk = T.createTickerTalk({ now: () => (t += 1000) });
+  const a = await talk.post('SPY', { id: ME, name: 'Obi' }, { body: 'SPY holding 600' });
+  await talk.post('NVDA', { id: YOU, name: 'You' }, { body: 'not mine' });
+  const b = await talk.post('NVDA', { id: ME, name: 'Obi' }, { body: 'NVDA gap fill' });
+  await talk.post('SPY', { id: YOU, name: 'You' }, { body: 'agreed', parentId: a.comment.id });
+  const mine = await talk.byAuthor(ME, 7);
+  assert.deepEqual(mine.map((c) => [c.symbol, c.body, c.replyCount, c.parentId]), [['NVDA', 'NVDA gap fill', 0, null], ['SPY', 'SPY holding 600', 1, null]]);
+  const reply = await talk.post('NVDA', { id: ME, name: 'Obi' }, { body: 'my own reply', parentId: b.comment.id });
+  const again = await talk.byAuthor(ME, 2);
+  assert.equal(again.length, 2); assert.equal(again[0].id, reply.comment.id); assert.equal(again[0].parentId, b.comment.id, 'a reply carries its root');
+  assert.deepEqual(await talk.byAuthor('nope'), []);
+  const sql = [];
+  const pooled = T.createTickerTalk({ pool: { query: async (text, params) => { sql.push({ text, params }); return { rows: [{ id: 3, symbol: 'SPY', author_id: ME, author_name: 'Obi', body: 'x', parent_id: null, images: [], links: [], mentions: [], tickers: [], created_at: new Date(t), reply_count: 2 }] }; } } });
+  const rows = await pooled.byAuthor(ME, 7);
+  assert.match(sql[0].text, /WHERE t\.author_id = \$1 AND t\.deleted_at IS NULL ORDER BY t\.id DESC LIMIT \$2/); assert.deepEqual(sql[0].params, [ME, 7]);
+  assert.equal(rows[0].replyCount, 2);
+});

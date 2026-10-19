@@ -158,7 +158,7 @@ function cleanSettings(input = {}, prev = {}) {
   }
   if (input.flags !== undefined && input.flags && typeof input.flags === 'object') {
     const f = { ...(prev.flags || {}) };
-    for (const k of ['showPaper', 'showServer', 'showSocials', 'showFeed', 'showFollowers', 'showWall']) if (input.flags[k] !== undefined) f[k] = input.flags[k] !== false;
+    for (const k of ['showPaper', 'showServer', 'showSocials', 'showFeed', 'showFollowers', 'showWall', 'showTalk', 'showSite']) if (input.flags[k] !== undefined) f[k] = input.flags[k] !== false;
     s.flags = f;
   }
   return s;
@@ -177,7 +177,8 @@ function parseOg(html, url) {
   return { title: text(title, 120), image, site: text(decode(meta('og:site_name')), 60) || hostOf(url) };
 }
 
-function createProfilePages({ pool = null, chat = null, paper = null, paperStore = null, tierLive = null, directory = null, wall = null, fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
+/* talk: the Ticker Talk store (or a function returning it, since it is built after this service); bridge: the LOOP-KICK bridge, for the member's activity on stockmarketloop.com */
+function createProfilePages({ pool = null, chat = null, paper = null, paperStore = null, tierLive = null, directory = null, wall = null, talk = null, bridge = null, fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
   const db = pool && typeof pool.query === 'function' ? pool : null;
   const mem = { profiles: new Map(), follows: new Set(), presence: new Map(), audio: new Map() };
   const tiers = new Map(), cards = new Map(), images = new Set(), lastBeat = new Map();
@@ -428,15 +429,49 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
     if (!chat || typeof chat.byAuthor !== 'function') return [];
     try { return (await chat.byAuthor(String(userId), limit)).map((m) => ({ id: m.id, channel: m.channel, body: m.body, createdAt: m.createdAt, score: m.score || 0, reply: !!m.parentId })); } catch (_) { return []; }
   }
+  /* the member's last comments in Ticker Talk (the comment section on every chart), newest first */
+  const TALK_ON_PAGE = 7;
+  async function talkPosts(userId, limit = TALK_ON_PAGE) {
+    const t = typeof talk === 'function' ? talk() : talk;
+    if (!t || typeof t.byAuthor !== 'function') return [];
+    try { return (await t.byAuthor(String(userId), limit)).map((c) => ({ id: c.id, symbol: c.symbol, body: c.body, parentId: c.parentId || null, images: (c.images || []).length, links: (c.links || []).length, replyCount: c.replyCount || 0, createdAt: c.createdAt })); } catch (_) { return []; }
+  }
+  /* the member's recent activity on stockmarketloop.com (posts, comments, their social feed), from the site through the LOOP-KICK bridge;
+     remembered a couple of minutes per member so a busy page does not keep asking the site */
+  const siteCache = new Map();
+  const SITE_TTL_MS = 120_000, SITE_LIMIT = 12;
+  async function siteActivity(userId) {
+    if (!bridge || !bridge.configured || typeof bridge.activity !== 'function') return null;
+    const id = String(userId), hit = siteCache.get(id);
+    if (hit && now() - hit.at < SITE_TTL_MS) return hit.v;
+    let v;
+    try {
+      const r = await bridge.activity(id, SITE_LIMIT);
+      if (r && r.ok) v = { linked: !!r.linked, user: r.linked && r.user ? { id: Number(r.user.id) || 0, handle: text(r.user.handle, 40), name: text(r.user.display_name, 60), profileUrl: httpsUrl(r.user.profile_url), avatar: httpsUrl(r.user.avatar) } : null, items: (r.items || []).map(siteItem).filter(Boolean) };
+      else v = { linked: false, unavailable: true, error: r && r.error ? String(r.error) : 'unavailable' };
+    } catch (_) { v = { linked: false, unavailable: true, error: 'unavailable' }; }
+    siteCache.set(id, { at: now(), v }); if (siteCache.size > 2000) siteCache.delete(siteCache.keys().next().value);
+    return v;
+  }
+  function siteItem(x) {
+    /* a comment's own link keeps its #comment anchor (httpsUrl drops fragments for the rest) */
+    const withAnchor = (v) => { try { const u = new URL(String(v || '').trim()); if (u.protocol !== 'https:' || !u.hostname.includes('.')) return ''; return u.toString().slice(0, 500); } catch (_) { return ''; } };
+    const kind = ['post', 'comment', 'stream'].includes(String(x.kind)) ? String(x.kind) : '';
+    if (!kind) return null;
+    const url = withAnchor(x.url);
+    const post = x.post && typeof x.post === 'object' ? { id: text(x.post.id, 20), title: text(x.post.title, 160), url: httpsUrl(x.post.url) } : null;
+    return { kind, id: text(x.id, 40), title: text(x.title, 160), text: String(x.text == null ? '' : x.text).replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 300), url: url || (post && post.url) || '', date: text(x.date, 40), type: text(x.typeName || x.type, 40), symbol: text(x.symbol, 10), likes: Number(x.likes) || 0, comments: Number(x.comments) || 0, reply: x.reply === true, image: httpsUrl(x.image), post };
+  }
   async function page(userId, viewerId = '') {
     const id = String(userId); if (!SNOWFLAKE.test(id)) return null;
     const s = await settingsOf(id);
     const wallOn = s.flags.showWall !== false && !!wall;
-    const [tier, server, pap, rank, counts, feed, wallPage] = await Promise.all([tierOf(id), s.flags.showServer === false ? null : mainServer(id), s.flags.showPaper === false ? null : paperSummary(id), s.flags.showPaper === false ? null : rankOf(id), followCounts(id, viewerId), s.flags.showFeed === false ? [] : posts(id, 30), wallOn ? wall.list(id, { limit: 20 }).catch(() => ({ items: [], count: 0, more: false })) : null]);
+    const [tier, server, pap, rank, counts, feed, wallPage, talkFeed, site] = await Promise.all([tierOf(id), s.flags.showServer === false ? null : mainServer(id), s.flags.showPaper === false ? null : paperSummary(id), s.flags.showPaper === false ? null : rankOf(id), followCounts(id, viewerId), s.flags.showFeed === false ? [] : posts(id, 30), wallOn ? wall.list(id, { limit: 20 }).catch(() => ({ items: [], count: 0, more: false })) : null,
+      s.flags.showTalk === false ? [] : talkPosts(id), s.flags.showSite === false ? null : siteActivity(id)]);
     return {
       userId: id, own: String(viewerId) === id, settings: s, layouts: LAYOUTS.map(([lid, name]) => ({ id: lid, name })), linkKinds: LINK_KINDS.map((k) => ({ id: k.id, label: k.label })),
       tier, tierLabel: tierLabel(tier), server, paper: pap ? { ...pap, rank: rank && rank.rank, of: rank && rank.of } : null,
-      followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed, wall: wallPage, asOf: now()
+      followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed, talk: talkFeed, site, wall: wallPage, asOf: now()
     };
   }
   async function card(userId, viewerId = '') {
@@ -446,7 +481,7 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
     return { userId: id, own: String(viewerId) === id, displayName: s.displayName, tagline: s.tagline, accent: s.theme.accent || '', layout: s.layout, tier, tierLabel: tierLabel(tier), server, paper: rank && rank.rank ? { rank: rank.rank, of: rank.of, returnPct: rank.returnPct, equity: rank.equity } : (rank ? { rank: null, of: rank.of } : null), followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed };
   }
 
-  return { ensureSchema, settingsOf, save, page, card, follow, followCounts, followers, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, registerImage, audioStream, uploadAudio, LAYOUTS };
+  return { ensureSchema, settingsOf, save, page, card, talkPosts, siteActivity, follow, followCounts, followers, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, registerImage, audioStream, uploadAudio, LAYOUTS };
 }
 
 module.exports = { createProfilePages, cleanSettings, linkKind, LINK_KINDS, FX, parseOg, sniffAudio, MAX_UPLOAD_BYTES, LAYOUTS, TEXTURES, DESKS, LIGHTS, ORBS };

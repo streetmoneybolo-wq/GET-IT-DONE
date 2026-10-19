@@ -268,3 +268,30 @@ test('the page carries the Trading Wall when it is on, and leaves it out when th
   await svc.save(A, { flags: { showWall: false } });
   assert.equal((await svc.page(A, B)).wall, null);
 });
+
+test('the page carries the member\'s last Ticker Talk comments and their stockmarketloop.com activity; both can be switched off', async () => {
+  let talkCalls = 0;
+  const talk = { byAuthor: async (id, limit) => { talkCalls += 1; return [{ id: '9', symbol: 'SPY', body: 'SPY holding 600', parentId: null, images: ['1'], links: [], replyCount: 2, createdAt: '2026-10-19T14:00:00Z' }].slice(0, limit); } };
+  let bridgeCalls = 0;
+  const bridge = { configured: true, activity: async (id, limit) => { bridgeCalls += 1; return { ok: true, linked: true, user: { id: 7, handle: 'ana', display_name: 'Ana', profile_url: 'https://stockmarketloop.com/members/ana/', avatar: 'https://stockmarketloop.com/a.png' }, items: [
+    { kind: 'post', id: '11', title: 'NVDA gamma map', text: 'clusters at 225', url: 'https://stockmarketloop.com/nvda-gamma-map', date: '2026-10-18T12:00:00Z', typeName: 'Post', comments: 3 },
+    { kind: 'comment', id: '78', text: 'nice <b>one</b>', url: 'https://stockmarketloop.com/p#comment-78', date: '2026-10-19T08:05:37Z', reply: false, post: { id: '11073', title: 'Gamma map', url: 'https://stockmarketloop.com/p' } },
+    { kind: 'stream', id: 's1', text: '$SPY looks heavy', url: '', date: '2026-10-19T09:00:00Z', symbol: 'SPY', likes: 4, comments: 1 },
+    { kind: 'weird', id: 'x' }, 'junk'
+  ].slice(0, limit) }; } };
+  const svc = createProfilePages({ talk: () => talk, bridge, now: () => 1_000_000 });
+  const page = await svc.page(A, B);
+  assert.equal(page.talk.length, 1); assert.deepEqual(page.talk[0], { id: '9', symbol: 'SPY', body: 'SPY holding 600', parentId: null, images: 1, links: 0, replyCount: 2, createdAt: '2026-10-19T14:00:00Z' });
+  assert.equal(page.site.linked, true); assert.equal(page.site.user.handle, 'ana'); assert.equal(page.site.user.profileUrl, 'https://stockmarketloop.com/members/ana/');
+  assert.deepEqual(page.site.items.map((x) => x.kind), ['post', 'comment', 'stream'], 'unknown kinds and junk are dropped');
+  assert.equal(page.site.items[1].text, 'nice one', 'no markup reaches the page'); assert.equal(page.site.items[1].post.title, 'Gamma map'); assert.equal(page.site.items[1].url, 'https://stockmarketloop.com/p#comment-78');
+  assert.equal(page.site.items[2].url, '', 'a feed item without a page of its own stays without a link'); assert.equal(page.site.items[2].likes, 4);
+  await svc.page(A, B); assert.equal(bridgeCalls, 1, 'the site is asked once every couple of minutes per member, not on every view');
+  await svc.save(A, { flags: { showTalk: false, showSite: false } });
+  const off = await svc.page(A, B); assert.deepEqual(off.talk, []); assert.equal(off.site, null); assert.equal(off.settings.flags.showTalk, false);
+  const none = createProfilePages({ now: () => 1_000_000 });
+  const bare = await none.page(A, B); assert.deepEqual(bare.talk, []); assert.equal(bare.site, null, 'no bridge: nothing is claimed');
+  const down = createProfilePages({ bridge: { configured: true, activity: async () => ({ ok: false, status: 503, error: 'activity_unconfigured' }) }, now: () => 1_000_000 });
+  const d = await down.page(A, B); assert.equal(d.site.unavailable, true); assert.equal(d.site.error, 'activity_unconfigured');
+  assert.ok(talkCalls >= 1);
+});

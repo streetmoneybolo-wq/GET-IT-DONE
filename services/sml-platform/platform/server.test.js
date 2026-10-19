@@ -2078,3 +2078,30 @@ test('the option-bars route serves one contract\'s candles to members only, with
   assert.match(html, /Reset this paper account to ' \+ \(S\.account === 'challenge' \? '\$1,000' : '\$25,000'\)/, 'the paper trader starts members at $25,000');
   assert.doesNotMatch(html, PAGE_BANNED);
 });
+
+test('the profile page shows a member\'s Ticker Talk comments, chat posts and stockmarketloop.com activity as one Activity module', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m' });
+  assert.match(html, /tabs\.push\(\['talk', 'Ticker Talk'/, 'the Activity module has a Ticker Talk tab');
+  assert.match(html, /data-pv="talksend"/, 'a comment can be replied to from the profile');
+  assert.match(html, /Open on stockmarketloop\.com/, 'site items open on the site');
+  assert.match(html, /window\.smlAcademyChatOpen = /, 'a chat post opens its room');
+  assert.match(html, /openComment, state:/, 'Ticker Talk can bring one comment into view');
+  assert.match(html, /\['showTalk', 'My Ticker Talk comments'\]/);
+  assert.doesNotMatch(html, PAGE_BANNED);
+});
+
+test('the Ticker Talk routes use the service createServer is given (and say so when there is none)', async () => {
+  const academyOAuth = { verifySession: (auth) => (auth === 'Bearer member' ? { ok: true, tier: 'academy', userId: '100000000000000001', displayName: 'Obi' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  await withServer({ academyOAuth }, async (base) => { assert.equal((await fetch(`${base}/academy-activity/talk/SPY/count`, { headers: { authorization: 'Bearer member' } })).status, 503, 'no service: a clean 503, not a thrown ReferenceError'); });
+  const tickerTalk = require('./academy-ticker-talk').createTickerTalk({});
+  await withServer({ academyOAuth, tickerTalk }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/talk/SPY/count`)).status, 401);
+    const posted = await fetch(`${base}/academy-activity/talk/SPY`, { method: 'POST', headers: { authorization: 'Bearer member', 'content-type': 'application/json' }, body: JSON.stringify({ body: 'SPY holding 600' }) });
+    assert.equal(posted.status, 200); const c = (await posted.json()).comment; assert.equal(c.symbol, 'SPY'); assert.equal(c.authorName, 'Obi');
+    const count = await (await fetch(`${base}/academy-activity/talk/SPY/count`, { headers: { authorization: 'Bearer member' } })).json();
+    assert.equal(count.count, 1);
+    const list = await (await fetch(`${base}/academy-activity/talk/spy`, { headers: { authorization: 'Bearer member' } })).json();
+    assert.equal(list.comments.length, 1); assert.equal(list.viewer.id, '100000000000000001');
+  });
+});

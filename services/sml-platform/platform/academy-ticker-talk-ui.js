@@ -83,6 +83,7 @@
 .tk-view .tk-r{margin:10px 0 0 0;padding:10px 12px;border-left:3px solid #1d3550;border-radius:0 10px 10px 0}.tk-view .tk-r>.txt{font-size:.86rem}.tk-view .tk-replies-h{margin:16px 0 4px;color:#7f98a6;font:800 .66rem ui-monospace,monospace;letter-spacing:.08em}
 @media(max-width:720px){.tk-modal{padding:0;align-items:flex-end}.tk-modal .tk-box{width:100%;max-height:94vh;border-radius:14px 14px 0 0}.tk-ed textarea{min-height:150px}}`;
   document.head.appendChild(css);
+  const hl = document.createElement('style'); hl.textContent = '#talk-panel .tk-hl{outline:2px solid #5fa8e0;box-shadow:0 0 0 4px rgba(95,168,224,.25);transition:box-shadow .4s}'; document.head.appendChild(hl);
 
   const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'talk-btn'; btn.title = 'Ticker Talk: the comment section for this ticker'; toolbar.appendChild(btn);
   const panel = document.createElement('section'); panel.id = 'talk-panel'; panel.setAttribute('aria-label', 'Ticker Talk');
@@ -356,5 +357,29 @@
   window.addEventListener('sml-academy-market', () => { const sym = symbolNow(); if (sym === S.symbol) return; S.symbol = sym; S.count = null; S.replyTo = null; closeView(); say(''); paintButton(); paintBar(); if (S.open) { paintHead(); load(true); } else refreshCount(); });
   setInterval(() => { if (document.hidden) return; if (S.open) loadNewer(); else refreshCount(); }, 45_000);
   paintButton(); paintBar(); refreshCount();
-  window.smlTickerTalk = { open: () => { if (!S.open) openPanel(); }, close: () => { if (S.open) closePanel(); }, state: () => ({ symbol: S.symbol, open: S.open, count: S.count, loaded: S.rows.length }) };
+  /* open one comment: load that ticker's chart when it is not the one on screen, open the panel and bring the comment into view
+     (older pages are loaded until it is found, within reason; a reply opens its thread in the reader). Used by the profile page's feed. */
+  const settle = async () => { for (let i = 0; i < 60 && S.busy; i++) await new Promise((r) => setTimeout(r, 100)); };
+  async function openComment(symbol, id) {
+    const sym = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.:-]/g, ''), cid = String(id || '').replace(/[^0-9]/g, ''); if (!sym || !cid) return false;
+    if (symbolNow() !== sym && typeof window.smlAcademyNavigateMarket === 'function') { try { await window.smlAcademyNavigateMarket(sym); } catch (_) { /* the chart says so itself */ } }
+    for (let i = 0; i < 40 && symbolNow() !== sym; i++) await new Promise((r) => setTimeout(r, 150));
+    S.symbol = symbolNow();
+    if (!S.open) openPanel(); else load(true);
+    for (let page = 0; page < 8; page++) {
+      await settle();
+      const root = S.index.get(cid); // the index maps a reply's id to its root comment
+      if (root) {
+        const rootId = String(root.id), isReply = rootId !== cid;
+        const el = listEl.querySelector('.tk-c[data-id="' + CSS.escape(rootId) + '"]');
+        if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('tk-hl'); setTimeout(() => el.classList.remove('tk-hl'), 4000); }
+        if (isReply) openView(rootId, cid);
+        return true;
+      }
+      if (!S.hasMore) break;
+      load(false);
+    }
+    return false;
+  }
+  window.smlTickerTalk = { open: () => { if (!S.open) openPanel(); }, close: () => { if (S.open) closePanel(); }, openComment, state: () => ({ symbol: S.symbol, open: S.open, count: S.count, loaded: S.rows.length }) };
 })(0);
