@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML LOOP-KICK Connect
  * Description: One-tap LOOP-KICK ↔ Discord connection for the Making Easy Money Academy, and sign-up with Discord (the signed /discord-register route creates or matches the member's account from the email Discord shares, marks it verified when Discord already verified it, links the Discord id, and hands back a one-time sign-in link). Adds the signed /wp-json/sml-loop-kick/v1/discord-link route (called by sml-platform-api after the member signed in with their site password) and the /connect-discord/?lk= one-tap link handler. Add-on to the SML LOOP-KICK Discord Bridge mu-plugin 1.1.0: it reuses that plugin's signature checks and secret, and steps aside automatically once the bridge itself ships these routes (1.2.0+).
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: StockMarketLoop
  */
 
@@ -240,7 +240,7 @@ add_action( 'init', static function () {
 	wp_set_auth_cookie( $user->ID, true );
 	do_action( 'wp_login', $user->user_login, $user );
 	$to = (string) ( $row['to'] ?? '' );
-	wp_safe_redirect( $to && 0 === strpos( $to, home_url() ) ? $to : home_url( '/members/' . $user->ID . '/' ) );
+	wp_safe_redirect( $to && 0 === strpos( $to, home_url( '/' ) ) ? $to : home_url( '/members/' . $user->ID . '/' ) );
 	exit;
 }, 1 );
 
@@ -268,7 +268,9 @@ function sml_lkc_rest_discord_register( WP_REST_Request $request ) {
 		}
 		$existing = get_user_by( 'email', $email );
 		if ( $existing ) {
-			if ( ! $email_verified ) {
+			/* both sides must have verified the address: Discord (the member owns the mailbox) and the site (the account was not pre-registered
+			 * with someone else's email and an unverified password). Otherwise the member signs in with the password and connects Discord. */
+			if ( ! $email_verified || '1' !== (string) get_user_meta( $existing->ID, 'sml_email_verified', true ) ) {
 				return new WP_Error( 'sml_lkc_email_unverified', 'An account with this email already exists. Sign in with your password to connect Discord to it.', array( 'status' => 409 ) );
 			}
 			$uid     = (int) $existing->ID;

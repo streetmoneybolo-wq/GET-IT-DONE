@@ -156,6 +156,9 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
         send(response, 400, failed('That Discord account could not be read.'));
       } catch (error) {
         logger('warn', 'academy_trial_failed', { error, code: error && error.code });
+        /* Discord answers 400 invalid_grant when the sign-in link was already used or has expired (a reload, a back button, a second tab):
+           that is the member's link, not Discord being down, and the trial may already be running on their account */
+        if (error && error.code === 'discord_token_failed' && error.status === 400) { send(response, 400, failed('That sign-in link was already used or has expired. If you just started your trial, it is already on your Discord account: open the Academy from Discord. Otherwise start again.')); return true; }
         send(response, 502, failed('Discord did not answer the sign-in just now. Try again in a moment.'));
       }
       return true;

@@ -120,3 +120,15 @@ test('statusFor: the countdown reads the trial pass (days left), trial over once
   const s4 = await trial.statusFor(user); assert.equal(s4.trial, false); assert.equal(s4.member, true); assert.equal(s4.plan, 'monthly');
   assert.equal((await trial.statusFor('nope')).ok, false);
 });
+
+test('a reloaded or reused sign-in link says so (Discord answers 400), while a Discord outage still reads as one', async () => {
+  const mk = (status) => createAcademyTrial({ clientId: APP, clientSecret: 's', publicUrl: 'https://academy.example', store: createPassStore({}), now: () => 1_000_000, fetchImpl: async () => ({ ok: false, status, json: async () => ({}) }) });
+  const run = async (trial) => {
+    let res = fakeResponse(); await trial.handle(req('/academy-activity/trial/start?via=x'), res, '/academy-activity/trial/start', new URL('https://academy.example/academy-activity/trial/start?via=x'));
+    const state = new URL(res.headers.location).searchParams.get('state');
+    res = fakeResponse(); await trial.handle(req('/academy-activity/trial/callback'), res, '/academy-activity/trial/callback', new URL('https://academy.example/academy-activity/trial/callback?code=abc&state=' + encodeURIComponent(state)));
+    return res;
+  };
+  const reused = await run(mk(400)); assert.equal(reused.status, 400); assert.match(reused.body, /already used or has expired/);
+  const down = await run(mk(503)); assert.equal(down.status, 502); assert.match(down.body, /did not answer/);
+});
