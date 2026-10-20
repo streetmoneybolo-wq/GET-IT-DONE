@@ -85,10 +85,11 @@ test('desktop: the quote column is a tabbed tool window and the SMC card and MEM
   assert.ok(dock.includes("sel === '#smc-card' || sel === '#mem-algo-panel'"), 'the chart dock leaves those two to the column');
 });
 
-test('tools take turns and a tap outside closes a floating popup (desktop and phone)', () => {
+test('any number of tools can be on at once; a tap outside closes the floating SNAP and GUIDE popups', () => {
   const one = fs.readFileSync(path.join(__dirname, 'academy-one-at-a-time.js'), 'utf8');
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
-  for (const bit of ["['smc-toggle', 'smc-card']", "['mem-algo-toggle', 'mem-algo-panel']", "['chain-toggle', 'chain-stage']", "['tool-guide-btn', 'tool-guide']", "addEventListener('pointerdown', away, true)", "e.key !== 'Escape'", 'window.smlOneAtATime', "ms-more"]) assert.ok(one.includes(bit), bit);
+  for (const bit of ["['smc-toggle', 'smc-card']", "['mem-algo-toggle', 'mem-algo-panel']", "['tool-guide-btn', 'tool-guide']", "addEventListener('pointerdown', away, true)", "e.key !== 'Escape'", 'window.smlOneAtATime', "ms-more"]) assert.ok(one.includes(bit), bit);
+  assert.ok(!one.includes('for (const t of TOOLS) if (t !== me) close(t)'), 'tools are not exclusive: they can all be on at once');
   assert.ok(server.includes('ACADEMY_SIDE_WINDOW + ACADEMY_ONE_AT_A_TIME + '), 'injected into the page');
 });
 
@@ -117,7 +118,7 @@ test('desktop compaction: short broker buttons, TOUR/GUIDE in the top bar, quote
   const dc = fs.readFileSync(path.join(__dirname, 'academy-desktop-compact.js'), 'utf8');
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
   const eng = fs.readFileSync(path.join(__dirname, 'academy-layout-engine.js'), 'utf8');
-  for (const bit of ["'Buy on ' + m[1] + ' ↗'", 'sml-dc-tail', 'sml-dc-chip', 'flex:1 1 auto;min-height:0;overflow:auto', "max-width:720px", 'new MutationObserver', 'if (b.textContent !== t)', 'function disable()']) assert.ok(dc.includes(bit), bit);
+  for (const bit of ["'Buy on ' + m[1] + ' ↗'", 'sml-dc-tail', 'sml-dc-chip', "max-width:720px", 'new MutationObserver', 'if (b.textContent !== t)', 'function disable()']) assert.ok(dc.includes(bit), bit);
   assert.ok(server.includes('ACADEMY_ONE_AT_A_TIME + ACADEMY_DESKTOP_COMPACT + ACADEMY_TOUR'), 'injected');
   assert.ok(eng.includes('scannerRows(40)'), 'the scanner list fills the column');
 });
@@ -127,4 +128,11 @@ test('phone compaction: the chart takes the height a short panel leaves free, an
   const eng = fs.readFileSync(path.join(__dirname, 'academy-layout-engine.js'), 'utf8');
   for (const bit of ['var(--ms-extra,0px)', 'function fit()', "document.body.getBoundingClientRect().bottom", "setInterval(() => { tick(); fit(); }, 1200)", "T('quotes', '.academy-chat.sml-empty')", "removeProperty('--ms-extra')"]) assert.ok(sh.includes(bit), bit);
   assert.ok(eng.includes('connecting(?:…|\\.{2,3})'), 'the empty chat is recognised with three dots too');
+});
+
+test('the quote column stacks every tool that is on instead of showing one tab', () => {
+  const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
+  assert.ok(!sw.includes('{display:none!important}\'; // per tab') && !sw.includes("hide.add(m)"), 'no per-tab hiding');
+  assert.ok(sw.includes("[data-sw-any] main .side>.academy-side-fill{display:none!important}"), 'the scanner steps aside while a tool is on');
+  assert.ok(sw.includes("scrollIntoView({ block: 'nearest'"), 'a tool that is turned on is brought into view');
 });

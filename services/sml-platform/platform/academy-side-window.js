@@ -28,18 +28,11 @@
   const S = { tab: 'quote' };
   const side = () => document.querySelector('main .side');
 
-  /* the rules: for the open tab, hide every child that belongs to another tab (the depth box is shared by QUOTE and SENTIMENT) */
+  /* the rules */
   const rules = [];
   const A = 'html body.sml-sw';
-  for (const t of TABS) {
-    const hide = new Set();
-    for (const o of TABS) if (o.id !== t.id) for (const m of o.mods) if (!t.mods.includes(m)) hide.add(m);
-    const sel = [...hide].map((m) => A + '[data-sw=' + t.id + '] main .side>' + m).join(',');
-    if (sel) rules.push(sel + '{display:none!important}');
-  }
-  rules.push(A + ':not([data-sw=quote]) main .side>.academy-side-fill{display:none!important}');
-  rules.push(A + '[data-sw=quote] main .side>.academy-depth .academy-sentiment{display:none!important}');
-  rules.push(A + '[data-sw=sent] main .side>.academy-depth>*:not(.academy-sentiment){display:none!important}');
+  /* every tool that is on shows in the column at once, stacked under the quote (the column scrolls); nothing is hidden by tab */
+  rules.push(A + '[data-sw-any] main .side>.academy-side-fill{display:none!important}');
   /* the two cards that floated: now ordinary blocks in the column */
   rules.push(A + ' main .side>#smc-card,' + A + ' main .side>#mem-algo-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;height:auto!important;max-height:none!important;margin:6px 0 10px!important;z-index:auto!important;box-shadow:none!important}');
   rules.push('#side-win{display:none}');
@@ -67,6 +60,7 @@
     const tabs = TABS.filter((t) => !t.btn || visible(byId(t.btn)));
     bar.innerHTML = tabs.map((t) => '<button type="button" role="tab" data-sw="' + t.id + '" class="' + (t.id === S.tab ? 'on' : (t.btn && isOn(byId(t.btn)) ? 'live' : '')) + '">' + t.label + '</button>').join('');
     document.body.dataset.sw = S.tab;
+    const any = TABS.some((t) => t.btn && isOn(byId(t.btn))); if (any) document.body.setAttribute('data-sw-any', '1'); else document.body.removeAttribute('data-sw-any');
   }
   function setTab(id, fromTab) {
     const t = TABS.find((x) => x.id === id) || TABS[0];
@@ -81,7 +75,7 @@
     obs = new MutationObserver((records) => {
       for (const r of records) {
         const b = r.target, t = TABS.find((x) => x.btn && x.btn === b.id); if (!t) continue;
-        if (isOn(b)) { if (S.tab !== t.id) setTab(t.id); } else if (S.tab === t.id) setTab('quote');
+        if (isOn(b)) { if (S.tab !== t.id) setTab(t.id); setTimeout(() => { const m = t.mods.map((q) => document.querySelector('main .side>' + q)).find(Boolean); if (m && m.scrollIntoView) m.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 500); } else if (S.tab === t.id) setTab('quote');
         else paint();
       }
     });
@@ -104,7 +98,7 @@
     tick();
   }
   function disable() {
-    document.body.classList.remove('sml-sw'); delete document.body.dataset.sw;
+    document.body.classList.remove('sml-sw'); delete document.body.dataset.sw; document.body.removeAttribute('data-sw-any');
     if (timer) { clearInterval(timer); timer = null; }
     if (obs) { obs.disconnect(); obs = null; watched = 0; }
     if (bar) { bar.remove(); bar = null; }

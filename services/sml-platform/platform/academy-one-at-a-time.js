@@ -1,7 +1,6 @@
-/* One tool at a time, and click away to close. The Academy's tool panels (SMC, MEM ALGO, BUY/SELL, DARK POOL, SHORT SALE, SENTIMENT,
- * CHAIN, SIRE, EARNINGS, CATALYSTS, PAPER TRADE, INTENT, SNAP, GUIDE) used to open on top of each other. Now turning one on turns the
- * others off, and a tap or click anywhere outside a floating popup (SNAP, GUIDE, INTENT, SIRE, and the SMC or MEM card when they float)
- * closes it, on desktop and on phones. ALERT (an armed click-to-alert mode) and the chat are left alone, and Esc closes the popup too. */
+/* Click away closes the floating popups (SNAP and GUIDE), on desktop and on phones, and Esc closes them too. Tools themselves are NOT
+ * exclusive: SMC, MEM ALGO, BUY/SELL, DARK POOL, SHORT SALE, SENTIMENT, CHAIN, SIRE and the rest can all be on at once; on desktop the
+ * quote column stacks the ones it hosts (academy-side-window.js). ALERT (an armed click-to-alert mode) and the chat are left alone. */
 (() => {
   if (window.__smlOneAtATime) return;
   window.__smlOneAtATime = 1;
@@ -23,15 +22,10 @@
     if (t.btn === 'snap-toggle' && p && shown(p)) { const x = p.querySelector('header button'); if (x) x.click(); if (shown(p)) p.style.display = 'none'; }
   };
   /* turning a tool on closes every other tool (capture phase: before the tool's own handler runs) */
-  document.addEventListener('click', (e) => {
-    const hit = e.target.closest && e.target.closest('button[id],a[id]'); if (!hit) return;
-    const me = TOOLS.find((t) => t.btn === hit.id); if (!me || open(me)) return;
-    for (const t of TOOLS) if (t !== me) close(t);
-  }, true);
+  /* tools no longer take turns: any number can be on at once (the quote column stacks them) */
   /* floating popups close on an outside tap */
   const FLOAT = [
-    { id: 'snap-panel', t: 'snap-toggle' }, { id: 'tool-guide', t: 'tool-guide-btn' }, { id: 'intent-panel', t: 'intent-btn' }, { id: 'sire-panel', t: 'sire-toggle' },
-    { id: 'smc-card', t: 'smc-toggle', onlyFixed: true }, { id: 'mem-algo-panel', t: 'mem-algo-toggle', onlyFixed: true }
+    { id: 'snap-panel', t: 'snap-toggle' }, { id: 'tool-guide', t: 'tool-guide-btn' }
   ];
   const floating = (f) => { const e = byId(f.id); if (!shown(e)) return null; const p = getComputedStyle(e).position; return (f.onlyFixed ? p === 'fixed' : p === 'fixed' || p === 'absolute') ? e : null; };
   const SAFE = '#sml-tour,select,input,textarea,#ms-nav,#ms-sub,#ms-more,#ca-panel,#talk-panel,.sml-modal,[role=dialog]';

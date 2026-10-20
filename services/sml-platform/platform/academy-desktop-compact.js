@@ -18,7 +18,7 @@
     A + ' .sml-dc-tail{display:flex;align-items:center;gap:4px;margin:0 8px 0 0;flex:none}',
     A + ' .sml-dc-chip{margin-left:auto;flex:none}',
     A + ' main .side{min-height:0}',
-    A + ' main .side>:is(#smc-card,#mem-algo-panel,.academy-buysell,.academy-darkpool,.academy-shortsale){flex:1 1 auto;min-height:0;overflow:auto}',
+    A + ' main .side>:is(#smc-card,#mem-algo-panel,.academy-buysell,.academy-darkpool,.academy-shortsale){flex:0 0 auto}',
     A + ' main .side>.academy-side-fill{flex:1 1 0;min-height:60px}'
   ].join('\n');
   document.head.appendChild(css);
