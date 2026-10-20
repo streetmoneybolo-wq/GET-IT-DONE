@@ -246,6 +246,8 @@
     if (!(S.on && S.open)) return;
     // the chart dock (academy-chart-dock.js) owns the panel whenever it has room: moving it over the quote column at the same
     // time made the two fight (dock, body, dock...) and the chart jumped with every swap
+    const col = document.body.classList.contains('sml-sw') ? document.querySelector('main .side') : null;
+    if (col && innerWidth > 700) { CLEAR.forEach((k) => { panel.style[k] = ''; }); if (panel.parentElement !== col) col.appendChild(panel); return; }
     const dk = window.smlChartDock;
     if (dk && (dk.holds(panel) || dk.room())) { if (panel.style.position) CLEAR.forEach((k) => { panel.style[k] = ''; }); return; }
     if (window.matchMedia('(max-width:700px)').matches) { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'bottom', 'zIndex'].forEach((k) => { panel.style[k] = ''; }); return; }

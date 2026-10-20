@@ -72,3 +72,15 @@ test('the quote change is against the previous trading day\'s close, not the pre
   assert.ok(live.includes('window.smlAcademyPrevClose(sym(), d.last)') && !live.includes('m.bars[m.N - 2]'), 'the live readout no longer uses the previous candle');
   assert.ok(stats.includes('window.smlAcademyPrevClose(symbol)') && !stats.includes('num(bars.at(-2)?.c)'), 'Prev Close in quote statistics is the daily close');
 });
+
+test('desktop: the quote column is a tabbed tool window and the SMC card and MEM ALGO panel sit in it instead of floating', () => {
+  const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const mem = fs.readFileSync(path.join(__dirname, 'academy-mem-algo-ui.js'), 'utf8');
+  const dock = fs.readFileSync(path.join(__dirname, 'academy-chart-dock.js'), 'utf8');
+  for (const bit of ["id: 'smc'", "id: 'algo'", "id: 'dark'", "id: 'short'", "id: 'buysell'", "id: 'sent'", "'sml-sw'", 'window.smlSideWindow', 'position:static!important']) assert.ok(sw.includes(bit), bit);
+  assert.ok(server.includes('ACADEMY_MOBILE_SHELL + ACADEMY_SIDE_WINDOW + ACADEMY_TOUR'), 'the window is injected into the page');
+  assert.ok(smc.includes("document.body.classList.contains('sml-sw')") && smc.includes('col.appendChild(card)'), 'SMC mounts in the column');
+  assert.ok(mem.includes("document.body.classList.contains('sml-sw')") && mem.includes('col.appendChild(panel)'), 'MEM ALGO mounts in the column');
+  assert.ok(dock.includes("sel === '#smc-card' || sel === '#mem-algo-panel'"), 'the chart dock leaves those two to the column');
+});

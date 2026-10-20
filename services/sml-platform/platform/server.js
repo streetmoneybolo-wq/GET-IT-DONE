@@ -915,6 +915,12 @@ const ACADEMY_TOUR = (() => {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-tour.js'), 'utf8') + '</script>';
   } catch (_) { return ''; }
 })();
+// Desktop quote column as a tabbed tool window (QUOTE, BUY/SELL, DARK POOL, SHORT SALE, SENTIMENT, SMC, MEM ALGO).
+const ACADEMY_SIDE_WINDOW = (() => {
+  try {
+    return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-side-window.js'), 'utf8') + '</script>';
+  } catch (_) { return ''; }
+})();
 const ACADEMY_APPEARANCE = (() => {
   try {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-appearance-ui.js'), 'utf8') + '</script>';
@@ -1095,7 +1101,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_VIZ_KIT + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_MOBILE_SHELL + ACADEMY_TOUR + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + ACADEMY_CANDLE_RECAP + ACADEMY_PROFILE_DESK + ACADEMY_PROFILE_MUSIC + ACADEMY_PROFILE_FX + ACADEMY_PROFILE_UI + ACADEMY_ASK_UI + ACADEMY_BAR_RAIL + ACADEMY_CLIPBOARD + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_VIZ_KIT + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_MOBILE_SHELL + ACADEMY_SIDE_WINDOW + ACADEMY_TOUR + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + ACADEMY_CANDLE_RECAP + ACADEMY_PROFILE_DESK + ACADEMY_PROFILE_MUSIC + ACADEMY_PROFILE_FX + ACADEMY_PROFILE_UI + ACADEMY_ASK_UI + ACADEMY_BAR_RAIL + ACADEMY_CLIPBOARD + '</body></html>');
   const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>');
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }

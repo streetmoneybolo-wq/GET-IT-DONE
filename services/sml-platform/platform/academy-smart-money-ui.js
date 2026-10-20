@@ -54,6 +54,9 @@ css.textContent += '#smc-card .ms-tabs{display:none}body.sml-ms #smc-card .ms-ta
     /* the phone workspace (academy-mobile-shell.js) gives the card a slot under the chart, so its breakdown never covers the candles */
     const slot = document.body.classList.contains('sml-ms') ? document.getElementById('ms-slot-smc') : null;
     if (slot) { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'zIndex'].forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== slot) slot.appendChild(card); return; }
+    /* desktop tool window (academy-side-window.js): the card is an ordinary block inside the quote column, so it scrolls with the page */
+    const col = document.body.classList.contains('sml-sw') && !window.matchMedia('(max-width:720px)').matches ? document.querySelector('main .side') : null;
+    if (col && S.on && !S.min) { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'zIndex'].forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== col) col.appendChild(card); return; }
     const reset = () => { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'zIndex'].forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== stage) stage.appendChild(card); };
     if (!S.on) return;
     if (S.min || window.matchMedia('(max-width:700px)').matches) { reset(); return; }
