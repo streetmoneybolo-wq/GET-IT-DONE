@@ -136,3 +136,10 @@ test('the quote column stacks every tool that is on instead of showing one tab',
   assert.ok(sw.includes("[data-sw-any] main .side>.academy-side-fill{display:none!important}"), 'the scanner steps aside while a tool is on');
   assert.ok(sw.includes("scrollIntoView({ block: 'nearest'"), 'a tool that is turned on is brought into view');
 });
+
+test('INTENT sits in the quote column with the other tools', () => {
+  const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
+  const dock = fs.readFileSync(path.join(__dirname, 'academy-chart-dock.js'), 'utf8');
+  assert.ok(sw.includes("btn: 'intent-btn', mods: ['#intent-panel']") && sw.includes("main .side>#intent-panel") && sw.includes("col.appendChild(ip)"), 'mounted in the column');
+  assert.ok(dock.includes("sel === '#intent-panel'"), 'the chart dock leaves it to the column');
+});
