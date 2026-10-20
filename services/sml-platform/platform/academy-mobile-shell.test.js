@@ -102,3 +102,8 @@ test('the quote column has no duplicate tool buttons under the price (the toolba
   const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
   assert.ok(sw.includes("' #side-win{display:none!important;"), 'tab bar hidden');
 });
+
+test('post-market percent is measured against the regular-session close from the candles, not a feed field', () => {
+  const stats = fs.readFileSync(path.join(__dirname, 'academy-quote-statistics.js'), 'utf8');
+  for (const bit of ['function postSession()', 'a.min>=960&&a.min<1200', 'a.min<960&&a.min>=570', 'postMarketPct:(postSession()||{}).pct??pick(row,[\'postMarketPct\'])']) assert.ok(stats.includes(bit), bit);
+});
