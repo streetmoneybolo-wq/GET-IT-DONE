@@ -60,14 +60,18 @@
   const baseRefresh = window.smlAcademyRefreshQuote;
   if (typeof baseRefresh === 'function') window.smlAcademyRefreshQuote = () => { baseRefresh(); if (st.lastBook && Date.now() - st.freshAt < 5000) paintQuote(st.lastBook); };
 
+  /* a different stock on screen: nothing of the old one (book, quote, prints, stream) may paint under the new name */
+  function forgetStock() { st.lastT = 0; st.prev = { bids: {}, asks: {} }; st.lastBook = null; st.rt = null; st.deferred = null; st.freshAt = 0; }
+  const navPending = () => !!window.smlNavPending;
   async function once() {
+    if (navPending()) return;
     const symbol = sym();
-    if (symbol !== st.symbol) { st.symbol = symbol; st.lastT = 0; st.prev = { bids: {}, asks: {} }; st.lastBook = null; }
+    if (symbol !== st.symbol) { st.symbol = symbol; forgetStock(); }
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 4000);
     try {
       const res = await fetch('/academy-activity/live?symbol=' + encodeURIComponent(symbol), { cache: 'no-store', signal: ctl.signal });
       const d = await res.json();
-      if (!res.ok || !d || !d.ready || sym() !== symbol) { st.failures = d && d.ready === false ? 0 : st.failures + 1; return; }
+      if (!res.ok || !d || !d.ready || sym() !== symbol || navPending()) { st.failures = d && d.ready === false ? 0 : st.failures + 1; return; }
       st.failures = 0; st.freshAt = Date.now(); st.lastBook = d;
       if (window.smlChartGesture) { st.deferred = d; return; } // a finger is on the chart: keep the main thread free, apply this when it lifts
       st.deferred = null;
@@ -126,14 +130,17 @@
     if (sse.es && sse.symbol === symbol) return;
     if (!sse.es && Date.now() < sse.retryAt && sse.symbol === symbol) return;
     closeStream(); if (!window.EventSource) return;
+    if (sse.symbol && sse.symbol !== symbol) forgetStock();
     sse.symbol = symbol; sse.tape = []; sse.hist = []; sse.seen = new Set();
     let es; try { es = new EventSource('/academy-activity/stream?symbol=' + encodeURIComponent(symbol)); } catch (_) { sse.retryAt = Date.now() + 60000; return; }
     sse.es = es;
-    es.addEventListener('snapshot', (e) => { try { const d = JSON.parse(e.data); sse.okAt = Date.now(); sse.fails = 0; if (d && d.rt) st.rt = d.rt; if (d && d.tape && d.tape.length) sse.tape = d.tape.slice(0, 30); } catch (_) { /* ignore */ } });
-    es.addEventListener('trade', (e) => { try { onTrade(JSON.parse(e.data)); } catch (_) { /* ignore */ } });
-    es.addEventListener('quote', (e) => { try { const q = JSON.parse(e.data); sse.okAt = Date.now(); st.rt = { bid: q.bid, ask: q.ask, bs: q.bs, as: q.as, t: q.t, fresh: true }; if (!window.smlChartGesture) schedulePaint(); } catch (_) { /* ignore */ } });
+    const mine = () => symbol === sym() && !navPending() && sse.es === es;
+    es.addEventListener('snapshot', (e) => { if (!mine()) return; try { const d = JSON.parse(e.data); sse.okAt = Date.now(); sse.fails = 0; if (d && d.rt) st.rt = d.rt; if (d && d.tape && d.tape.length) sse.tape = d.tape.slice(0, 30); } catch (_) { /* ignore */ } });
+    es.addEventListener('trade', (e) => { if (!mine()) return; try { onTrade(JSON.parse(e.data)); } catch (_) { /* ignore */ } });
+    es.addEventListener('quote', (e) => { if (!mine()) return; try { const q = JSON.parse(e.data); sse.okAt = Date.now(); st.rt = { bid: q.bid, ask: q.ask, bs: q.bs, as: q.as, t: q.t, fresh: true }; if (!window.smlChartGesture) schedulePaint(); } catch (_) { /* ignore */ } });
     // a dropped stream comes back quickly at first (3 s, 6 s, 12 s ...) and only after repeated drops waits the full five minutes
     es.onerror = () => { if (es.readyState === 2) { if (sse.es === es) sse.es = null; sse.fails = Math.min(sse.fails + 1, 7); sse.retryAt = Date.now() + Math.min(300000, 3000 * 2 ** (sse.fails - 1)); } };
   }
+  window.addEventListener('sml-academy-market', (e) => { const s = String((e.detail && e.detail.symbol) || '').toUpperCase(); if (s && s !== sse.symbol) { closeStream(); sse.symbol = ''; forgetStock(); openStream(); } if (s && s !== st.symbol) { st.symbol = s; forgetStock(); once(); } });
   (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } if (!document.hidden) openStream(); const pushing = sse.es && Date.now() - sse.okAt < 5000; const base = Math.min(8000, Math.max(2000, Number(window.smlEvolveConfig && window.smlEvolveConfig.livePollMs) || 2500)); /* the cadence is an Evolve knob (academy-evolve.js) */ const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : pushing ? base : Math.min(2000, Math.max(700, base - 1800)); once().finally(() => setTimeout(loop, wait)); })();
 })();

@@ -54,3 +54,12 @@ test('the phone bars never show or sit in the chart grid on a wide screen, even 
   assert.ok(shell.includes("for (const id of ['ms-top', 'ms-nav', 'ms-sub', 'ms-more'])"), 'leaving the phone layout removes the bars');
   assert.ok(shell.includes("document.body.classList.contains('sml-ms') && top.previousElementSibling !== tb"), 'the tab strip is only placed in the chart section on a phone');
 });
+
+test('changing the ticker: the old stock never paints its price or prints under the new name', () => {
+  const live = fs.readFileSync(path.join(__dirname, 'academy-live.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  // the page: the readouts blank and the chart dims while the new candles are on their way, and the live feed is told to wait
+  for (const bit of ["window.smlNavPending=ticker;pendingUi(true)", "pendingUi(false,true)", ".sml-nav-pending canvas{opacity:.3", "const commit=(ticker,tf,payload)=>{pendingUi(false);"]) assert.ok(server.includes(bit), bit);
+  // the feed: it ignores ticks while a change is pending, drops any stream event that is not for the stock on screen, and forgets the old stock at once
+  for (const bit of ['const navPending = () => !!window.smlNavPending', 'function forgetStock()', 'const mine = () => symbol === sym() && !navPending() && sse.es === es', "if (!mine()) return; try { onTrade(", "window.addEventListener('sml-academy-market', (e) =>"]) assert.ok(live.includes(bit), bit);
+});
