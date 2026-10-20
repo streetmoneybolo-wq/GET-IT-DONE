@@ -5615,8 +5615,9 @@ async function main() {
       else if (!r) log('info', 'story_desk_skipped', { why: 'busy_or_failed' });
     }).catch((error) => log('warn', 'story_desk_tick_failed', { error }));
     setTimeout(runStoryDesk, 3 * 60_000).unref(); setInterval(runStoryDesk, 30 * 60_000).unref();
-    /* the old letters, rebuilt in the compact layout: two every four minutes until none is left (SML_STORY_REBUILD=off skips it) */
-    if (String(process.env.SML_STORY_REBUILD || 'on').toLowerCase() !== 'off') {
+    /* the old letters, rebuilt in the compact layout: two every four minutes until none is left. OFF unless SML_STORY_REBUILD=on:
+       it rewrote published letters on every deploy (a block fewer each time) and raced a member's own edits in the editor */
+    if (String(process.env.SML_STORY_REBUILD || 'off').toLowerCase() === 'on') {
       const rebuildTimer = setInterval(() => storyDesk.rebuildOld({ limit: 2 }).then((r) => {
         if (r && (r.rebuilt || r.failed || r.halted)) log('info', 'story_rebuild_run', r);
         if (r && (r.halted || (r.ok && r.remaining === 0) || r.skipped === 'halted')) clearInterval(rebuildTimer);
