@@ -54,7 +54,7 @@
   }
   function paintFill() {
     if (!fill) return;
-    const rows = scannerRows(14);
+    const rows = scannerRows(40);
     const cur = String((document.getElementById('symbol') || {}).value || '').toUpperCase();
     const html = '<h3>TOP OF THE SCANNER<small>tap to load</small></h3>' + (rows.length ? rows.map((r) => '<div class="sf-row" data-sym="' + esc(r.symbol) + '"><b>' + (r.symbol === cur ? '▸ ' : '') + esc(r.symbol) + '</b><span>' + esc(r.price) + '</span><i class="' + (r.up ? 'up' : r.down ? 'dn' : '') + '">' + esc(r.pct) + '</i></div>').join('') : '<div class="sf-empty">The scanner is loading its rows.</div>');
     if (fill.__html !== html) { fill.innerHTML = html; fill.__html = html; }

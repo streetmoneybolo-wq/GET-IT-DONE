@@ -89,7 +89,7 @@ test('tools take turns and a tap outside closes a floating popup (desktop and ph
   const one = fs.readFileSync(path.join(__dirname, 'academy-one-at-a-time.js'), 'utf8');
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
   for (const bit of ["['smc-toggle', 'smc-card']", "['mem-algo-toggle', 'mem-algo-panel']", "['chain-toggle', 'chain-stage']", "['tool-guide-btn', 'tool-guide']", "addEventListener('pointerdown', away, true)", "e.key !== 'Escape'", 'window.smlOneAtATime', "ms-more"]) assert.ok(one.includes(bit), bit);
-  assert.ok(server.includes('ACADEMY_SIDE_WINDOW + ACADEMY_ONE_AT_A_TIME + ACADEMY_TOUR'), 'injected into the page');
+  assert.ok(server.includes('ACADEMY_SIDE_WINDOW + ACADEMY_ONE_AT_A_TIME + '), 'injected into the page');
 });
 
 test('screener CALL / PUT works as a button: it opens suggested contracts right under its row and a second tap folds them away', () => {
@@ -111,4 +111,13 @@ test('post-market percent is measured against the regular-session close from the
 test('after hours the main change is the regular-session change and the extended move is shown separately', () => {
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
   for (const bit of ['window.smlAcademyPostSession=()=>', 'window.smlAcademyChange=(ticker,price)=>', "'  ·  After hours '", 'smlAcademyPrevClose(ticker,ps?ps.reg:+price)']) assert.ok(server.includes(bit), bit);
+});
+
+test('desktop compaction: short broker buttons, TOUR/GUIDE in the top bar, quote-column tools fill the column, phones untouched', () => {
+  const dc = fs.readFileSync(path.join(__dirname, 'academy-desktop-compact.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const eng = fs.readFileSync(path.join(__dirname, 'academy-layout-engine.js'), 'utf8');
+  for (const bit of ["'Buy on ' + m[1] + ' ↗'", 'sml-dc-tail', 'sml-dc-chip', 'flex:1 1 auto;min-height:0;overflow:auto', "max-width:720px", 'new MutationObserver', 'if (b.textContent !== t)', 'function disable()']) assert.ok(dc.includes(bit), bit);
+  assert.ok(server.includes('ACADEMY_ONE_AT_A_TIME + ACADEMY_DESKTOP_COMPACT + ACADEMY_TOUR'), 'injected');
+  assert.ok(eng.includes('scannerRows(40)'), 'the scanner list fills the column');
 });
