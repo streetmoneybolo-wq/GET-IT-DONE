@@ -48,3 +48,9 @@ test('the chart: the price axis is as wide as its labels and only two empty cand
   assert.ok(pro.includes('N + Math.max(2, Math.round(n * 0.02))'));
   assert.ok(smc.includes("ctx.fillStyle = 'rgba(6,11,18,.82)'") && smc.includes('background:#0a101a;border:1px solid #3a3160'), 'SMC labels sit on a dark pill and the card is opaque');
 });
+
+test('the phone bars never show or sit in the chart grid on a wide screen, even after the window was narrow first', () => {
+  assert.ok(shell.includes("html body:not(.sml-ms) #ms-nav,html body:not(.sml-ms) #ms-sub,html body:not(.sml-ms) #ms-more,html body:not(.sml-ms) #ms-top{display:none!important}"), 'hidden whenever the phone layout is off');
+  assert.ok(shell.includes("for (const id of ['ms-top', 'ms-nav', 'ms-sub', 'ms-more'])"), 'leaving the phone layout removes the bars');
+  assert.ok(shell.includes("document.body.classList.contains('sml-ms') && top.previousElementSibling !== tb"), 'the tab strip is only placed in the chart section on a phone');
+});

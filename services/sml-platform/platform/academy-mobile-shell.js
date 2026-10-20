@@ -142,8 +142,10 @@
     TS('talk', 'chat', 'main .shell>.side') + '{display:none!important}',
     A + ' #talk-panel.sheet{position:static!important;top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;z-index:auto!important;height:calc(100svh - var(--ms-top,96px) - var(--ms-nav-h) - var(--ms-sub-h) - 70px)!important;min-height:300px;margin:6px 0 0!important;border:0!important;border-radius:10px!important;box-shadow:none!important}'
   );
+  /* outside a phone width these bars never show, and the tab strip never takes a row in the chart's grid */
+  css.unshift('html body:not(.sml-ms) #ms-nav,html body:not(.sml-ms) #ms-sub,html body:not(.sml-ms) #ms-more,html body:not(.sml-ms) #ms-top{display:none!important}');
   const style = document.createElement('style'); style.id = 'academy-mobile-shell';
-  style.textContent = '@media(max-width:720px){' + css.join('\n') + '}';
+  style.textContent = css[0] + '\n@media(max-width:720px){' + css.slice(1).join('\n') + '}';
   document.head.appendChild(style);
 
   let nav = null, sub = null, more = null, top = null;
@@ -172,7 +174,7 @@
   function slots() {
     const chart = document.querySelector('main .chart'); if (!chart) return;
     const tb = chart.querySelector(':scope>.toolbar');
-    if (top && tb && top.previousElementSibling !== tb) tb.after(top);
+    if (top && tb && document.body.classList.contains('sml-ms') && top.previousElementSibling !== tb) tb.after(top);
     if (!byId('ms-slot-smc')) { const d = document.createElement('div'); d.id = 'ms-slot-smc'; chart.appendChild(d); }
   }
   function measure() {
@@ -269,7 +271,11 @@
     apply(); tick();
   }
   function disable() {
-    document.body.classList.remove('sml-ms', 'ms-tool'); delete document.body.dataset.msTab; delete document.body.dataset.msSub;
+    document.body.classList.remove('sml-ms', 'ms-tool', 'sml-quote-open'); delete document.body.dataset.msTab; delete document.body.dataset.msSub;
+    for (const id of ['ms-top', 'ms-nav', 'ms-sub', 'ms-more']) { const el = byId(id); if (el) el.remove(); }
+    nav = sub = more = top = null; /* the slot under the chart goes too: the chart's own grid is left exactly as it was */
+    const slot = byId('ms-slot-smc'); if (slot) { const c = byId('smc-card'); if (c && slot.contains(c)) { const st = document.querySelector('.academy-chart-stage'); if (st) st.appendChild(c); } slot.remove(); }
+    document.documentElement.style.removeProperty('--ms-top'); document.documentElement.style.removeProperty('--ms-sub-h');
     if (timer) { clearInterval(timer); timer = null; }
   }
   setInterval(rememberSymbol, 2500);
