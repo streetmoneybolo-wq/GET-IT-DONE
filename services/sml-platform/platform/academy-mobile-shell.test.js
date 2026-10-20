@@ -63,3 +63,12 @@ test('changing the ticker: the old stock never paints its price or prints under 
   // the feed: it ignores ticks while a change is pending, drops any stream event that is not for the stock on screen, and forgets the old stock at once
   for (const bit of ['const navPending = () => !!window.smlNavPending', 'function forgetStock()', 'const mine = () => symbol === sym() && !navPending() && sse.es === es', "if (!mine()) return; try { onTrade(", "window.addEventListener('sml-academy-market', (e) =>"]) assert.ok(live.includes(bit), bit);
 });
+
+test('the quote change is against the previous trading day\'s close, not the previous candle', () => {
+  const live = fs.readFileSync(path.join(__dirname, 'academy-live.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const stats = fs.readFileSync(path.join(__dirname, 'academy-quote-statistics.js'), 'utf8');
+  for (const bit of ['window.smlAcademyPrevClose=(ticker,price)=>', 'const prevCloseOf=bars=>', "toLocaleDateString('en-CA',{timeZone:'America/New_York'})", 'window.smlAcademyRepaintQuote=()=>', 'dc=window.smlAcademyPrevClose?window.smlAcademyPrevClose(symbol,+last.c):null', "window.smlAcademyPrevClose&&window.smlAcademyPrevClose(ticker);"]) assert.ok(server.includes(bit), bit);
+  assert.ok(live.includes('window.smlAcademyPrevClose(sym(), d.last)') && !live.includes('m.bars[m.N - 2]'), 'the live readout no longer uses the previous candle');
+  assert.ok(stats.includes('window.smlAcademyPrevClose(symbol)') && !stats.includes('num(bars.at(-2)?.c)'), 'Prev Close in quote statistics is the daily close');
+});

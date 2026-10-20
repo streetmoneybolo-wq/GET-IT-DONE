@@ -51,8 +51,9 @@
     set('sell', fmt(b)); set('buy', fmt(a)); set('bidbook', fmt(b) + ' × ' + size(bid.size)); set('askbook', fmt(a) + ' × ' + size(ask.size)); set('spread', (a - b).toFixed(4));
     if (Number.isFinite(d.last)) {
       set('price', '$' + fmt(d.last));
-      const m = window.smlChartModel && window.smlChartModel(); const prev = m && m.bars[m.N - 2];
-      const ch = $('change'); if (ch && prev && +prev.c) { const delta = d.last - +prev.c, pct = delta / +prev.c * 100; ch.textContent = (delta >= 0 ? '▲ +' : '▼ ') + delta.toFixed(2) + ' (' + pct.toFixed(2) + '%)'; ch.style.color = delta >= 0 ? '#00d084' : '#ff5470'; }
+      /* the change is against the previous trading day's close (window.smlAcademyPrevClose), not the previous candle of this interval */
+      const dc = typeof window.smlAcademyPrevClose === 'function' ? window.smlAcademyPrevClose(sym(), d.last) : null;
+      const ch = $('change'); if (ch && dc && dc.pct != null) { const delta = dc.delta, pct = dc.pct; ch.textContent = (delta >= 0 ? '▲ +' : '▼ ') + delta.toFixed(2) + ' (' + pct.toFixed(2) + '%)'; ch.style.color = delta >= 0 ? '#00d084' : '#ff5470'; }
     }
     const s = $('status'); if (s && s.textContent !== 'LIVE') s.textContent = 'LIVE';
   }
