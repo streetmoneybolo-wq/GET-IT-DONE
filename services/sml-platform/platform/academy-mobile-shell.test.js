@@ -97,3 +97,8 @@ test('screener CALL / PUT works as a button: it opens suggested contracts right 
   for (const bit of ["S.busy.symbol === t.dataset.option && S.busy.side === side", 'li class="scr-card"', 'ALSO CONSIDER', 'BEST FIT', "aria-expanded", 'g.alternatives.map', 'scr-opt.on', 'scrollIntoView']) assert.ok(ui.includes(bit), bit);
   assert.ok(!ui.includes('<div class="scr-suggest"'), 'the suggestion no longer lands in a box at the bottom of the panel');
 });
+
+test('the quote column has no duplicate tool buttons under the price (the toolbar opens each tool)', () => {
+  const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
+  assert.ok(sw.includes("' #side-win{display:none!important;"), 'tab bar hidden');
+});

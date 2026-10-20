@@ -43,7 +43,7 @@
   /* the two cards that floated: now ordinary blocks in the column */
   rules.push(A + ' main .side>#smc-card,' + A + ' main .side>#mem-algo-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;height:auto!important;max-height:none!important;margin:6px 0 10px!important;z-index:auto!important;box-shadow:none!important}');
   rules.push('#side-win{display:none}');
-  rules.push(A + ' #side-win{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 6px;padding:0 0 8px;border-bottom:1px solid #16303b}');
+  rules.push(A + ' #side-win{display:none!important;flex-wrap:wrap;gap:4px;margin:8px 0 6px;padding:0 0 8px;border-bottom:1px solid #16303b}');
   rules.push(A + ' #side-win button{padding:5px 8px;border:1px solid #2b4b5a;border-radius:7px;background:#0d1b25;color:#a9c3d0;font:800 .58rem ui-monospace,monospace;letter-spacing:.05em;cursor:pointer;white-space:nowrap}');
   rules.push(A + ' #side-win button:hover{border-color:#6fb8e0;color:#fff}');
   rules.push(A + ' #side-win button.on{background:#0b3b2e;border-color:#00c47d;color:#7ef0bd}');
