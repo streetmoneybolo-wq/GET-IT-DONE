@@ -5636,6 +5636,22 @@ async function main() {
       }
     }, 20_000).unref();
   }
+  /* a one-shot letter action at startup: SML_STORY_LETTER_OPS=publish:142;draft:128 publishes letter 142 and takes 128 back to a draft
+     (also private / public for visibility). Each result is logged as story_letter_op; clear the variable afterwards. */
+  if (typeof storyPublisher !== 'undefined' && storyPublisher && storyPublisher.configured()) {
+    const letterOps = String(process.env.SML_STORY_LETTER_OPS || '').split(';').map((x) => x.trim().split(':')).filter(([op, id]) => ['publish', 'draft', 'private', 'public'].includes(op) && /^\d{1,7}$/.test(id || '')).slice(0, 6);
+    if (letterOps.length) setTimeout(async () => {
+      for (const [op, rawId] of letterOps) {
+        const id = Number(rawId);
+        try {
+          let result;
+          if (op === 'publish') result = await storyPublisher.publishLetter(id);
+          else { await storyPublisher.updateLetter(id, op === 'draft' ? { status: 'draft' } : { visibility: op }); result = await storyPublisher.getLetter(id); }
+          log('info', 'story_letter_op', { op, id, result });
+        } catch (error) { log('warn', 'story_letter_op_failed', { op, id, error: String(error && error.message || error), body: error && error.body }); }
+      }
+    }, 25_000).unref();
+  }
   const signalRadar = process.env.ACADEMY_SIGNAL_RADAR === 'off' ? null : createSignalRadar({
     universe: async () => {
       const cap = Math.max(50, Math.min(500, Number(process.env.ACADEMY_SIGNAL_RADAR_UNIVERSE) || 300));
