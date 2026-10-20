@@ -1,6 +1,7 @@
 import { mutateJson, paths, readJson, readSettings } from './storage.js';
 import { parseAlertMessage } from './alertParser.js';
 import { createAlertVisual } from './alertVisual.js';
+import { acceptsAlertAuthor } from './alertSource.js';
 
 export function monitoredChannelRefs(settings) {
   const monitor = settings.alertMonitor || {};
@@ -37,10 +38,8 @@ export async function processAlertMessage(message, eventType = 'created') {
   const settings = await readSettings();
   const monitor = settings.alertMonitor || {};
   if (!monitor.enabled || !monitorsMessage(settings, message)) return false;
-  // Bridges/webhooks are copies, not new original alerts.
-  if (message.author?.bot || message.webhookId) return true;
   const source = (monitor.sources || []).find((row) => row.channelId === message.channelId && (!row.guildId || row.guildId === message.guildId));
-  if (source?.authorIds?.length && !source.authorIds.includes(message.author?.id)) return true;
+  if (!acceptsAlertAuthor(source, message)) return true;
   if (!message.content) return true;
   const timestamp = message.createdAt?.toISOString?.() || new Date(message.createdTimestamp || Date.now()).toISOString();
   const parsed = parseAlertMessage(message.content, timestamp, monitor.marketTimezone || 'America/New_York');

@@ -50,7 +50,7 @@ client.on('messageCreate', async (message) => {
   await forwardAlertToTelegram(message, settings).catch((error) => {
     console.error('Telegram alert forward failed safely:', error.message || error);
   });
-  if (message.author?.bot) return;
+  // processAlertMessage checks the source-specific bot/webhook allowlist.
   await processAlertMessage(message);
 });
 
@@ -61,7 +61,7 @@ client.on('messageUpdate', async (_oldMessage, message) => {
     await forwardAlertToTelegram(message, settings, 'updated').catch((error) => {
       console.error('Telegram alert update forward failed safely:', error.message || error);
     });
-    if (!message.author?.bot) await processAlertMessage(message, 'updated');
+    await processAlertMessage(message, 'updated');
   } catch (error) {
     console.error('Spotlight alert update failed safely:', error.message || error);
   }
