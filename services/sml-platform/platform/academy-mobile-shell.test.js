@@ -11,7 +11,8 @@ test('the phone workspace has the six tabs, the sub-tabs of each, and loads in t
   for (const tab of ["'quotes'", "'chart'", "'flow'", "'options'", "'algo'", "'talk'"]) assert.ok(shell.includes('id: ' + tab), tab);
   // a phone opens on the chart of the stock the member last used (SPY the first time), never on a tool
   assert.match(shell, /const S = \{ tab: 'chart'/);
-  for (const bit of ["const LAST = 'sml-last-symbol'", 'function rememberSymbol', "u.searchParams.set('symbol', last)", "'Take the tour'"]) assert.ok(shell.includes(bit), bit);
+  assert.ok(!/location\.(replace|assign)\(/.test(shell), 'never reload the page: a second load inside Discord never finishes its sign-in');
+  for (const bit of ["const LAST = 'sml-last-symbol'", 'function rememberSymbol', "window.smlAcademyNavigateMarket(last)", "'Take the tour'"]) assert.ok(shell.includes(bit), bit);
   // sub-tabs: the modules that belong together share a tab
   for (const bit of ["'buysell-toggle'", "'darkpool-toggle'", "'shortsale-toggle'", "'sentiment-toggle'", "'mem-algo-toggle'", "'smc-toggle'", "'sire-toggle'", "'earnings-toggle'", "'catalysts-toggle'", "'paper-toggle'", "'talk-btn'", "['chain', 'CHAIN'", "['calc', 'CALCULATOR'", "['contract', 'CONTRACT'"]) assert.ok(shell.includes(bit), bit);
   // phones only, behind a media query and a body class; desktop is never touched

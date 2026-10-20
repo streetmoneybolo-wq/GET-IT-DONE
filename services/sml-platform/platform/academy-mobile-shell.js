@@ -243,17 +243,23 @@
   /* the last stock the member left the Academy on: remembered while they use it, and restored when it opens with no symbol in its address */
   const LAST = 'sml-last-symbol', SYM = /^[A-Z][A-Z0-9.\-]{0,9}$/;
   const lastSymbol = () => { try { const v = String(localStorage.getItem(LAST) || '').toUpperCase(); return SYM.test(v) ? v : ''; } catch (_) { return ''; } };
+  /* only a stock the chart actually has candles for is remembered, so a typo or a delisted name never becomes the next start */
   function rememberSymbol() {
     const si = byId('symbol'); if (!si || document.activeElement === si) return;
     const v = String(si.value || '').trim().toUpperCase(); if (!SYM.test(v)) return;
+    const m = window.smlChartModel && window.smlChartModel(); if (!m || String(m.symbol || '').toUpperCase() !== v || !(m.N > 0)) return;
     try { if (localStorage.getItem(LAST) !== v) localStorage.setItem(LAST, v); } catch (_) { /* storage can be blocked */ }
   }
+  /* Opened with no symbol in its address: switch to the last stock with the chart's own in-page navigation. Never a reload: a second
+     load inside Discord's frame never finishes its sign-in, which left the Academy stuck without its chart. */
   (function restoreSymbol() {
     try {
       const u = new URL(location.href);
       if (u.searchParams.has('symbol') || u.searchParams.has('popout') || u.searchParams.has('perf')) return;
       const last = lastSymbol(); if (!last || last === 'SPY') return;
-      u.searchParams.set('symbol', last); location.replace(u.toString());
+      let tries = 0;
+      const go = () => { if (typeof window.smlAcademyNavigateMarket === 'function') { try { window.smlAcademyNavigateMarket(last); } catch (_) { /* the chart keeps SPY */ } return; } if (++tries < 40) setTimeout(go, 500); };
+      setTimeout(go, 1200);
     } catch (_) { /* the Academy opens on its own default */ }
   })();
   let timer = null;
