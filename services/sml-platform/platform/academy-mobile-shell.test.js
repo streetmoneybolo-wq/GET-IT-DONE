@@ -68,7 +68,7 @@ test('the quote change is against the previous trading day\'s close, not the pre
   const live = fs.readFileSync(path.join(__dirname, 'academy-live.js'), 'utf8');
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
   const stats = fs.readFileSync(path.join(__dirname, 'academy-quote-statistics.js'), 'utf8');
-  for (const bit of ['window.smlAcademyPrevClose=(ticker,price)=>', 'const prevCloseOf=bars=>', "toLocaleDateString('en-CA',{timeZone:'America/New_York'})", 'window.smlAcademyRepaintQuote=()=>', 'dc=window.smlAcademyPrevClose?window.smlAcademyPrevClose(symbol,+last.c):null', "window.smlAcademyPrevClose&&window.smlAcademyPrevClose(ticker);"]) assert.ok(server.includes(bit), bit);
+  for (const bit of ['window.smlAcademyPrevClose=(ticker,price)=>', 'const prevCloseOf=bars=>', "toLocaleDateString('en-CA',{timeZone:'America/New_York'})", 'window.smlAcademyRepaintQuote=()=>', 'qc=window.smlAcademyChange?window.smlAcademyChange(symbol,+last.c):null', "window.smlAcademyPrevClose&&window.smlAcademyPrevClose(ticker);"]) assert.ok(server.includes(bit), bit);
   assert.ok(live.includes('window.smlAcademyChange(sym(), d.last)') && !live.includes('m.bars[m.N - 2]'), 'the live readout no longer uses the previous candle');
   assert.ok(stats.includes('window.smlAcademyPrevClose(symbol)') && !stats.includes('num(bars.at(-2)?.c)'), 'Prev Close in quote statistics is the daily close');
 });
