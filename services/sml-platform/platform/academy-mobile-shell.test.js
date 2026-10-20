@@ -91,3 +91,9 @@ test('tools take turns and a tap outside closes a floating popup (desktop and ph
   for (const bit of ["['smc-toggle', 'smc-card']", "['mem-algo-toggle', 'mem-algo-panel']", "['chain-toggle', 'chain-stage']", "['tool-guide-btn', 'tool-guide']", "addEventListener('pointerdown', away, true)", "e.key !== 'Escape'", 'window.smlOneAtATime', "ms-more"]) assert.ok(one.includes(bit), bit);
   assert.ok(server.includes('ACADEMY_SIDE_WINDOW + ACADEMY_ONE_AT_A_TIME + ACADEMY_TOUR'), 'injected into the page');
 });
+
+test('screener CALL / PUT works as a button: it opens suggested contracts right under its row and a second tap folds them away', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-screener-ui.js'), 'utf8');
+  for (const bit of ["S.busy.symbol === t.dataset.option && S.busy.side === side", 'li class="scr-card"', 'ALSO CONSIDER', 'BEST FIT', "aria-expanded", 'g.alternatives.map', 'scr-opt.on', 'scrollIntoView']) assert.ok(ui.includes(bit), bit);
+  assert.ok(!ui.includes('<div class="scr-suggest"'), 'the suggestion no longer lands in a box at the bottom of the panel');
+});

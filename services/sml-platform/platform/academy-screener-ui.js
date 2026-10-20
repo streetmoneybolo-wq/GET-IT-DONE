@@ -24,6 +24,9 @@
     + '.academy-screener ul{list-style:none;margin:0;padding:0;max-height:220px;overflow:auto}.academy-screener li{display:flex;gap:8px;align-items:center;padding:3px 0;border-top:1px solid rgba(42,66,78,.5)}.academy-screener li:first-child{border-top:0}.academy-screener .scr-sym{border:1px solid #2d566b;background:#102735;color:#fff;padding:2px 7px;border-radius:4px;font:800 .62rem ui-monospace,monospace;cursor:pointer}.academy-screener .scr-name{flex:1;color:#9fb7c4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.6rem}'
     + '.academy-screener .scr-opt{border:1px solid #6a4fa0;background:#17112a;color:#cdb6ff;padding:2px 7px;border-radius:4px;font:800 .58rem ui-monospace,monospace;cursor:pointer}.academy-screener .scr-empty{color:#5d7085;font-size:.6rem}'
     + '.academy-screener .scr-suggest{margin-top:8px;padding:8px;border:1px solid #3a3160;border-radius:7px;background:#0e0a1c;color:#dbe6ec;font:600 .64rem/1.4 system-ui}.academy-screener .scr-suggest b{color:#cdb6ff;margin-right:6px}'
+    + '.academy-screener .scr-opt:hover,.academy-screener .scr-opt:focus-visible{background:#2a1d4d;border-color:#9a7fe0;color:#fff}.academy-screener .scr-opt.on{background:#7a5cff;border-color:#b9a4ff;color:#fff}.academy-screener .scr-opt:active{transform:translateY(1px)}'
+    + '.academy-screener li.scr-card{display:block;margin:4px 0 6px;padding:8px;border:1px solid #3a3160;border-radius:8px;background:#0e0a1c;color:#dbe6ec;font:600 .64rem/1.4 system-ui}.academy-screener .scr-card p{margin:4px 0}.academy-screener .scr-head{display:flex;gap:8px;align-items:center}.academy-screener .scr-head b{color:#cdb6ff;font:800 .62rem ui-monospace,monospace;letter-spacing:.04em}.academy-screener .scr-head em{margin-left:auto;font-style:normal;color:#7ef0bd;font-weight:800}.academy-screener .scr-wait{color:#cdb6ff}'
+    + '.academy-screener .scr-cons{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin:6px 0}.academy-screener .scr-con{display:flex;flex-direction:column;gap:2px;padding:7px;border:1px solid #2a2450;border-radius:7px;background:#120d24}.academy-screener .scr-con.best{border-color:#7a5cff;background:#18113a}.academy-screener .scr-con b{color:#9d8be0;font:800 .5rem ui-monospace,monospace;letter-spacing:.06em}.academy-screener .scr-con strong{color:#fff;font-size:.74rem}.academy-screener .scr-con span{color:#aab9c4;font-weight:600}.academy-screener .scr-flags{color:#ffcf8a}.academy-screener .scr-card small{display:block;margin-top:4px;color:#6f8794;font-weight:500;font-size:.54rem}'
     + '.academy-screener .scr-note{margin:8px 0 0;color:#7f97a4;font:500 .56rem/1.4 system-ui}@media(max-width:700px){.academy-screener .scr-cols{grid-template-columns:1fr}}';
   document.head.appendChild(style);
 
@@ -65,7 +68,11 @@
     else if (t.dataset.view) { S.view = t.dataset.view; paint(); }
     else if (t.dataset.horizon) { S.horizon = t.dataset.horizon; S.busy = null; paint(); }
     else if (t.dataset.load) { const sym = document.getElementById('symbol'), go = document.getElementById('load'); if (sym && go) { sym.value = t.dataset.load; go.click(); } }
-    else if (t.dataset.option) void suggest(t.dataset.option, t.dataset.side === 'put' ? 'put' : 'call');
+    else if (t.dataset.option) {
+      const side = t.dataset.side === 'put' ? 'put' : 'call';
+      if (S.busy && S.busy.symbol === t.dataset.option && S.busy.side === side) { S.busy = null; paint(); return; } // a second tap folds the suggestions away
+      void suggest(t.dataset.option, side);
+    }
   }
   async function suggest(symbol, side) {
     if (!S.session) { S.busy = { symbol, side, text: 'Unlock Academy Tools first so Discord can verify private Academy access.' }; paint(); return; }
@@ -76,13 +83,32 @@
       if (!res.ok || !d.ok) throw new Error(d.error || 'unavailable');
       const s = d.suggestion || {};
       const picked = s.verdict === 'CALL' || s.verdict === 'PUT';
-      S.busy = { symbol, side, verdict: s.verdict, text: picked ? (s.strength ? s.strength + ' — ' : '') + (s.summary || '') + (Array.isArray(s.flags) && s.flags.length ? ' Watch: ' + s.flags.join('; ') + '.' : '') : (s.reason || 'No suitable contract right now.') };
+      S.busy = { symbol, side, verdict: s.verdict, sug: picked ? s : null, text: picked ? (s.strength ? s.strength + ' — ' : '') + (s.summary || '') + (Array.isArray(s.flags) && s.flags.length ? ' Watch: ' + s.flags.join('; ') + '.' : '') : (s.reason || 'No suitable contract right now.') };
     } catch (_) { S.busy = { symbol, side, text: 'Options data is temporarily unavailable. Check Academy bridge authorization and provider entitlement.' }; }
     paint();
+    const card = document.getElementById('academy-screener-suggest'); if (card && card.scrollIntoView) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   const row = (s, close, chg) => '<li><button type="button" class="scr-sym" data-load="' + esc(s.symbol) + '">' + esc(s.symbol) + '</button><span class="scr-name">' + esc(s.name || '') + '</span><span>' + money(close) + ' ' + pct(chg) + '</span></li>';
-  const hrow = (s, h, dir) => '<li><button type="button" class="scr-sym" data-load="' + esc(s.symbol) + '">' + esc(s.symbol) + '</button><span class="scr-name">' + (h.grade ? 'grade ' + esc(h.grade) + ' · ' : '') + esc(h.bias) + (h.pattern ? ' · ' + esc(String(h.pattern.name || '').replace(/_/g, ' ')) + ' (' + esc(h.pattern.status) + ')' : '') + '</span><button type="button" class="scr-opt" data-option="' + esc(s.symbol) + '" data-side="' + (dir > 0 ? 'call' : 'put') + '">' + (dir > 0 ? 'CALL' : 'PUT') + '</button></li>';
+  const cdol = (v) => (Number.isFinite(v) ? '$' + Number(v).toFixed(2) : '–');
+  const cname = (c, side) => new Date(c.expiry + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) + ' ' + cdol(c.strike) + ' ' + side;
+  const ccard = (c, side, best) => '<div class="scr-con' + (best ? ' best' : '') + '"><b>' + esc(best ? 'BEST FIT' : 'ALSO CONSIDER') + '</b><strong>' + esc(cname(c, side)) + '</strong><span>' + esc(c.dte) + ' days · about ' + esc(cdol(c.costPerContract)) + ' a contract</span><span>Breaks even ' + esc(cdol(c.breakeven)) + (Number.isFinite(c.needPct) ? ' (' + (side === 'call' ? '+' : '-') + (c.needPct * 100).toFixed(1) + '%)' : '') + '</span><span>Delta ' + (Number.isFinite(c.delta) ? c.delta.toFixed(2) : '–') + ' · open interest ' + esc(c.oi) + (Number.isFinite(c.returnAtTarget) && c.returnAtTarget > 0 ? ' · ~' + Math.round(c.returnAtTarget * 100) + '% at target' : '') + '</span></div>';
+  const suggestCard = (b) => {
+    const side = b.side === 'put' ? 'put' : 'call';
+    let inner;
+    if (!b.verdict && !b.sug && /…$/.test(b.text)) inner = '<div class="scr-wait">' + esc(b.text) + '</div>';
+    else if (b.sug) {
+      const g = b.sug;
+      inner = '<div class="scr-head"><b>' + esc(b.symbol) + ' ' + esc(side.toUpperCase()) + 'S TO CONSIDER</b><em>' + esc(g.strength || '') + '</em></div>'
+        + (g.reason ? '<p>' + esc(g.reason) + '</p>' : '') + '<div class="scr-cons">' + (g.contract ? ccard(g.contract, side, true) : '') + (Array.isArray(g.alternatives) ? g.alternatives.map((c) => ccard(c, side, false)).join('') : '') + '</div>'
+        + (Array.isArray(g.flags) && g.flags.length ? '<p class="scr-flags">Watch: ' + esc(g.flags.join('; ')) + '.</p>' : '');
+    } else inner = '<div class="scr-head"><b>' + esc(b.symbol) + ' ' + esc(side.toUpperCase()) + (b.verdict ? ' · ' + esc(b.verdict) : '') + '</b></div><p>' + esc(b.text) + '</p>';
+    return '<li class="scr-card" id="academy-screener-suggest">' + inner + '<small>Educational analysis, not investment advice or a recommendation to trade. Options can lose their entire value. Tap ' + esc(side.toUpperCase()) + ' again to close.</small></li>';
+  };
+  const hrow = (s, h, dir) => {
+    const side = dir > 0 ? 'call' : 'put', on = S.busy && S.busy.symbol === s.symbol && S.busy.side === side, loading = on && !S.busy.verdict && !S.busy.sug && /…$/.test(S.busy.text);
+    return '<li><button type="button" class="scr-sym" data-load="' + esc(s.symbol) + '">' + esc(s.symbol) + '</button><span class="scr-name">' + (h.grade ? 'grade ' + esc(h.grade) + ' · ' : '') + esc(h.bias) + (h.pattern ? ' · ' + esc(String(h.pattern.name || '').replace(/_/g, ' ')) + ' (' + esc(h.pattern.status) + ')' : '') + '</span><button type="button" class="scr-opt' + (on ? ' on' : '') + '" aria-expanded="' + (on ? 'true' : 'false') + '" data-option="' + esc(s.symbol) + '" data-side="' + side + '">' + (loading ? '…' : side.toUpperCase()) + '</button></li>' + (on ? suggestCard(S.busy) : '');
+  };
 
   function paint() {
     const panel = document.getElementById('academy-screener'); if (!panel) return;
@@ -104,7 +130,6 @@
       const reads = d.symbols.map((s) => ({ s, h: s.horizons && s.horizons[S.horizon] })).filter((x) => x.h);
       const side = (dir) => reads.filter((x) => x.h.dir === dir).sort((a, b) => b.h.strength - a.h.strength).map((x) => hrow(x.s, x.h, dir)).join('') || '<li class="scr-empty">none right now</li>';
       body = '<div class="scr-pills">' + hs + '</div><div class="scr-cols"><div><h4 class="up">GO LONG · MEM ALGO leans up</h4><ul>' + side(1) + '</ul></div><div><h4 class="dn">SHORT · MEM ALGO leans down</h4><ul>' + side(-1) + '</ul></div></div>'
-        + (S.busy ? '<div class="scr-suggest" id="academy-screener-suggest"><b>' + esc(S.busy.symbol) + ' ' + esc(String(S.busy.side).toUpperCase()) + (S.busy.verdict ? ' · ' + esc(S.busy.verdict) : '') + '</b>' + esc(S.busy.text) + '<br><em>Educational analysis, not investment advice or a recommendation to trade. Options can lose their entire value.</em></div>' : '')
         + '<p class="scr-note"><strong>Educational only, not investment advice.</strong> These lists describe what price has already done; they are not recommendations to buy, sell or short. Ranked by MEM ALGO signal grade, how recent the signal is, and whether the latest chart formation agrees. CALL / PUT asks the options lab for the most liquid, best-priced contract that fits that lean. Educational only: nothing here places a trade.</p>';
     }
     panel.innerHTML = tabs + body;
