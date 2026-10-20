@@ -82,7 +82,7 @@
     tool('main .chart>*') + '{flex:none;min-width:0}',
     T('quotes', 'main') + ',' + T('quotes', 'main .shell') + ',' + T('quotes', 'main .chart') + '{height:auto!important;min-height:0!important}',
     T('quotes', 'main .chart') + '{display:block!important;padding-bottom:0!important}',
-    tool('main .chart .academy-chart-stage') + ',' + tool('main .chart>canvas#chart') + '{height:clamp(190px,31svh,270px)!important;min-height:0!important}',
+    tool('main .chart .academy-chart-stage') + ',' + tool('main .chart>canvas#chart') + '{height:calc(clamp(190px,31svh,270px) + var(--ms-extra,0px))!important;min-height:0!important}',
     tool('main .chart>.academy-chart-tools') + ',' + tool('main .toolbar .academy-brokers') + ',' + tool('.academy-intelligence') + '{display:none!important}',
     /* the stock tabs sit right under the symbol and price, like a stock page: Chart . Flow . Options . Algo . Comments */
     '#ms-top{display:none}' + A + ':not([data-ms-tab=quotes]) #ms-top{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:0 4px;margin:0 0 2px;border-bottom:1px solid #16303b;background:#07101a}',
@@ -97,6 +97,8 @@
     T('quotes', '#academy-scanner-host') + '{flex:1 1 52%;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}',
     T('quotes', '.academy-chat') + ',' + T('chat-full', '.academy-chat') + '{flex:1 1 48%;min-height:0;margin:0!important;display:flex!important;flex-direction:column}',
     T('quotes', '.academy-chat-log') + '{flex:1 1 auto;height:auto!important;min-height:0}',
+    T('quotes', '.academy-chat.sml-empty') + '{flex:0 0 auto}' + T('quotes', '.academy-chat.sml-empty .academy-chat-log') + '{flex:0 0 auto;height:64px!important}',
+    T('quotes', '#academy-scanner-host') + '{flex:1 1 auto}',
     /* ---- CHART: the full chart; the deck under it is not shown ---- */
     T('chart', '#academy-below') + ',' + T('chart', 'main .shell>.side') + '{display:none!important}',
     /* ---- FLOW: the quote column in flow, one box at a time ---- */
@@ -264,10 +266,23 @@
       setTimeout(go, 1200);
     } catch (_) { /* the Academy opens on its own default */ }
   })();
+  /* Fit: on the tool tabs the chart takes whatever height the panel under it leaves free, so a short panel never strands an empty band
+     above the sub-tab bar; a long panel gives it back (the chart never goes below its normal size). */
+  let extra = 0;
+  function fit() {
+    const root = document.documentElement;
+    if (!document.body.classList.contains('sml-ms')) return;
+    const tool = ['flow', 'options', 'algo', 'talk'].includes(S.tab);
+    if (!tool) { if (extra) { extra = 0; root.style.removeProperty('--ms-extra'); } return; }
+    const free = window.innerHeight - Math.ceil(document.body.getBoundingClientRect().bottom + window.scrollY);
+    if (Math.abs(free) < 6) return;
+    const next = Math.max(0, Math.min(Math.round(window.innerHeight * 0.3), extra + free));
+    if (next !== extra) { extra = next; root.style.setProperty('--ms-extra', extra + 'px'); }
+  }
   let timer = null;
   function enable() {
     document.body.classList.add('sml-ms'); build(); slots();
-    if (!timer) timer = setInterval(tick, 1200);
+    if (!timer) timer = setInterval(() => { tick(); fit(); }, 1200);
     apply(); tick();
   }
   function disable() {
@@ -275,7 +290,7 @@
     for (const id of ['ms-top', 'ms-nav', 'ms-sub', 'ms-more']) { const el = byId(id); if (el) el.remove(); }
     nav = sub = more = top = null; /* the slot under the chart goes too: the chart's own grid is left exactly as it was */
     const slot = byId('ms-slot-smc'); if (slot) { const c = byId('smc-card'); if (c && slot.contains(c)) { const st = document.querySelector('.academy-chart-stage'); if (st) st.appendChild(c); } slot.remove(); }
-    document.documentElement.style.removeProperty('--ms-top'); document.documentElement.style.removeProperty('--ms-sub-h');
+    document.documentElement.style.removeProperty('--ms-top'); document.documentElement.style.removeProperty('--ms-extra'); document.documentElement.style.removeProperty('--ms-sub-h');
     if (timer) { clearInterval(timer); timer = null; }
   }
   setInterval(rememberSymbol, 2500);

@@ -121,3 +121,10 @@ test('desktop compaction: short broker buttons, TOUR/GUIDE in the top bar, quote
   assert.ok(server.includes('ACADEMY_ONE_AT_A_TIME + ACADEMY_DESKTOP_COMPACT + ACADEMY_TOUR'), 'injected');
   assert.ok(eng.includes('scannerRows(40)'), 'the scanner list fills the column');
 });
+
+test('phone compaction: the chart takes the height a short panel leaves free, an empty chat gives its room to the quotes', () => {
+  const sh = fs.readFileSync(path.join(__dirname, 'academy-mobile-shell.js'), 'utf8');
+  const eng = fs.readFileSync(path.join(__dirname, 'academy-layout-engine.js'), 'utf8');
+  for (const bit of ['var(--ms-extra,0px)', 'function fit()', "document.body.getBoundingClientRect().bottom", "setInterval(() => { tick(); fit(); }, 1200)", "T('quotes', '.academy-chat.sml-empty')", "removeProperty('--ms-extra')"]) assert.ok(sh.includes(bit), bit);
+  assert.ok(eng.includes('connecting(?:…|\\.{2,3})'), 'the empty chat is recognised with three dots too');
+});

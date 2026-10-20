@@ -40,7 +40,7 @@
   }
 
   /* 2. the side column: an empty Level 2 collapses and the column shows the live scanner's top rows */
-  const EMPTY_RE = /temporarily unavailable|not available right now|switched off|connecting…|no live|unavailable\.?$/i;
+  const EMPTY_RE = /temporarily unavailable|not available right now|switched off|connecting(?:…|\.{2,3})|no live|unavailable\.?$/i;
   let fill = null;
   function scannerRows(limit) {
     const out = [];
