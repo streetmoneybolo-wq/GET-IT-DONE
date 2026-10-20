@@ -22,7 +22,7 @@
   const css = document.createElement('style');
   css.textContent = '#smc-layer{position:absolute;pointer-events:none;z-index:4;background:transparent;border:0;border-radius:0;min-height:0;max-width:none}'
     + '#smc-toggle{margin-left:4px;padding:5px 9px;border:1px solid #6a4fa0;border-radius:7px;background:#17112a;color:#cdb6ff;font:800 .64rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer}#smc-toggle.on{background:#6a4fd0;border-color:#a58bff;color:#fff}'
-    + '#smc-card{position:absolute;right:74px;top:26px;z-index:9;width:min(270px,calc(100% - 96px));max-height:calc(100% - 60px);overflow:auto;background:rgba(9,15,24,.94);border:1px solid #3a3160;border-radius:10px;color:#dbe6ec;font:600 .64rem/1.4 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.5)}'
+    + '#smc-card{position:absolute;right:74px;top:26px;z-index:9;width:min(270px,calc(100% - 96px));max-height:calc(100% - 60px);overflow:auto;background:#0a101a;border:1px solid #3a3160;border-radius:10px;color:#dbe6ec;font:600 .64rem/1.4 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.5)}'
     + '#smc-card header{display:flex;align-items:center;gap:6px;padding:7px 9px;border-bottom:1px solid #2a2547;cursor:pointer}#smc-card header b{font:800 .66rem ui-monospace,monospace;color:#cdb6ff;letter-spacing:.06em}#smc-card header span{color:#8fa6b3;padding:0 2px}#smc-card header b+span{margin-left:auto}#smc-card header span:hover{color:#e4d8ff}#smc-card header span[data-min]{font-weight:800;padding:0 6px}'
     + '#smc-card .opts{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;padding:7px 9px;border-bottom:1px solid #2a2547}#smc-card label{display:flex;gap:5px;align-items:center;color:#b9c8d1;font-weight:600;cursor:pointer}#smc-card input{accent-color:#8b6dff}'
     + '#smc-card ul{list-style:none;margin:0;padding:7px 9px 8px}#smc-card li{margin:0 0 6px;padding-left:9px;border-left:3px solid #4a5a66;color:#c9d6de}#smc-card li.up{border-color:#00d084}#smc-card li.down{border-color:#ff5470}#smc-card li.warn{border-color:#ffd166}'
@@ -33,7 +33,8 @@
     + '#smc-card .focus .cl{margin:4px 9px 8px;padding:8px 10px;border-radius:8px;background:#121a28;border:1px solid #2c3a52}#smc-card .focus .cl b{display:inline-block;margin-bottom:3px;font:800 .6rem ui-monospace,monospace;letter-spacing:.06em}#smc-card .focus .cl.bullish b{color:#5df0b0}#smc-card .focus .cl.bearish b{color:#ff8ea1}#smc-card .focus .cl.neutral b{color:#ffd166}'
     + '#smc-card .focus small{display:block;padding:0 11px 8px;color:#6f8794;font-weight:500;font-size:.54rem}';
   css.textContent += '#smc-card .cl-overall{margin:7px 9px 0;padding:7px 9px;border-radius:8px;background:#121a28;border:1px solid #2c3a52;color:#c9d6de;font-weight:600}#smc-card .cl-overall b{font:800 .58rem ui-monospace,monospace;letter-spacing:.05em}#smc-card .cl-overall.bullish b{color:#5df0b0}#smc-card .cl-overall.bearish b{color:#ff8ea1}#smc-card .cl-overall.neutral b{color:#ffd166}';
-  css.textContent += '#smc-card .ms-tabs{display:none}body.sml-ms #smc-card .ms-tabs{display:flex;gap:4px;padding:6px 9px 2px;position:sticky;top:0;background:rgba(9,15,24,.97);z-index:2}body.sml-ms #smc-card .ms-tabs button{flex:1 1 0;padding:6px 4px;border:1px solid #3a3160;border-radius:7px;background:#120d22;color:#b9a7e6;font:800 .6rem ui-monospace,monospace;letter-spacing:.05em}body.sml-ms #smc-card .ms-tabs button.on{background:#6a4fd0;border-color:#a58bff;color:#fff}'
+  css.textContent += '#smc-card>*{flex:none}#smc-card>header{order:0}#smc-card>.ms-tabs{order:1}#smc-card>.cl-overall{order:2}#smc-card>.focus{order:3}#smc-card>ul{order:4}#smc-card>.opts{order:5}#smc-card>small{order:6}';
+css.textContent += '#smc-card .ms-tabs{display:none}body.sml-ms #smc-card .ms-tabs{display:flex;gap:4px;padding:6px 9px 2px;position:sticky;top:0;background:rgba(9,15,24,.97);z-index:2}body.sml-ms #smc-card .ms-tabs button{flex:1 1 0;padding:6px 4px;border:1px solid #3a3160;border-radius:7px;background:#120d22;color:#b9a7e6;font:800 .6rem ui-monospace,monospace;letter-spacing:.05em}body.sml-ms #smc-card .ms-tabs button.on{background:#6a4fd0;border-color:#a58bff;color:#fff}'
     + 'body.sml-ms #smc-card:not([data-tab]) [data-t]:not([data-t=read]),body.sml-ms #smc-card[data-tab=read] [data-t]:not([data-t=read]),body.sml-ms #smc-card[data-tab=detail] [data-t]:not([data-t=detail]),body.sml-ms #smc-card[data-tab=add] [data-t]:not([data-t=add]){display:none}';
   document.head.appendChild(css);
 
@@ -65,7 +66,7 @@
   window.addEventListener('resize', place); setInterval(place, 1500);
   function paintCard() {
     if (!S.on) { card.style.display = 'none'; return; }
-    card.style.display = 'block';
+    card.style.display = 'flex'; card.style.flexDirection = 'column';
     const lines = S.a ? SM.read(S.a) : [];
     const EXm = window.SmlSmcExplain, Mm = window.smlChartModel && window.smlChartModel(), ov = EXm && S.a && Mm ? EXm.overall(S.a, Mm.bars, { flow: flow(), htf: htfLean(Mm.bars) }) : null;
     /* "hide options" folds only the add-on checkboxes away (the map read, the breakdown and the lines stay); the dash minimises the card to a chip */
@@ -90,7 +91,12 @@
   btn.classList.toggle('on', S.on);
 
   const rect = (x1, y1, x2, y2, fill, stroke, dash) => { const l = Math.min(x1, x2), t = Math.min(y1, y2), w = Math.abs(x2 - x1), h = Math.max(1.5, Math.abs(y2 - y1)); ctx.fillStyle = fill; ctx.fillRect(l, t, w, h); if (stroke) { ctx.save(); if (dash) ctx.setLineDash(dash); ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.strokeRect(l + .5, t + .5, w - 1, h - 1); ctx.restore(); } };
-  const text = (t, x, y, color, align, size = 10) => { ctx.font = '800 ' + size + 'px ui-monospace,monospace'; ctx.textAlign = align || 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = color; ctx.fillText(t, x, y); };
+  const text = (t, x, y, color, align, size = 10) => {
+    size = Math.max(10, size + 1); ctx.font = '800 ' + size + 'px ui-monospace,monospace'; ctx.textAlign = align || 'left'; ctx.textBaseline = 'middle';
+    const w = ctx.measureText(t).width, left = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
+    ctx.fillStyle = 'rgba(6,11,18,.82)'; ctx.fillRect(left - 3, y - size / 2 - 2, w + 6, size + 4);
+    ctx.fillStyle = color; ctx.fillText(t, x, y);
+  };
 
   function draw() {
     if (chartCanvas.parentElement && layer.parentElement !== chartCanvas.parentElement) chartCanvas.parentElement.appendChild(layer);
@@ -109,7 +115,7 @@
 
     if (S.o.pd && a.range) {
       const x0 = Math.max(pad.l, x(a.range.fromIdx) - half), yh = y(a.range.hi), ye = y(a.range.eq), yl = y(a.range.lo);
-      rect(x0, yh, right, ye, 'rgba(255,84,112,.06)'); rect(x0, ye, right, yl, 'rgba(0,208,132,.06)');
+      rect(x0, yh, right, ye, 'rgba(255,84,112,.10)'); rect(x0, ye, right, yl, 'rgba(0,208,132,.10)');
       ctx.save(); ctx.setLineDash([6, 4]); ctx.strokeStyle = 'rgba(190,215,228,.55)'; ctx.beginPath(); ctx.moveTo(x0, ye); ctx.lineTo(right, ye); ctx.stroke(); ctx.restore();
       text('EQ 50%', x0 + 4, ye - 7, '#b9c8d1'); text('PREMIUM', x0 + 4, yh + 9, 'rgba(255,140,160,.8)'); text('DISCOUNT', x0 + 4, yl - 8, 'rgba(90,240,176,.8)');
     }
@@ -127,7 +133,7 @@
       const endI = g.filledAt != null ? g.filledAt : boundEnd(g.i, M.end), x1 = Math.max(pad.l, x(g.i) - half), x2 = Math.min(right, x(endI));
       if (x2 <= pad.l || !(inY(g.top) || inY(g.bottom))) continue;
       zoneHit('gap', a.gaps.indexOf(g), x1, y(g.top), x2, y(g.bottom));
-      const open = g.filledAt == null; rect(x1, y(g.top), x2, y(g.bottom), open ? 'rgba(255,209,102,.13)' : 'rgba(255,209,102,.05)', open ? 'rgba(255,209,102,.7)' : null, [3, 3]);
+      const open = g.filledAt == null; rect(x1, y(g.top), x2, y(g.bottom), open ? 'rgba(255,209,102,.20)' : 'rgba(255,209,102,.07)', open ? 'rgba(255,209,102,.9)' : null, [3, 3]);
       zoneLabels.push({ x: x1 + 4, y: y(g.top) + 8, size: 10, text: 'GAP ' + (g.pct >= 0 ? '+' : '') + (g.pct * 100).toFixed(1) + '%' + (open ? '' : ' filled'), color: open ? '#ffd166' : 'rgba(255,209,102,.55)' });
     }
     if (S.o.fvg) {
@@ -135,7 +141,7 @@
       for (const g of list) {
         const x1 = Math.max(pad.l, x(g.i - 1) - half), x2 = Math.min(right, x(boundEnd(g.i, M.end))), col = g.dir > 0 ? '0,208,132' : '255,84,112';
         zoneHit('fvg', a.fvg.indexOf(g), x1, y(g.top), x2, y(g.bottom));
-        rect(x1, y(g.top), x2, y(g.bottom), 'rgba(' + col + ',.11)', 'rgba(' + col + ',.55)', [2, 3]);
+        rect(x1, y(g.top), x2, y(g.bottom), 'rgba(' + col + ',.18)', 'rgba(' + col + ',.85)', [2, 3]);
         zoneLabels.push({ x: Math.min(x2 - 30, x1 + 3), y: y(g.top) + 7, size: 9, text: 'FVG', color: 'rgb(' + col + ')' });
       }
     }
@@ -144,7 +150,7 @@
       for (const o of list) {
         const x1 = Math.max(pad.l, x(o.i) - half), x2 = Math.min(right, x(boundEnd(o.i, M.end))), col = o.dir > 0 ? '77,195,255' : '255,170,60';
         zoneHit('ob', a.structure.orderBlocks.indexOf(o), x1, y(o.top), x2, y(o.bottom));
-        rect(x1, y(o.top), x2, y(o.bottom), 'rgba(' + col + ',.14)', 'rgba(' + col + ',.7)');
+        rect(x1, y(o.top), x2, y(o.bottom), 'rgba(' + col + ',.22)', 'rgba(' + col + ',.95)');
         zoneLabels.push({ x: Math.min(x2 - 52, x1 + 3), y: y(o.top) + 8, size: 9, text: o.dir > 0 ? 'DEMAND' : 'SUPPLY', color: 'rgb(' + col + ')' });
       }
     }
@@ -157,21 +163,21 @@
       if (l.takenAt != null || !inY(l.level)) continue;
       const x1 = Math.max(pad.l, x(l.first)), yy = y(l.level), col = l.kind === 'EQH' ? '#ff9f6b' : '#6bd0ff';
       zoneHit('liq', a.liquidity.indexOf(l), x1, yy - 5, right, yy + 5); if (l.sweptAt != null && visI(l.sweptAt)) zoneHit('liq', a.liquidity.indexOf(l), x(l.sweptAt) - 26, yy - 24, x(l.sweptAt) + 26, yy + 24);
-      ctx.save(); ctx.setLineDash([1, 4]); ctx.lineWidth = 1.6; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x1, yy); ctx.lineTo(right, yy); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.setLineDash([2, 4]); ctx.lineWidth = 2.2; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x1, yy); ctx.lineTo(right, yy); ctx.stroke(); ctx.restore();
       text(l.kind + ' x' + l.count + (l.sweptAt != null ? ' swept' : ' · stops'), right - 6, yy + (l.kind === 'EQH' ? -8 : 9), col, 'right', 9);
       if (l.sweptAt != null && visI(l.sweptAt)) text(l.kind === 'EQH' ? '▼ sweep' : '▲ sweep', x(l.sweptAt), y(l.level) + (l.kind === 'EQH' ? -16 : 18), col, 'center', 9);
     }
     if (S.o.struct) for (const e of a.structure.events.filter((v) => visI(v.idx)).slice(-6)) {
       if (!inY(e.level)) continue; const x1 = Math.max(pad.l, x(e.fromIdx)), x2 = x(e.idx), yy = y(e.level), col = e.dir > 0 ? '#5df0b0' : '#ff8ea1';
       zoneHit('structure', a.structure.events.indexOf(e), x1, yy - 11, x2, yy + 11);
-      ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x1, yy); ctx.lineTo(x2, yy); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x1, yy); ctx.lineTo(x2, yy); ctx.stroke(); ctx.restore();
       text(e.type, (x1 + x2) / 2, yy + (e.dir > 0 ? -8 : 9), col, 'center', 9);
     }
     if (S.o.vwap) {
       const vw = a.vwap, s0 = Math.max(0, Math.floor(M.start)), s1 = Math.min(a.n - 1, Math.ceil(M.end));
       const line = (get, style, width, dash) => { ctx.save(); ctx.strokeStyle = style; ctx.lineWidth = width; if (dash) ctx.setLineDash(dash); ctx.beginPath(); let pen = false, prevDay = null; for (let i = s0; i <= s1; i++) { const v = vw[i]; if (!v) { pen = false; continue; } const d = SM.dayKey(M.bars[i].t); if (a.intraday && d !== prevDay) pen = false; prevDay = d; const py = y(get(v)); if (!pen) { ctx.moveTo(x(i), py); pen = true; } else ctx.lineTo(x(i), py); } ctx.stroke(); ctx.restore(); };
-      line((v) => v.vwap + 2 * v.sd, 'rgba(255,209,102,.30)', 1, [3, 4]); line((v) => v.vwap - 2 * v.sd, 'rgba(255,209,102,.30)', 1, [3, 4]);
-      line((v) => v.vwap + v.sd, 'rgba(255,209,102,.5)', 1, null); line((v) => v.vwap - v.sd, 'rgba(255,209,102,.5)', 1, null); line((v) => v.vwap, '#ffd166', 1.8, null);
+      line((v) => v.vwap + 2 * v.sd, 'rgba(255,209,102,.5)', 1.2, [3, 4]); line((v) => v.vwap - 2 * v.sd, 'rgba(255,209,102,.5)', 1.2, [3, 4]);
+      line((v) => v.vwap + v.sd, 'rgba(255,209,102,.75)', 1.4, null); line((v) => v.vwap - v.sd, 'rgba(255,209,102,.75)', 1.4, null); line((v) => v.vwap, '#ffd166', 2.4, null);
       const lv = vw[a.n - 1]; if (lv && inY(lv.vwap)) text('VWAP ' + lv.vwap.toFixed(2), right - 6, y(lv.vwap) - 8, '#ffd166', 'right', 9);
     }
     if (S.o.profile) {
@@ -214,7 +220,7 @@
     if (key === S.tipKey) return;
     const r = EX.explain(S.a, M.bars, hit.kind, hit.index, { flow: flow(), htf: htfLean(M.bars) }); if (!r) { hideTip(); return; }
     S.tipKey = key; S.focusHtml = tipHtml(r); S.focusFor = symKey();
-    if (document.body.classList.contains('sml-ms')) { card.dataset.tab = 'detail'; card.querySelectorAll('.ms-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === 'detail')); }
+    if (document.body.classList.contains('sml-ms')) { if (window.smlMobileShell && window.smlMobileShell.state().tab !== 'algo') { try { window.smlMobileShell.tab('algo'); window.smlMobileShell.sub('smc'); } catch (_) { /* the card still shows in its slot */ } } card.dataset.tab = 'detail'; card.querySelectorAll('.ms-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === 'detail')); }
     if (S.min) { S.min = false; paintCard(); return; } // a chip opens so the breakdown can be read
     const box = card.querySelector('.focus'); if (box) box.innerHTML = S.focusHtml; else paintCard();
   }

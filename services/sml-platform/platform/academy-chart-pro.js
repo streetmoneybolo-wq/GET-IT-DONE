@@ -88,7 +88,7 @@
     const n = Math.round(clamp(V.n, nLo, nHi));
     V.n = n;
     const maxFuture = Math.floor(n * 0.35); // empty space in front of the last candle: about a third of the plot at most
-    const end = Math.round(clamp(V.end == null ? N + Math.max(3, Math.round(n * 0.05)) : V.end, n, N + maxFuture));
+    const end = Math.round(clamp(V.end == null ? N + Math.max(2, Math.round(n * 0.02)) : V.end, n, N + maxFuture));
     if (V.end != null) V.end = end;
     const start = end - n;
     const last = bars[N - 1];
@@ -108,6 +108,10 @@
     const VOL_FRAC = 0.13;
     if (!V.manual && V.volPane !== false) lo -= (hi - lo) * VOL_FRAC;
     if (V.manual) { lo = V.manual.lo; hi = V.manual.hi; }
+    /* the price axis is only as wide as its widest label: 603.12 needs about 44px, 1,234.56 about 62px (it was a fixed 64px of dead space) */
+    const labelOf = (v) => (fin(v) ? Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).length : 1);
+    const labelLen = Math.max(labelOf(hi), labelOf(lo), labelOf(autoHi));
+    PAD.r = clamp(Math.ceil(labelLen * 6.2) + 12, 44, 72);
     const pw = w - PAD.l - PAD.r, ph = h - PAD.t - PAD.b, step = pw / n, dt = dtOf(bars);
     const volH = V.volPane !== false ? ph * VOL_FRAC : 0, priceH = ph - volH;
     const m = {

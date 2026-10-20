@@ -9,8 +9,9 @@ const smc = fs.readFileSync(path.join(__dirname, 'academy-smart-money-ui.js'), '
 
 test('the phone workspace has the six tabs, the sub-tabs of each, and loads in the Academy page after the phone compact pass', () => {
   for (const tab of ["'quotes'", "'chart'", "'flow'", "'options'", "'algo'", "'talk'"]) assert.ok(shell.includes('id: ' + tab), tab);
-  // the default is the quotes with the chat, never a tool
-  assert.match(shell, /const S = \{ tab: 'quotes'/);
+  // a phone opens on the chart of the stock the member last used (SPY the first time), never on a tool
+  assert.match(shell, /const S = \{ tab: 'chart'/);
+  for (const bit of ["const LAST = 'sml-last-symbol'", 'function rememberSymbol', "u.searchParams.set('symbol', last)", "'Take the tour'"]) assert.ok(shell.includes(bit), bit);
   // sub-tabs: the modules that belong together share a tab
   for (const bit of ["'buysell-toggle'", "'darkpool-toggle'", "'shortsale-toggle'", "'sentiment-toggle'", "'mem-algo-toggle'", "'smc-toggle'", "'sire-toggle'", "'earnings-toggle'", "'catalysts-toggle'", "'paper-toggle'", "'talk-btn'", "['chain', 'CHAIN'", "['calc', 'CALCULATOR'", "['contract', 'CONTRACT'"]) assert.ok(shell.includes(bit), bit);
   // phones only, behind a media query and a body class; desktop is never touched
@@ -29,4 +30,20 @@ test('the Smart-money map card takes the slot under the chart on a phone and gro
   for (const bit of ['data-tab="read"', 'data-tab="detail"', 'data-tab="add"', 'MAP READ', 'ZONE DETAIL', 'ADD-ONS', 'data-t="add"', 'data-t="read"', 'data-t="detail"']) assert.ok(smc.includes(bit), bit);
   assert.ok(smc.includes("card.dataset.tab = 'detail'"), 'a tapped zone opens its detail tab');
   assert.ok(smc.includes('#smc-card:not([data-tab]) [data-t]:not([data-t=read])'), 'MAP READ is the tab until one is picked');
+});
+
+test('the first-time tour: a skippable spotlight walk-through for desktop and phone that starts once and can be replayed', () => {
+  const tour = fs.readFileSync(path.join(__dirname, 'academy-tour.js'), 'utf8');
+  for (const bit of ["const KEY = 'sml-academy-tour-v1'", 'const DESK = [', 'const PHONE_STEPS = [', 'data-a="skip"', 'Skip tour', 'window.smlTour', ".has('popout')", 'tr-hole', 'prefers-reduced-motion', "id = 'tour-btn'"]) assert.ok(tour.includes(bit), bit);
+  for (const sel of ['input#symbol', '.academy-chart-stage', '#smc-toggle', '#tool-rail .tg[data-group=flow]', '#ms-top', '#ms-nav button[data-more]']) assert.ok(tour.includes(sel), sel);
+  assert.doesNotMatch(tour, /<iframe|<\/script/i);
+  const { academyActivityHtml } = require('./server');
+  assert.ok(academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' }).includes('window.__smlTour'), 'the tour ships with the page');
+});
+
+test('the chart: the price axis is as wide as its labels and only two empty candles sit in front of the last one', () => {
+  const pro = fs.readFileSync(path.join(__dirname, 'academy-chart-pro.js'), 'utf8');
+  assert.ok(pro.includes('PAD.r = clamp(Math.ceil(labelLen * 6.2) + 12, 44, 72)'));
+  assert.ok(pro.includes('N + Math.max(2, Math.round(n * 0.02))'));
+  assert.ok(smc.includes("ctx.fillStyle = 'rgba(6,11,18,.82)'") && smc.includes('background:#0a101a;border:1px solid #3a3160'), 'SMC labels sit on a dark pill and the card is opaque');
 });
