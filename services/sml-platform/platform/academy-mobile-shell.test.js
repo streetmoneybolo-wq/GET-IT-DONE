@@ -79,8 +79,15 @@ test('desktop: the quote column is a tabbed tool window and the SMC card and MEM
   const mem = fs.readFileSync(path.join(__dirname, 'academy-mem-algo-ui.js'), 'utf8');
   const dock = fs.readFileSync(path.join(__dirname, 'academy-chart-dock.js'), 'utf8');
   for (const bit of ["id: 'smc'", "id: 'algo'", "id: 'dark'", "id: 'short'", "id: 'buysell'", "id: 'sent'", "'sml-sw'", 'window.smlSideWindow', 'position:static!important']) assert.ok(sw.includes(bit), bit);
-  assert.ok(server.includes('ACADEMY_MOBILE_SHELL + ACADEMY_SIDE_WINDOW + ACADEMY_TOUR'), 'the window is injected into the page');
+  assert.ok(server.includes('ACADEMY_MOBILE_SHELL + ACADEMY_SIDE_WINDOW + '), 'the window is injected into the page');
   assert.ok(smc.includes("document.body.classList.contains('sml-sw')") && smc.includes('col.appendChild(card)'), 'SMC mounts in the column');
   assert.ok(mem.includes("document.body.classList.contains('sml-sw')") && mem.includes('col.appendChild(panel)'), 'MEM ALGO mounts in the column');
   assert.ok(dock.includes("sel === '#smc-card' || sel === '#mem-algo-panel'"), 'the chart dock leaves those two to the column');
+});
+
+test('tools take turns and a tap outside closes a floating popup (desktop and phone)', () => {
+  const one = fs.readFileSync(path.join(__dirname, 'academy-one-at-a-time.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  for (const bit of ["['smc-toggle', 'smc-card']", "['mem-algo-toggle', 'mem-algo-panel']", "['chain-toggle', 'chain-stage']", "['tool-guide-btn', 'tool-guide']", "addEventListener('pointerdown', away, true)", "e.key !== 'Escape'", 'window.smlOneAtATime', "ms-more"]) assert.ok(one.includes(bit), bit);
+  assert.ok(server.includes('ACADEMY_SIDE_WINDOW + ACADEMY_ONE_AT_A_TIME + ACADEMY_TOUR'), 'injected into the page');
 });
