@@ -52,8 +52,8 @@
     if (Number.isFinite(d.last)) {
       set('price', '$' + fmt(d.last));
       /* the change is against the previous trading day's close (window.smlAcademyPrevClose), not the previous candle of this interval */
-      const dc = typeof window.smlAcademyPrevClose === 'function' ? window.smlAcademyPrevClose(sym(), d.last) : null;
-      const ch = $('change'); if (ch && dc && dc.pct != null) { const delta = dc.delta, pct = dc.pct; ch.textContent = (delta >= 0 ? '▲ +' : '▼ ') + delta.toFixed(2) + ' (' + pct.toFixed(2) + '%)'; ch.style.color = delta >= 0 ? '#00d084' : '#ff5470'; }
+      const qc = typeof window.smlAcademyChange === 'function' ? window.smlAcademyChange(sym(), d.last) : null;
+      const ch = $('change'); if (ch && qc) { ch.textContent = qc.text; ch.style.color = qc.color; }
     }
     const s = $('status'); if (s && s.textContent !== 'LIVE') s.textContent = 'LIVE';
   }
