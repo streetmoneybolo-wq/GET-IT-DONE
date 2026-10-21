@@ -359,8 +359,9 @@ function modPoll(st, c, id, discordUrl = '') {
 /* the letter's one frame: the figures in a fixed three-column grid (so it wraps the same at every reader width), the
    countdown as a single row. Heights are measured in a browser at the phone width
    of 328 px (the tallest case; a desktop frame is up to 80 px roomier), so the frame never clips. */
-const GLANCE_CSS = '.mem-glance>*{margin:0 0 8px!important}.mem-glance>*:last-child{margin-bottom:0!important}.mem-glance .mem-board{grid-template-columns:repeat(3,1fr);gap:6px}.mem-glance .mem-board>div{padding:8px 10px}.mem-glance .mem-board span{font-size:9px;letter-spacing:.08em}.mem-glance .mem-board b{margin-top:5px;font-size:15px;line-height:1.15}.mem-glance .mem-count{flex-direction:row;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 12px}.mem-glance .mem-count b{font-size:18px}.mem-glance .mem-track{padding:10px 12px}.mem-glance .mem-track p{margin-top:6px;font-size:12px}';
-const GLANCE_H = { board: 131, countdown: 67, tracker: 161 };
+const LISTEN_CSS = '.mem-listen{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04)}.mem-listen b{flex:none;font:800 10px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--acc)}.mem-listen audio{flex:1;min-width:0;height:36px}';
+const GLANCE_CSS = LISTEN_CSS + '.mem-glance>*{margin:0 0 8px!important}.mem-glance>*:last-child{margin-bottom:0!important}.mem-glance .mem-board{grid-template-columns:repeat(3,1fr);gap:6px}.mem-glance .mem-board>div{padding:8px 10px}.mem-glance .mem-board span{font-size:9px;letter-spacing:.08em}.mem-glance .mem-board b{margin-top:5px;font-size:15px;line-height:1.15}.mem-glance .mem-count{flex-direction:row;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 12px}.mem-glance .mem-count b{font-size:18px}.mem-glance .mem-track{padding:10px 12px}.mem-glance .mem-track p{margin-top:6px;font-size:12px}';
+const GLANCE_H = { board: 131, countdown: 67, tracker: 161, listen: 62 };
 const glanceHeight = (names) => names.reduce((sum, n) => sum + (GLANCE_H[n] || 0) + 8, 0) - 8;
 /* An old letter's stored blocks, rebuilt in the compact layout: the same figures, chart, cases, kill switch and poll line the
    composer now writes, read back out of the frames they used to sit in. Null when the blocks are not a desk letter (no board
@@ -454,7 +455,8 @@ const CSS = [
   '@media(prefers-color-scheme:light){.mem-article:not([data-theme="dark"]){--bg:#fbfbf8;--ink:#14181d;--mut:#5b6773;--line:#e4e6e0;--card:#fff;--acc:#00a56a;--hl:#d8f7e8}.mem-article:not([data-theme="dark"]) h1,.mem-article:not([data-theme="dark"]) .mem-chip b,.mem-article:not([data-theme="dark"]) .mem-count b,.mem-article:not([data-theme="dark"]) .mem-track-head b{color:var(--ink)}}',
   /* the letters sanitizer strips data-theme, which would turn a letter frame light for a reader whose browser prefers light: the letter variant is always dark */
   '.mem-article.mem-letter{--bg:#0b1119;--ink:#e8eff4;--mut:#8fa3b0;--line:rgba(255,255,255,.1);--card:#101a25;--acc:#19c37d;--acc2:#ff5c7a;--gold:#ffb04a;--hl:rgba(25,195,125,.12)}',
-  '@media print{.mem-article{background:#fff;color:#000}.mem-progress,.mem-share,.mem-poll{display:none}}'
+  LISTEN_CSS,
+  '@media print{.mem-article{background:#fff;color:#000}.mem-progress,.mem-share,.mem-poll,.mem-listen{display:none}}'
 ].join('\n');
 
 /* ---------- the enhancement script: optional, dependency-free, degrades to nothing ---------- */
@@ -500,7 +502,7 @@ function headFor({ seo, draft, url, siteUrl, authorUrl, publication, byline, c, 
 }
 
 /* ---------- compose ---------- */
-function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author = 'Vaughn McNair', publication = 'Making Easy Money', siteUrl = 'https://stockmarketloop.com', authorUrl = '', chartEndpoint = '', discordUrl = '', url = '', imageUrl = '', topic = null, logoUrl = '', record = null, narrative = null, rich = false } = {}) {
+function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author = 'Vaughn McNair', publication = 'Making Easy Money', siteUrl = 'https://stockmarketloop.com', authorUrl = '', chartEndpoint = '', discordUrl = '', url = '', imageUrl = '', topic = null, logoUrl = '', record = null, narrative = null, rich = false, audioEndpoint = '' } = {}) {
   const d = dossier || {};
   const draft = engine.draftArticle(st, c, { asOf, author, publication });
   const seed = seedOf(c.symbol + st.angle + Math.round(asOf / 3_600_000));
@@ -511,6 +513,11 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   const n = narrative && Array.isArray(narrative.sections) && narrative.sections.length ? narrative : writer.housePiece(sheet, seed);
   const baseTitle = plain(n.title || draft.title);
   const title = (topic ? `${cap(topic)} through ${S}: ${baseTitle.replace(/^\$[A-Z0-9.\-]+:?\s*/, '')}` : baseTitle).slice(0, 110);
+  /* listen to this article: a short script of the piece, voiced on first play in the Academy voice and stored (academy/article-audio.js) */
+  const audio = require('./academy/article-audio').audioScript({ ...n, title });
+  const slugNow = engine.slugify(title);
+  const audioUrl = audioEndpoint && audio.parts.length ? `${audioEndpoint}${audioEndpoint.includes('?') ? '&' : '?'}slug=${encodeURIComponent(slugNow)}&v=${audio.hash}` : '';
+  const listenHtml = audioUrl ? `<div class="mem-listen"><b>LISTEN</b><audio controls preload="none" src="${esc(audioUrl)}" aria-label="Listen to this article"></audio></div>` : '';
   const id = String(Math.abs(seedOf(c.symbol + asOf)) % 100000);
   const when = draft.parts.when;
   const readMin = (words) => Math.max(3, Math.round(words / 230));
@@ -532,7 +539,7 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   const header = `<div class="mem-kick">${esc(draft.parts.kicker)} · ${esc(label.toUpperCase())}</div>
 <h1>${esc(title)}</h1>
 <p class="mem-dek">${esc(plain(n.dek || draft.dek))}</p>
-<div class="mem-by"><span>By <b>${esc(author)}</b></span><span>${esc(publication)}</span><time datetime="${esc(draft.asOfIso)}">${esc(when)}</time><span class="mem-chip mem-chip-live"><i></i>LIVE DATA</span></div>`;
+<div class="mem-by"><span>By <b>${esc(author)}</b></span><span>${esc(publication)}</span><time datetime="${esc(draft.asOfIso)}">${esc(when)}</time><span class="mem-chip mem-chip-live"><i></i>LIVE DATA</span></div>${listenHtml}`;
   chunks.push({ kind: 'module', name: 'board', html: board, height: 170, letter: board.replace(/<div class="mem-sparkcell">[\s\S]*?<\/div>/, ''), letterHeight: 170, css: '' });
   text(`<div class="mem-lede">${paras(n.lede, true)}</div>`);
   mod(chartMod, 'chart');
@@ -574,7 +581,9 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
     if (ch.kind !== 'module') { blocks.push(...htmlToBlocks(ch.html.replace(/<(aside|div)[^>]*>|<\/(aside|div)>/g, ''), { tickers: [c.symbol] })); continue; }
     if (ch.name === 'countdown' || ch.name === 'tracker') continue;
     if (ch.name === 'board') {
-      if (glanceParts.length) blocks.push({ id: 'mod-glance', type: 'custom_code', html: `<div class="mem-article mem-letter mem-glance" data-theme="dark">${glanceParts.map((m) => m.letter).join('')}</div>`, css: CSS + '\n' + GLANCE_CSS + glanceParts.map((m) => m.css || '').join(''), height: glanceHeight(glanceParts.map((m) => m.name)) });
+      if (glanceParts.length) blocks.push({ id: 'mod-glance', type: 'custom_code', html: `<div class="mem-article mem-letter mem-glance" data-theme="dark">${listenHtml}${glanceParts.map((m) => m.letter).join('')}</div>`, css: CSS + '\n' + GLANCE_CSS + glanceParts.map((m) => m.css || '').join(''), height: glanceHeight(glanceParts.map((m) => m.name).concat(listenHtml ? ['listen'] : [])) });
+      /* a plain link as well: if the reader's frame will not play audio, the link opens the same recording in the browser's own player */
+      if (audioUrl) blocks.push(...native(`<p><strong>Listen:</strong> <a href="${esc(audioUrl)}">hear this article read aloud</a> (about ${Math.max(1, Math.round(audio.chars / 900))} min).</p>`));
       continue;
     }
     /* no chart block: the cover image at the top of the letter is this same scenario poster, and a second copy only repeats it */
@@ -587,7 +596,7 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   }
   const links = [...bodyInner.matchAll(/href="([^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, '&')).filter((h) => /^https?:/.test(h));
   return {
-    title, dek: plain(n.dek || draft.dek), slug: engine.slugify(title), tags: draft.tags, tldr: draft.tldr, keyword: seo.keyword, seo, lean: st.lean, pt: st.pt, ptPct: st.ptPct, angle: st.angle,
+    title, dek: plain(n.dek || draft.dek), slug: slugNow, audio: { parts: audio.parts, hash: audio.hash, url: audioUrl }, tags: draft.tags, tldr: draft.tldr, keyword: seo.keyword, seo, lean: st.lean, pt: st.pt, ptPct: st.ptPct, angle: st.angle,
     bodyHtml, textHtml: textOnly, css: CSS, js: JS, headHtml, document, blocks, wordCount, readMinutes: readMin(wordCount), links: [...new Set(links)],
     modules: chunks.filter((ch) => ch.kind === 'module').map((ch) => ch.name), sections: [...bodyInner.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => plain(m[1]).replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')), parts: draft.parts, asOfIso: draft.asOfIso, faq: [],
     narrative: { source: n.source || 'house', checked: n.checked || null, headings: secs.map((sx) => plain(sx.heading)) }, sheet: { lines: sheet.lines.length, numbers: sheet.numbers.size }
