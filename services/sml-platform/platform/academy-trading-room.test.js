@@ -151,3 +151,11 @@ test('the room UI and the owner tools are wired into the page', () => {
   assert.match(prof, /smlRoom\.door\(/);
   assert.match(dc, /sml-owner-tools/); assert.match(dc, /'evolve-btn', 'squeeze-btn', 'challenge-toggle', 'sml-sig-fab'/); assert.match(nav, /!b\.dataset\.ownerSlot/);
 });
+
+test('the trading room works on a phone: clear of Discord’s strips, drawers for the channel list and info, and a My trading room entry in MORE', () => {
+  const fs = require('fs'), path = require('path');
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-room-ui.js'), 'utf8'), shell = fs.readFileSync(path.join(__dirname, 'academy-mobile-shell.js'), 'utf8');
+  assert.match(ui, /html\.sml-dm #sml-room\{padding-top:var\(--sml-inset-top/); assert.match(ui, /padding-bottom:var\(--sml-inset-bottom/); assert.match(ui, /root\.className = 'open' \+ \(window\.matchMedia\('\(max-width:900px\)'\)\.matches \? ' nav' : ''\)/);
+  assert.match(ui, /font-size:16px/, 'inputs are 16px so a phone does not zoom'); assert.match(ui, /rm-mob/);
+  assert.match(shell, /'__room'/); assert.match(shell, /window\.smlRoom\.mine\(\)/);
+});

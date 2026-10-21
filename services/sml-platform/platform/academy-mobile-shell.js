@@ -162,16 +162,16 @@
     top.innerHTML = STOCK_TABS.map(([id, label]) => '<button type="button" role="tab" data-tab="' + id + '">' + label + '</button>').join('');
     top.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button[data-tab]'); if (b) setTab(b.dataset.tab); });
     more = document.createElement('div'); more.id = 'ms-more'; document.body.appendChild(more);
-    more.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button[data-fab]'); if (!b) return; setMore(false); if (b.dataset.fab === '__tour') { if (window.smlTour) window.smlTour.start(true); return; } const t = byId(b.dataset.fab); if (t) t.click(); });
+    more.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button[data-fab]'); if (!b) return; setMore(false); if (b.dataset.fab === '__tour') { if (window.smlTour) window.smlTour.start(true); return; } if (b.dataset.fab === '__room') { if (window.smlRoom) window.smlRoom.mine(); return; } const t = byId(b.dataset.fab); if (t) t.click(); });
     sub = document.createElement('div'); sub.id = 'ms-sub'; sub.setAttribute('role', 'tablist');
     document.body.appendChild(sub); document.body.appendChild(nav);
     nav.addEventListener('click', (e) => { const m = e.target.closest && e.target.closest('button[data-more]'); if (m) { setMore(!more.classList.contains('open')); return; } const px = e.target.closest && e.target.closest('button[data-proxy]'); if (px) { setMore(false); const t = byId(px.dataset.proxy); if (t) t.click(); return; } const st = e.target.closest && e.target.closest('button[data-stock]'); if (st) { setMore(false); setTab(S.tab === 'quotes' ? S.stock : S.tab); return; } const b = e.target.closest && e.target.closest('button[data-tab]'); if (b) { setMore(false); setTab(b.dataset.tab); } });
     sub.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button[data-sub]'); if (b) pickSub(b.dataset.sub); });
   }
-  const FABS = [['__tour', '\uD83E\uDDED', 'Take the tour'], ['sml-settings-btn', '\u2699', 'Settings'], ['academy-profile-btn', '\uD83D\uDC64', 'My profile'], ['aa-btn', 'Aa', 'Appearance'], ['lb-btn', '\uD83C\uDFC6', 'Leaderboard'], ['academy-ask-btn', '\uD83D\uDCAC', 'Ask the Academy']];
+  const FABS = [['__tour', '\uD83E\uDDED', 'Take the tour'], ['sml-settings-btn', '\u2699', 'Settings'], ['academy-profile-btn', '\uD83D\uDC64', 'My profile'], ['__room', '\uD83C\uDFDB', 'My trading room'], ['aa-btn', 'Aa', 'Appearance'], ['lb-btn', '\uD83C\uDFC6', 'Leaderboard'], ['academy-ask-btn', '\uD83D\uDCAC', 'Ask the Academy']];
   function setMore(on) {
     if (!more) return;
-    if (on) more.innerHTML = FABS.filter(([id]) => (id === '__tour' ? !!window.smlTour : byId(id) && getComputedStyle(byId(id)).display !== 'none')).map(([id, ico, label]) => '<button type="button" data-fab="' + id + '"><i>' + ico + '</i>' + esc(label) + '</button>').join('');
+    if (on) more.innerHTML = FABS.filter(([id]) => (id === '__tour' ? !!window.smlTour : id === '__room' ? !!window.smlRoom : byId(id) && getComputedStyle(byId(id)).display !== 'none')).map(([id, ico, label]) => '<button type="button" data-fab="' + id + '"><i>' + ico + '</i>' + esc(label) + '</button>').join('');
     more.classList.toggle('open', !!on);
     const mb = nav && nav.querySelector('[data-more]'); if (mb) mb.classList.toggle('on', !!on);
   }

@@ -57,7 +57,11 @@
     + '.rm-door{border:1px solid #1f4a3a;border-radius:12px;background:linear-gradient(135deg,#0b1a13,#0a121a);padding:12px 14px;color:#dbe6ec;font:500 .76rem/1.45 system-ui,sans-serif}.rm-door h6{margin:0 0 6px;font:800 .56rem ui-monospace,monospace;letter-spacing:.14em;color:#7ef0bd}.rm-door .t{font:900 1rem system-ui;color:#fff}.rm-door .g{color:#9fb3be;margin:2px 0 8px}.rm-door .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0 0}.rm-door .chip{padding:2px 9px;border-radius:999px;background:#10202a;border:1px solid #1b3540;color:#cfe0e7;font:700 .62rem system-ui}.rm-door .chip.lock{border-style:dashed;color:#ffd878}'
     + '.rm-door button{border:1px solid #2b5362;border-radius:8px;background:#0d1a24;color:#9ed3e6;font:800 .66rem ui-monospace,monospace;padding:6px 11px;cursor:pointer;letter-spacing:.04em}.rm-door button.acc{background:#00c47d;border-color:#00c47d;color:#032318}.rm-door button.gold{background:#2a1f08;border-color:#c9992a;color:#ffd878}.rm-door button.on{border-color:#1f8a5f;color:#7ef0bd}'
     + '@media(max-width:900px){#sml-room .rm-body{grid-template-columns:minmax(0,1fr)}#sml-room .rm-rail,#sml-room .rm-side{display:none}#sml-room.nav .rm-rail{display:block;position:absolute;left:0;top:44px;bottom:0;width:min(82vw,300px);z-index:3;box-shadow:12px 0 40px rgba(0,0,0,.6)}#sml-room.info .rm-side{display:block;position:absolute;right:0;top:44px;bottom:0;width:min(86vw,320px);z-index:3;box-shadow:-12px 0 40px rgba(0,0,0,.6)}#sml-room .rm-che{grid-template-columns:1fr 1fr}#sml-room .rm-mob{display:inline-block!important}}'
-    + '#sml-room .rm-mob{display:none}';
+    + '#sml-room .rm-mob{display:none}'
+    /* Discord's phone app covers the top and bottom strips of an Activity: the room keeps its bar and composer clear of them (academy-discord-edges.js) */
+    + 'html.sml-dm #sml-room{padding-top:var(--sml-inset-top,0px);padding-bottom:var(--sml-inset-bottom,0px);box-sizing:border-box}'
+    + '@media(max-width:900px){#sml-room .rm-ch-h{padding:7px 10px;gap:7px}#sml-room .rm-ch-h b{white-space:nowrap}#sml-room .rm-ch-h small{display:none}#sml-room .rm-feed{padding:8px 10px}#sml-room .rm-comp{padding:8px 10px}#sml-room .rm-comp textarea,#sml-room .rm-set input,#sml-room .rm-set select,#sml-room .rm-set textarea{font-size:16px}#sml-room .rm-set{padding:12px}#sml-room button.rb{padding:9px 12px;min-height:38px}#sml-room .rm-ch{padding:10px 10px;font-size:.85rem}#sml-room .rm-che{grid-template-columns:1fr 1fr}#sml-room .rm-che.hd{display:none}#sml-room .rm-pr{grid-template-columns:repeat(2,1fr)}#sml-room .rm-tpl{grid-template-columns:1fr}#sml-room .rm-savebar{padding-bottom:12px}'
+    + '#sml-room.nav .rm-rail{top:calc(44px + var(--sml-inset-top,0px));bottom:var(--sml-inset-bottom,0px)}#sml-room.info .rm-side{top:calc(44px + var(--sml-inset-top,0px));bottom:var(--sml-inset-bottom,0px)}}';
   document.head.appendChild(css);
 
   const root = document.createElement('div'); root.id = 'sml-room'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'Trading room'); document.body.appendChild(root);
@@ -242,7 +246,7 @@
     if (!token()) { toast('Sign in to the Academy first.'); return; }
     const id = String(ownerId || ''); if (!/^\d{15,25}$/.test(id)) return;
     S.owner = id; S.ch = channelId || ''; S.content = null; S.edit = null; S.members = null; S.sig = '';
-    root.className = 'open'; root.innerHTML = '<div class="rm-bar"><b>🏛 Trading room</b><span class="sp"></span><button type="button" class="rb" data-go="close">✕ Close</button></div><div class="rm-body"><div class="rm-rail"></div><div class="rm-main"><div class="rm-feed"><p style="color:#7f98a6">Opening the room…</p></div></div><div class="rm-side"></div></div>';
+    root.className = 'open' + (window.matchMedia('(max-width:900px)').matches ? ' nav' : ''); root.innerHTML = '<div class="rm-bar"><b>🏛 Trading room</b><span class="sp"></span><button type="button" class="rb" data-go="close">✕ Close</button></div><div class="rm-body"><div class="rm-rail"></div><div class="rm-main"><div class="rm-feed"><p style="color:#7f98a6">Opening the room…</p></div></div><div class="rm-side"></div></div>';
     if (!(await loadRoom(false))) return;
     paint(); await loadChannel(true); tick();
   }
@@ -264,6 +268,7 @@
 
   root.addEventListener('click', async (ev) => {
     const t = ev.target; const q = (sel) => (t.closest ? t.closest(sel) : null);
+    if ((root.classList.contains('nav') || root.classList.contains('info')) && !q('.rm-rail, .rm-side, [data-go]')) { root.classList.remove('nav', 'info'); }
     if (q('a[data-url]')) { ev.preventDefault(); openOut(q('a[data-url]').dataset.url); return; }
     const user = q('[data-user]'); if (user && !q('button')) { openProfile(user.dataset.user); return; }
     const go = q('[data-go]');
