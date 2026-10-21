@@ -109,6 +109,7 @@ const { createTargetLearner, suggestTargets: suggestPriceTargets, autoDirection:
 const alertForensics = require('./academy-alert-forensics');
 const ignitionRead = require('./academy-ignition');
 const { checkAlert: prealertCheck } = require('./academy-prealert');
+const { createLiveRange, mergeRanges } = require('./academy-live-range');
 let fallbackTargetLearner = null; // an in-memory learner for a server started without the database-backed one (tests)
 const { createHedgeService } = require('./academy-hedge');
 /* every member's paper trading account starts with this much; the owner's 1K -> 100K Challenge account keeps its own $1,000 */
@@ -5687,6 +5688,11 @@ async function main() {
       .then((r) => log('info', 'push_new_target', { symbol: u.symbol, ...r }))
       .catch((error) => log('warn', 'push_new_target_failed', { error }));
   };
+  /* The watcher reads the live trade feed for the range since each alert (academy-live-range.js), so a target that trades is seen within seconds, not
+     on the next five-minute turn over delayed candles; the candles still cover what happened before the server started. ACADEMY_LIVE_RANGE=off restores candles only. */
+  const liveRange = academyMassive && String(process.env.ACADEMY_LIVE_RANGE || 'on').toLowerCase() !== 'off'
+    ? createLiveRange({ stream: academyMassive, logger: log, onCross: (symbol) => { if (academyAutoPt) academyAutoPt.tick().then((r) => { if (r && r.ran && (r.hits || r.posted)) log('info', 'auto_pt_live_cross', { symbol, ...r }); }).catch(() => {}); } })
+    : null;
   const academyAutoPt = academyClickAlert && AUTO_PT_MODE !== 'off' ? createAutoPtService({
     mode: AUTO_PT_MODE, logger: log, onUpdate: pushNewTarget, onHit: pushTargetHit,
     listAlerts: async () => {
@@ -5695,7 +5701,7 @@ async function main() {
       const deskIds = new Set(desk.map((d) => d.key.slice(2)));
       return desk.concat(click.filter((c) => !deskIds.has(c.key.slice(2)))); // the desk copy of a message wins
     },
-    range: academyClickAlert.rangeSince, evidence: academyClickAlert.evidenceFor, post: academyClickAlert.postAutoUpdate, compose: academyClickAlert.composeAutoUpdate,
+    range: async (symbol, since) => { const candles = await academyClickAlert.rangeSince(symbol, since).catch(() => null); return mergeRanges(candles, liveRange ? liveRange.range(symbol, since) : null); }, evidence: academyClickAlert.evidenceFor, post: academyClickAlert.postAutoUpdate, compose: academyClickAlert.composeAutoUpdate,
     postClose: academyClickAlert.postAutoClose, openThread: academyClickAlert.startThread, threads: String(process.env.ACADEMY_PT_THREADS || 'on').toLowerCase() !== 'off',
     runnerFor: async (symbol, side, entry, at) => { const lib = require('./academy-runner'); const p = await sentimentCandles(symbol, '1D').catch(() => null); return lib.trailFor({ daily: p && Array.isArray(p.bars) ? p.bars : [], entry, sinceT: at, side }); },
     earningsFor: academyAlerts ? async (symbol) => { const e = await academyAlerts.nextEarnings(symbol).catch(() => null); return e && e.daysAway != null ? Number(e.daysAway) : null; } : null,
@@ -5708,6 +5714,18 @@ async function main() {
     log('info', 'auto_pt_enabled', { mode: AUTO_PT_MODE });
     // the alerts desk works toward the newest target and shows each update's write-up
     void academyAutoPt.load().catch(() => {});
+    if (liveRange) {
+      const syncLive = () => {
+        const t = Date.now();
+        for (const a of academyAutoPt.snapshot()) {
+          if (a.status !== 'watching' || !a.symbol || t - a.at > (a.windowMs || 14 * 86_400_000)) { if (a.symbol) liveRange.unwatch(a.symbol, a.key); continue; }
+          liveRange.track(a.symbol, a.watchSince || a.at, { key: a.key, side: a.side, target: a.watchTarget });
+        }
+        liveRange.prune();
+      };
+      setTimeout(syncLive, 45_000).unref(); setInterval(syncLive, 60_000).unref();
+    }
+
     if (academyAlerts && typeof academyAlerts.setPtLadder === 'function') academyAlerts.setPtLadder((key) => academyAutoPt.forKey(key));
   }
   /* The target learner (academy-target-engine.js): every price-target suggestion served is judged when its horizon has run, and every desk alert

@@ -299,7 +299,7 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
     return out.sort((a, b) => b.at - a.at).slice(0, limit);
   };
   /* every alert the watcher knows, plain, for the forensics sweep (academy-alert-forensics.js) */
-  const snapshot = () => (state ? Object.entries(state.alerts).map(([key, s]) => ({ key, symbol: s.symbol, side: s.side, entry: s.entry, target: s.target, stop: fin(s.stop0) ? Number(s.stop0) : null, at: s.at, hitAt: s.hitAt || (s.hits && s.hits[0] && s.hits[0].at) || null, status: s.status })) : []);
+  const snapshot = () => (state ? Object.entries(state.alerts).map(([key, s]) => { const cur = s.updates && s.updates.length ? s.updates[s.updates.length - 1] : null; return { key, symbol: s.symbol, side: s.side, entry: s.entry, target: s.target, stop: fin(s.stop0) ? Number(s.stop0) : null, at: s.at, hitAt: s.hitAt || (s.hits && s.hits[0] && s.hits[0].at) || null, status: s.status, watchTarget: cur && fin(cur.target) ? Number(cur.target) : s.target, watchSince: cur ? cur.at : s.at, windowMs: fin(s.windowMs) ? Number(s.windowMs) : null }; }) : []);
   return { tick, status, enabled, mode, forKey, recent, load, snapshot };
 }
 

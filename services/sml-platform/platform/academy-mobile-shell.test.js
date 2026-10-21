@@ -181,3 +181,10 @@ test('the owner can replay the forensics of desk alerts on chosen symbols once, 
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
   for (const bit of ['ACADEMY_FORENSICS_REPLAY', "'alert_forensics_replay'", '.slice(0, 5)']) assert.ok(server.includes(bit), bit);
 });
+
+test('the alert watcher reads the live trade feed for its range and checks at once when a target crosses', () => {
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const pt = fs.readFileSync(path.join(__dirname, 'academy-auto-pt.js'), 'utf8');
+  for (const bit of ["require('./academy-live-range')", 'createLiveRange({ stream: academyMassive', "ACADEMY_LIVE_RANGE", 'mergeRanges(candles, liveRange ? liveRange.range(symbol, since) : null)', 'liveRange.track(a.symbol, a.watchSince || a.at', 'academyAutoPt.tick()', 'liveRange.unwatch(']) assert.ok(server.includes(bit), bit);
+  assert.ok(pt.includes('watchTarget:') && pt.includes('watchSince:'), 'the watcher says which target and since when it is waiting for');
+});
