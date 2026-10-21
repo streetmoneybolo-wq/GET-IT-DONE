@@ -4,7 +4,7 @@
    makes the same read with the Academy's own tools. A pointer moves to what it is talking about (a price line on the chart, a button, a module).
    When a call reaches a target or is stopped the desk says so, then moves on to the next ticker while the other calls keep being watched.
    Between trades it reads the market direction and VIX, and the next FDA and earnings dates.
-   The voice is the browser's own speech (free, nothing sent anywhere), with captions; it can be paused, skipped, muted or stopped.
+   The voice is the owner's own (ElevenLabs, each line stored once), with the browser's free speech as the fallback, and captions; it can be paused, skipped, muted or stopped.
    HONEST BY DESIGN: every call it makes goes on the scoreboard, the stopped ones too; it is an educational simulation, places no orders, and is
    not advice. Owner only: the button is built only for the owner and the desk stops itself if the server says owner_only. */
 (function (root) {
@@ -178,7 +178,7 @@
     root.addEventListener('sml-chart-view', draw); root.addEventListener('resize', draw);
     (function reg(n) { if (root.smlChartLevels) { root.smlChartLevels.register('auto-live', (s) => (S.on && S.focus && S.focus.sym === s ? [S.focus.entry, S.focus.stop, ...S.focus.targets] : [])); return; } if (n < 60) setTimeout(() => reg(n + 1), 500); })(0);
 
-    /* ---- the voice: the browser's own, free ---- */
+    /* ---- the voice: the browser's own (the fallback) ---- */
     let voice = null;
     const pickVoice = () => {
       try {
@@ -187,8 +187,44 @@
       } catch (_) { voice = null; }
     };
     if (root.speechSynthesis) { pickVoice(); try { root.speechSynthesis.onvoiceschanged = pickVoice; } catch (_) { /* fine */ } }
-    function say(text) {
+    /* The owner's own voice (ElevenLabs, stored once per line on the server). A line is fetched ahead of time, so the next one is usually ready when the
+       last one ends. If the voice cannot be reached (or is rate limited) the desk speaks with the browser voice instead, so it never goes quiet. */
+    const clips = new Map(); let mineFails = 0;
+    const mineOn = () => mineFails < 3 && typeof root.Audio === 'function';
+    function clipFor(text) {
+      const key = speakable(text); if (!key || key.length > 600) return Promise.resolve(null);
+      if (clips.has(key)) return clips.get(key);
+      const go = (tok) => fetch('/academy-activity/desk-speech', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + tok }, body: JSON.stringify({ text: key }) });
+      const p = (async () => {
+        let res = await go(token());
+        if (res.status === 401 && typeof root.smlAcademyReauth === 'function') { const fresh = await Promise.resolve(root.smlAcademyReauth()).catch(() => ''); if (fresh) res = await go(fresh); }
+        if (!res.ok) throw new Error('voice_' + res.status);
+        return URL.createObjectURL(await res.blob());
+      })().then((u) => { mineFails = 0; return u; }, () => { mineFails += 1; clips.delete(key); return null; });
+      clips.set(key, p);
+      if (clips.size > 40) { const old = clips.keys().next().value; clips.get(old).then((u) => { if (u) URL.revokeObjectURL(u); }); clips.delete(old); }
+      return p;
+    }
+    const stopMine = () => { const a = S.audio; S.audio = null; if (a) { try { a.pause(); } catch (_) { /* fine */ } if (a._fin) a._fin(); } };
+    function say(text, next) {
       S.cap = text; paintCap();
+      if (!S.muted && mineOn()) { const mine = clipFor(text); if (next) void clipFor(next); return sayMine(text, mine); }
+      return sayBrowser(text);
+    }
+    async function sayMine(text, minePromise) {
+      const url = await minePromise;
+      if (!url || !S.on || S.muted) return url ? undefined : sayBrowser(text);
+      while (S.on && S.paused) await wait(300);
+      if (!S.on || S.muted) return;
+      return new Promise((resolve) => {
+        let done = false; const a = new Audio(url); S.audio = a;
+        const fin = () => { if (!done) { done = true; clearTimeout(tm); if (S.audio === a) S.audio = null; resolve(); } };
+        const tm = setTimeout(fin, readMs(text) * 3 + 8000);
+        a._fin = fin; a.onended = fin; a.onerror = () => { if (!done) { done = true; clearTimeout(tm); if (S.audio === a) S.audio = null; mineFails += 1; sayBrowser(text).then(resolve); } };
+        a.play().catch(() => { if (!done) { done = true; clearTimeout(tm); if (S.audio === a) S.audio = null; sayBrowser(text).then(resolve); } });
+      });
+    }
+    function sayBrowser(text) {
       return new Promise((resolve) => {
         const ms = readMs(text); let done = false; const fin = () => { if (!done) { done = true; clearTimeout(tm); resolve(); } };
         const tm = setTimeout(fin, S.muted || !root.speechSynthesis ? ms : ms * 3 + 4000);
@@ -201,7 +237,7 @@
     }
     /* wait while paused; return early when the viewer skips */
     async function hold(ms) { const end = Date.now() + ms; while (S.on && Date.now() < end && !S.skip) { await wait(S.paused ? 400 : 250); if (S.paused) { const r = end - Date.now(); if (r < 300) break; } } }
-    async function speak(text) { const run = S.run; await say(text); while (S.on && S.paused && run === S.run) await wait(300); }
+    async function speak(text, next) { const run = S.run; await say(text, next); while (S.on && S.paused && run === S.run) await wait(300); }
 
     /* ---- the panel ---- */
     const panel = document.createElement('aside'); panel.id = 'auto-live-panel'; panel.setAttribute('aria-label', 'Auto live desk'); document.body.appendChild(panel);
@@ -232,9 +268,9 @@
         + (recent.length ? '<small>' + recent.map((c) => esc(c.sym + ': ' + statusText(c))).join(' · ') + '</small>' : '')
         + '<div class="row"><button id="al-pause">' + (S.paused ? 'Resume' : 'Pause') + '</button><button id="al-skip">Skip</button><button id="al-mute">' + (S.muted ? 'Voice off' : 'Voice on') + '</button><button class="stop" id="al-stop">Stop</button></div>'
         + '<small>Educational simulation. Every call is logged, stopped ones too. No orders are placed. Not advice.</small>';
-      panel.querySelector('#al-pause').onclick = () => { S.paused = !S.paused; try { if (root.speechSynthesis) S.paused ? root.speechSynthesis.pause() : root.speechSynthesis.resume(); } catch (_) { /* fine */ } paint(); };
-      panel.querySelector('#al-skip').onclick = () => { S.skip = true; try { if (root.speechSynthesis) root.speechSynthesis.cancel(); } catch (_) { /* fine */ } };
-      panel.querySelector('#al-mute').onclick = () => { S.muted = !S.muted; try { if (S.muted && root.speechSynthesis) root.speechSynthesis.cancel(); } catch (_) { /* fine */ } save(); paint(); };
+      panel.querySelector('#al-pause').onclick = () => { S.paused = !S.paused; try { if (S.audio) { S.paused ? S.audio.pause() : S.audio.play().catch(() => {}); } if (root.speechSynthesis) S.paused ? root.speechSynthesis.pause() : root.speechSynthesis.resume(); } catch (_) { /* fine */ } paint(); };
+      panel.querySelector('#al-skip').onclick = () => { S.skip = true; stopMine(); try { if (root.speechSynthesis) root.speechSynthesis.cancel(); } catch (_) { /* fine */ } };
+      panel.querySelector('#al-mute').onclick = () => { S.muted = !S.muted; if (S.muted) stopMine(); try { if (S.muted && root.speechSynthesis) root.speechSynthesis.cancel(); } catch (_) { /* fine */ } save(); paint(); };
       panel.querySelector('#al-stop').onclick = () => stop(false);
     }
     const statusText = (c) => c.status === 'done' ? 'all targets hit' : c.status === 'stopped' ? 'stopped out' : c.status === 'stopped_after_target' ? 'target ' + c.hit + ' hit, then stopped' : c.status === 'expired' ? 'expired' + (c.hit ? ' after target ' + c.hit : '') : 'open';
@@ -276,12 +312,12 @@
     async function marketSegment() {
       S.phase = 'market'; paint(); await showSymbol('SPY');
       const [dir, vix] = await Promise.all([api('/academy-activity/direction?mode=day'), api('/academy-activity/vix')]);
-      for (const s of marketScript(dir, vix)) { if (!S.on || S.skip) break; pointAt(s.point); await speak(s.say); await hold(500); }
+      const ms_ = marketScript(dir, vix); for (let i = 0; i < ms_.length; i++) { const s = ms_[i]; if (!S.on || S.skip) break; pointAt(s.point); await speak(s.say, ms_[i + 1] && ms_[i + 1].say); await hold(500); }
       pointAt(null); S.skip = false;
       const [fda, earn] = await Promise.all([api('/academy-activity/fda?days=21&limit=10'), api('/academy-activity/earnings-playbook?days=5&limit=12')]);
       const cs = catalystScript(fda && fda.events, (earn && (earn.events || earn.rows)) || []);
       if (cs.length) S.phase = 'catalysts';
-      for (const s of cs) { if (!S.on || S.skip) break; paint(); pointAt(s.point); await speak(s.say); await hold(500); }
+      for (let i = 0; i < cs.length; i++) { const s = cs[i]; if (!S.on || S.skip) break; paint(); pointAt(s.point); await speak(s.say, cs[i + 1] && cs[i + 1].say); await hold(500); }
       pointAt(null); S.skip = false;
     }
     async function tradeSegment(cand) {
@@ -294,7 +330,7 @@
       S.calls.push(call); S.focus = call; S.trades++; S.phase = 'trade'; save(); paint(); draw();
       const dirRead = null;
       const steps = setupScript(cand, t, dirRead);
-      for (const s of steps) { if (!S.on || S.skip) break; pointAt(s.point); draw(); await speak(s.say); await hold(450); }
+      for (let i = 0; i < steps.length; i++) { const s = steps[i]; if (!S.on || S.skip) break; pointAt(s.point); draw(); await speak(s.say, steps[i + 1] ? steps[i + 1].say : "Now we watch it. If it moves, I will come back to it; meanwhile let's find the next one."); await hold(450); }
       pointAt(null); S.skip = false;
       S.phase = 'watching'; paint(); await speak('Now we watch it. If it moves, I will come back to it; meanwhile let\'s find the next one.');
       await hold(3000);
@@ -320,7 +356,7 @@
       S.timer = setInterval(() => { void watchTick().then(() => (alerts.length && S.phase === 'watching' ? paint() : null)); }, 20000);
     }
     function stop(denied) {
-      S.on = false; S.run++; pointAt(null); clearInterval(S.timer); try { if (root.speechSynthesis) root.speechSynthesis.cancel(); } catch (_) { /* fine */ }
+      S.on = false; S.run++; pointAt(null); clearInterval(S.timer); stopMine(); try { if (root.speechSynthesis) root.speechSynthesis.cancel(); } catch (_) { /* fine */ }
       if (denied) { S.owner = false; if (btn) btn.style.display = 'none'; }
       panel.classList.remove('on'); if (btn) btn.classList.remove('on'); draw(); save();
     }
