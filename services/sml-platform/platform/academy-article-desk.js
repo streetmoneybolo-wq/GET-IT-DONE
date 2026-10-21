@@ -555,7 +555,9 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   });
   const recordText = require('./academy-article-outcomes').recordLine(record);
   /* the call: the conditional prediction and the line that proves it wrong, set apart so a reader (and a search engine) can find them */
-  if (n.ifRight && n.wrongIf) text(`<p class="mem-call"><strong>The call.</strong> ${esc(plain(n.ifRight))} ${esc(plain(n.wrongIf))}</p>`);
+  /* only when the letter has not already said it: the same two sentences twice would be the one repeat the rules forbid */
+  const saidAlready = (n.sections || []).some((sx) => (sx.paragraphs || []).some((pp) => plain(pp).includes(plain(n.ifRight || '\u0000'))));
+  if (n.ifRight && n.wrongIf && !saidAlready) text(`<p class="mem-call"><strong>The call.</strong> ${esc(plain(n.ifRight))} ${esc(plain(n.wrongIf))}</p>`);
   text(`<h2>${esc(plain(n.bottomHeading || 'Where I land'))}</h2><p>${esc(plain(n.bottom || bottomLine(st, c, seed)))}</p>${recordText ? `<p class="mem-record"><strong>Desk record.</strong> ${esc(recordText.replace(/^Desk record: /, ''))}</p>` : ''}`);
   mod(pollMod, 'poll');
   /* the sources, one line: the primary records this piece leans on, and the site's own pages */

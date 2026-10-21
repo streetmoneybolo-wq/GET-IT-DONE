@@ -172,3 +172,14 @@ test('the letter is Vaughn McNair (Grandmaster-Obi) writing for Loop Letters: no
   assert.doesNotMatch([a.title, a.dek, a.tldr, a.seo.meta_title, a.seo.meta_desc, a.seo.og_title, a.keyword, (a.tags || []).join(' ')].join(' '), /academy/i, 'title, standfirst, SEO and tags');
   assert.match(visible(a.bodyHtml), /Grandmaster-Obi/);
 });
+
+test('the call is stated once: a separate THE CALL paragraph appears only when the letter has not already said it', () => {
+  const W = require('./academy-article-writer');
+  const sheet = W.factSheet({ story: story(), c: base, dossier });
+  const house = W.housePiece(sheet, 2);
+  const once = compose({ narrative: house });
+  assert.equal((once.bodyHtml.match(new RegExp(house.ifRight.replace(/[.*+?^${}()|[\]\\$]/g, '\\$&').replace(/\\\$/g, '\\$'), 'g')) || []).length, 1, 'the conditional call appears once');
+  assert.doesNotMatch(once.bodyHtml, /class="mem-call"/);
+  const apart = compose({ narrative: { ...house, sections: house.sections.map((sx) => ({ ...sx, paragraphs: sx.paragraphs.filter((pp) => !pp.includes(house.ifRight.slice(0, 30))) })) } });
+  assert.match(apart.bodyHtml, /class="mem-call"><strong>The call\.<\/strong>/);
+});
