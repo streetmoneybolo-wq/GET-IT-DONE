@@ -69,3 +69,11 @@ test('resolution: chart layers draw at the screen’s real density (up to 3), st
   assert.match(src, /sml-chart-dpr-cap/); assert.match(src, /pctl\(f, 0\.95\) > 55/); assert.match(src, /resolution: /);
   assert.match(fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'), /-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility/);
 });
+
+test('UHD look: label text snaps to the pixel grid, desktops start at Sharp (2x), and Settings offers Auto, Sharp and Ultra', () => {
+  const fs = require('fs'), path = require('path');
+  const pro = fs.readFileSync(path.join(__dirname, 'academy-chart-pro.js'), 'utf8'), set = fs.readFileSync(path.join(__dirname, 'academy-settings-ui.js'), 'utf8'), srv = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  assert.match(pro, /let qFloor = stage\.clientWidth >= 560 \? 2 : 0/); assert.match(pro, /window\.smlChartQuality = \{ get: /); assert.match(pro, /Math\.min\(Math\.max\(window\.devicePixelRatio \|\| 1, qFloor\), Math\.max\(dprCap, qFloor\)\)/);
+  assert.match(set, /CHART SHARPNESS/); assert.match(set, /smlChartQuality\.set\(t\.value\)/);
+  assert.match(srv, /P\.__smlSnap/); assert.match(srv, /P\.fillText=function/);
+});

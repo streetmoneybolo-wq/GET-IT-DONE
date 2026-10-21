@@ -67,6 +67,7 @@
         ? '<select data-k="primary">' + P.BROKERS.map((b) => '<option value="' + b.key + '"' + (prefs.primary === b.key ? ' selected' : '') + '>' + esc(b.name) + '</option>').join('') + '</select>'
         : '<div class="brk">' + P.BROKERS.map((b) => '<label><input type="checkbox" data-p="' + b.key + '"' + (prefs.platforms.includes(b.key) ? ' checked' : '') + '>' + esc(b.name) + '</label>').join('') + '</div>')
       + '<h6>SELL BUTTONS</h6><label><input type="checkbox" data-k="sell"' + (prefs.sell ? ' checked' : '') + '>Show a Sell button beside Buy on contracts and hedge ideas</label>'
+      + (window.smlChartQuality ? '<h6>CHART SHARPNESS</h6><select data-q="1"><option value="0"' + (window.smlChartQuality.get() === 0 ? ' selected' : '') + '>Auto: your screen\'s own sharpness</option><option value="2"' + (window.smlChartQuality.get() === 2 ? ' selected' : '') + '>Sharp: draw at 2x (smoother on a standard screen)</option><option value="3"' + (window.smlChartQuality.get() === 3 ? ' selected' : '') + '>Ultra: draw at 3x (sharpest, uses more power)</option></select>' : '')
       + '<h6>PREVIEW</h6><div class="pv">' + chosen.map((b) => '<span style="color:' + b.color + ';background:' + b.bg + ';border-color:' + b.border + '">Buy on ' + esc(b.name) + ' ↗</span>').join('') + '</div>'
       + (window.smlDiscordEdges && window.smlDiscordEdges.active ? '<h6>DISCORD PHONE EDGES</h6><div class="edges"><label>Top gap <input type="number" data-edge="top" min="0" max="200" step="4" value="' + window.smlDiscordEdges.get().top + '"> px</label><label>Bottom gap <input type="number" data-edge="bottom" min="0" max="200" step="4" value="' + window.smlDiscordEdges.get().bottom + '"> px</label></div><p class="note">Discord\'s own bars cover the top and bottom of an Activity on a phone, and a tap there never reaches the Academy. These gaps keep every button clear of them: raise one if something is still hidden, lower it to use more screen.</p>' : '')
       + '<p class="note">Applies to the chart toolbar, the options chain, the contract mini chart and the hedge ideas. Buttons open your broker on the stock (or its options chain) and copy the contract symbol; every order is reviewed and placed by you in your broker. Nothing is traded from the Academy.</p>'
@@ -78,6 +79,7 @@
     else if (t.dataset.p) { const set = new Set(prefs.platforms); if (t.checked) set.add(t.dataset.p); else set.delete(t.dataset.p); window.smlBuyPrefs.set({ platforms: P.KEYS.filter((k) => set.has(k)) }); }
     else if (t.dataset.k === 'primary') window.smlBuyPrefs.set({ primary: t.value });
     else if (t.dataset.k === 'sell') window.smlBuyPrefs.set({ sell: t.checked });
+    else if (t.dataset.q && window.smlChartQuality) window.smlChartQuality.set(t.value);
     else if (t.dataset.edge && window.smlDiscordEdges) window.smlDiscordEdges.set({ [t.dataset.edge]: t.value });
     paint();
   });

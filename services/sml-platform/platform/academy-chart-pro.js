@@ -34,7 +34,10 @@
      which left a phone chart at half its screen resolution */
   /* a device that cannot keep up at full density (the measured drag frames below) steps down one notch and remembers it */
   let dprCap = 3; try { const v = Number(localStorage.getItem('sml-chart-dpr-cap')); if (v >= 1.5 && v <= 3) dprCap = v; } catch (_) { /* storage can be blocked */ }
-  window.smlChartDpr = () => Math.min(window.devicePixelRatio || 1, dprCap);
+  /* the member's own floor (Settings, Chart sharpness): Sharp draws at 2x and Ultra at 3x even on a 1x screen, which the screen then averages down to the smoothest edges it can show */
+  let qFloor = stage.clientWidth >= 560 ? 2 : 0; try { const raw = localStorage.getItem('sml-chart-quality'); if (raw !== null) { const v = Number(raw); qFloor = v === 3 ? 3 : v === 2 ? 2 : 0; } } catch (_) { /* storage can be blocked */ } // desktops start at Sharp: a 1x window is drawn at 2x and averaged down
+  window.smlChartQuality = { get: () => qFloor, set: (v) => { qFloor = Number(v) === 3 ? 3 : Number(v) === 2 ? 2 : 0; try { localStorage.setItem('sml-chart-quality', String(qFloor)); } catch (_) { /* ignore */ } window.dispatchEvent(new Event('resize')); } };
+  window.smlChartDpr = () => Math.min(Math.max(window.devicePixelRatio || 1, qFloor), Math.max(dprCap, qFloor));
   /* moving the window to another screen, or zooming the page, changes the density: redraw at the new one */
   (function watchDpr() { try { const mq = window.matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)'); const on = () => { setTimeout(() => { window.dispatchEvent(new Event('resize')); watchDpr(); }, 50); }; if (mq.addEventListener) mq.addEventListener('change', on, { once: true }); } catch (_) { /* older browsers: the next resize catches it */ } })();
   const fin = Number.isFinite;
@@ -129,7 +132,7 @@
     /* the price axis is only as wide as its widest label: 603.12 needs about 44px, 1,234.56 about 62px (it was a fixed 64px of dead space) */
     const labelOf = (v) => (fin(v) ? Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).length : 1);
     const labelLen = Math.max(labelOf(hi), labelOf(lo), labelOf(autoHi));
-    PAD.r = clamp(Math.ceil(labelLen * 6.2) + 12, 44, 72);
+    PAD.r = clamp(Math.ceil(labelLen * 6.5) + 12, 46, 76);
     const pw = w - PAD.l - PAD.r, ph = h - PAD.t - PAD.b, step = pw / n, dt = dtOf(bars);
     const volH = V.volPane !== false ? ph * VOL_FRAC : 0, priceH = ph - volH;
     const m = {
@@ -185,6 +188,7 @@
     const f = PERF.frames; if (f.length < 15) return;
     const m = model(), by = {}; for (const k of Object.keys(PERF.byName)) by[k] = r1(mean(PERF.byName[k]));
     perfChip(r1(1000 / mean(f)), r1(pctl(f, 0.95)), r1(Math.max(...f)), by, r1(mean(PERF.layers.layers)));
+    { const dev = window.devicePixelRatio || 1; if (qFloor > dev && localStorage.getItem('sml-chart-quality') === null && (pctl(f, 0.95) > 55 || 1000 / mean(f) < 22)) { qFloor = 0; try { localStorage.setItem('sml-chart-quality', '0'); } catch (_) { /* ignore */ } setTimeout(() => window.dispatchEvent(new Event('resize')), 0); } }
     { const cur = window.smlChartDpr(); if (cur > 2 && (pctl(f, 0.95) > 55 || 1000 / mean(f) < 22)) { dprCap = 2; try { localStorage.setItem('sml-chart-dpr-cap', '2'); } catch (_) { /* ignore */ } setTimeout(() => window.dispatchEvent(new Event('resize')), 0); } }
     if (PERF.sent >= 3 || performance.now() - PERF.lastSent < 30000) return;
     PERF.sent++; PERF.lastSent = performance.now();
