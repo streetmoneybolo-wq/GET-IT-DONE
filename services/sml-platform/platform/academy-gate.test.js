@@ -39,10 +39,10 @@ function oauth(completeActivity = async () => ({ ok: false, status: 401, code: '
     completeActivity
   };
 }
-function gate({ contentGate = true, alertsTiering = false, inDiscordLinks = false, handoff = null } = {}) {
+function gate({ contentGate = true, alertsTiering = false, inDiscordLinks = false, handoff = null, discordSkus = [] } = {}) {
   return Object.freeze({
     ...createAcademyContentGate({ enabled: contentGate, freePreview: 'M0,M29:1-10', freeSymbols: ['SPY', 'QQQ'], alertsTiering }),
-    freeSessions: true, inDiscordLinks, guildId: GUILD, handoff
+    freeSessions: true, inDiscordLinks, guildId: GUILD, handoff, discordSkus
   });
 }
 function stubs() {
@@ -716,5 +716,29 @@ test('the dark-pool route reads the session from the trade record (off-exchange 
   await withServer({ academyOAuth, academyGate: null, marketHistory: null }, async (base) => {
     const r = await realFetch(`${base}/academy-activity/dark-pool?symbol=AAA`);
     assert.equal(r.status, 503); assert.equal((await r.json()).error, 'trade_record_unavailable');
+  });
+});
+
+test('Discord in-app purchases: the SKUs reach the page only when some are configured', async () => {
+  const market = { symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } };
+  const SKU = '1413000000000000001';
+
+  /* nothing sold through Discord: the page is byte-for-byte what it was */
+  const without = academyActivityHtml(market, { appId: '1551336038713139370', gate: { contentGate: false, links: true } });
+  assert.match(without, /window\.SML_ACADEMY_GATE=\{"gate":false,"links":true\}/, 'no empty skus key is emitted');
+
+  const withSkus = academyActivityHtml(market, { appId: '1551336038713139370', gate: { contentGate: false, links: true, skus: [SKU] } });
+  assert.ok(withSkus.includes('window.SML_ACADEMY_GATE={"gate":false,"links":true,"skus":["' + SKU + '"]}'), 'the SKU rides in the gate config');
+  /* the buy button asks Discord first and only falls back to the checkout link */
+  assert.match(withSkus, /buyInDiscord\(\)\.then\(bought=>\{if\(bought\)/, 'the click tries Discord checkout before the link');
+  assert.match(withSkus, /sdk\.commands\.startPurchase\(\{sku_id:skus\[0\]\}\)/, 'it opens the Discord purchase modal');
+  assert.match(withSkus, /window\.smlAcademyOnEntitlement/, 'a purchase made in the Discord client refreshes access');
+  assert.match(withSkus, /academySdk\.subscribe\('ENTITLEMENT_CREATE'/, 'the Activity listens for the entitlement');
+  for (const source of classicScripts(withSkus)) assert.doesNotThrow(() => new Function(source), source.slice(0, 80));
+
+  /* and end to end: the page the server renders carries them */
+  await withServer({ academyOAuth: oauth(), academyGate: gate({ discordSkus: [SKU] }), academyAppId: '1551336038713139370' }, async (base) => {
+    const html = await (await get(base, '/academy-activity/')).text();
+    assert.ok(html.includes('"skus":["' + SKU + '"]'), 'the rendered page carries the configured SKU');
   });
 });
