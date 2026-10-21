@@ -163,3 +163,12 @@ test('the chart has no empty space: the live-price iframe exists only when scrip
   assert.match(a.bodyHtml, /<noscript><iframe class="mem-chart-embed"[^>]*><\/iframe><\/noscript>/);
   assert.doesNotMatch(a.bodyHtml.replace(/<noscript>[\s\S]*?<\/noscript>/g, ''), /mem-chart-embed"/, 'no iframe outside noscript');
 });
+
+test('the letter is Vaughn McNair (Grandmaster-Obi) writing for Loop Letters: nothing a reader sees names the Academy', () => {
+  const a = compose();
+  const visible = (html) => String(html).replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>|<svg[\s\S]*?<\/svg>/g, ' ').replace(/<[^>]*>/g, ' ').replace(/&#39;/g, "'");
+  assert.doesNotMatch(visible(a.bodyHtml), /academy/i, 'page text');
+  assert.doesNotMatch(a.blocks.map((b) => visible(b.html || b.text || (b.items || []).join(' ') || '')).join(' '), /academy/i, 'letter blocks');
+  assert.doesNotMatch([a.title, a.dek, a.tldr, a.seo.meta_title, a.seo.meta_desc, a.seo.og_title, a.keyword, (a.tags || []).join(' ')].join(' '), /academy/i, 'title, standfirst, SEO and tags');
+  assert.match(visible(a.bodyHtml), /Grandmaster-Obi/);
+});

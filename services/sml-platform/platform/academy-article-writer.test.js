@@ -170,3 +170,14 @@ test('the craft rules: the machine cadence and textbook asides are refused, the 
   assert.ok(good.sections[0].paragraphs.join(' ').length > 100);
   assert.ok(good.sections.length <= 6 && good.sections.length >= 3);
 });
+
+test('no brand in the prose: a data line or a model draft that names the Academy is cleaned or refused', () => {
+  const d = { ...dossier, intent: { ok: true, intent: { phase: 'accumulation', side: 'buyers', strength: 64, evidence: [], read: "The Academy's data desk reads smart money accumulating." } } };
+  const s = W.factSheet({ story: story(), c: base, dossier: d });
+  assert.doesNotMatch(s.lines.map((l) => l.text).join(' '), /academy/i);
+  const good = W.housePiece(s, 1);
+  assert.doesNotMatch(JSON.stringify(good), /academy/i);
+  const cleaned = W.normalize({ ...good, lede: ['The Making Easy Money Academy sees buyers here and the stock may run.', 'Academy tools show the Academy\'s scanner flagged it.'] });
+  assert.doesNotMatch(JSON.stringify(cleaned), /academy/i); assert.match(cleaned.lede[0], /^The desk sees buyers/);
+  assert.match(W.SYSTEM, /never mention the Academy/i); assert.match(W.SYSTEM, /Grandmaster-Obi/);
+});
