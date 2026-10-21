@@ -159,3 +159,14 @@ test('news has no voice: a model draft in the first or second person is refused,
   assert.match(W.SYSTEM, /never use I, me, my, we, our or you/i); assert.match(W.SYSTEM, /verified facts/i); assert.match(W.SYSTEM, /never invent quotes/i);
   for (const phrase of ['It remains to be seen.', 'a stunning rally']) assert.match(phrase, W.BANNED);
 });
+
+test('the craft rules: the machine cadence and textbook asides are refused, the prompts carry the rules, and the house body has uneven paragraphs with a plain statement of stakes', () => {
+  const s = sheet(); const good = W.housePiece(s, 2);
+  assert.ok(W.validate({ ...good, lede: ['Dealers hedge as price rises, which means they must buy more shares, and that causes a feedback loop in the stock.', ...good.lede.slice(1)] }, s).reasons.includes('ai_cadence'));
+  for (const bad of ['Gamma refers to the rate of change of delta.', 'Short interest is defined as the number of shares sold short.', 'Put simply, the stock is cheap.']) assert.ok(W.validate({ ...good, lede: [bad, ...good.lede.slice(1)] }, s).reasons.includes('glossary_aside'), bad);
+  assert.ok(!W.validate(good, s).reasons.some((r) => /cadence|glossary/.test(r)));
+  for (const must of [/compress raw data into insight/i, /each number once|use each number once/i, /no more than six sections/i, /one disclaimer at most/i, /symmetrical/i, /consistent voice/i, /never through invented personal experience/i]) assert.match(W.SYSTEM, must);
+  const lens = good.sections[0].paragraphs.map((p) => p.split(/\s+/).length); assert.ok(new Set(lens).size >= 2, 'paragraph lengths vary: ' + lens);
+  assert.ok(good.sections[0].paragraphs.join(' ').length > 100);
+  assert.ok(good.sections.length <= 6 && good.sections.length >= 3);
+});
