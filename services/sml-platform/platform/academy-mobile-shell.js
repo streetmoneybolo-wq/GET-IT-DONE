@@ -130,6 +130,9 @@
     A + ':not([data-ms-tab=algo]) :is(#mem-algo-panel,#mem-scn-strip,#sire-panel,#ms-slot-smc){display:none!important}',
     A + '[data-ms-tab=algo]:not([data-ms-sub=mem]) :is(#mem-algo-panel,#mem-scn-strip),' + A + '[data-ms-tab=algo]:not([data-ms-sub=sire]) #sire-panel,' + A + '[data-ms-tab=algo]:not([data-ms-sub=smc]) #ms-slot-smc{display:none!important}',
     A + ' main .chart #mem-algo-panel,' + A + '.chart-lock main .chart #sire-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;max-height:none!important;margin:6px 0 0!important;z-index:auto!important;grid-column:1!important;box-shadow:none!important}',
+    /* the Intent and Targets read-outs: an in-flow card right under the chart on the CHART tab, never a sheet over the candles */
+    '#ms-slot-tools{display:none}' + A + '[data-ms-tab=chart] #ms-slot-tools{display:block;grid-column:1;margin:6px 0 0;min-width:0}',
+    A + ' #ms-slot-tools>#intent-panel,' + A + ' #ms-slot-tools>#targets-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;max-height:none!important;z-index:auto!important;margin:0 0 6px!important;overflow:visible!important;box-shadow:none!important;background:#07111a!important}',
     A + ' #ms-slot-smc{grid-column:1;margin:6px 0 0;min-width:0}' + A + ' #ms-slot-smc #smc-card{position:static!important;width:auto!important;max-height:none!important;right:auto!important;margin:0}',
     A + ' #sire-panel{font-size:.68rem!important;max-height:56svh!important;overflow:auto!important;margin:6px 0 0!important}',
     A + ' #sire-panel header{position:sticky!important;top:0!important}',
@@ -178,6 +181,26 @@
     const tb = chart.querySelector(':scope>.toolbar');
     if (top && tb && document.body.classList.contains('sml-ms') && top.previousElementSibling !== tb) tb.after(top);
     if (!byId('ms-slot-smc')) { const d = document.createElement('div'); d.id = 'ms-slot-smc'; chart.appendChild(d); }
+    if (!byId('ms-slot-tools')) { const d = document.createElement('div'); d.id = 'ms-slot-tools'; chart.appendChild(d); }
+    dockPanels();
+  }
+  /* The Intent and Targets panels are made inside the chart stage (they float over it on a desktop). On the phone workspace they move
+     into the slot under the chart, and scroll into view when they open, so a read-out never covers a candle. */
+  const PANELS = ['intent-panel', 'targets-panel'], wasOpen = {};
+  function dockPanels() {
+    const slot = byId('ms-slot-tools'); if (!slot || !document.body.classList.contains('sml-ms')) return;
+    for (const id of PANELS) {
+      const p = byId(id); if (!p) continue;
+      if (p.parentElement !== slot) slot.appendChild(p);
+      const open = p.classList.contains('open');
+      if (open && !wasOpen[id] && S.tab === 'chart' && p.scrollIntoView) { try { p.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) { /* older browsers */ } }
+      wasOpen[id] = open;
+    }
+  }
+  function undockPanels() {
+    const st = document.querySelector('.academy-chart-stage');
+    for (const id of PANELS) { const p = byId(id); if (p && st && p.parentElement !== st) st.appendChild(p); wasOpen[id] = false; }
+    const slot = byId('ms-slot-tools'); if (slot) slot.remove();
   }
   function measure() {
     const bar = document.querySelector('main .toolbar') || document.querySelector('main .bar');
@@ -289,6 +312,7 @@
     document.body.classList.remove('sml-ms', 'ms-tool', 'sml-quote-open'); delete document.body.dataset.msTab; delete document.body.dataset.msSub;
     for (const id of ['ms-top', 'ms-nav', 'ms-sub', 'ms-more']) { const el = byId(id); if (el) el.remove(); }
     nav = sub = more = top = null; /* the slot under the chart goes too: the chart's own grid is left exactly as it was */
+    undockPanels();
     const slot = byId('ms-slot-smc'); if (slot) { const c = byId('smc-card'); if (c && slot.contains(c)) { const st = document.querySelector('.academy-chart-stage'); if (st) st.appendChild(c); } slot.remove(); }
     document.documentElement.style.removeProperty('--ms-top'); document.documentElement.style.removeProperty('--ms-extra'); document.documentElement.style.removeProperty('--ms-sub-h');
     if (timer) { clearInterval(timer); timer = null; }
