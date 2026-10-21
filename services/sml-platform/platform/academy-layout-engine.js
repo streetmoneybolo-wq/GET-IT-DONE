@@ -19,7 +19,7 @@
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const phone = () => window.matchMedia('(max-width:720px)').matches;
   const css = document.createElement('style');
-  css.textContent = '.academy-market-trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 8px}@media(max-width:1100px){.academy-market-trio{grid-template-columns:1fr;gap:6px}}.academy-market-trio>section{margin:0!important}'
+  css.textContent = '.academy-market-trio{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:8px;margin:0 0 8px;align-items:stretch}@media(max-width:720px){.academy-market-trio{grid-template-columns:1fr;gap:6px}}.academy-market-trio>section,.academy-market-trio>.academy-chat{margin:0!important;min-width:0;max-width:100%;box-sizing:border-box}.academy-market-trio>.academy-chat .academy-chat-log{height:92px!important;min-height:0!important}'
     + '@media(max-width:720px){.academy-market-trio>section>div{padding:7px 9px!important}}'
     + '.academy-depth.sml-empty{flex:0 0 auto!important;min-height:0!important;padding-top:8px!important;margin-top:8px!important}.academy-depth.sml-empty .academy-depth-empty{padding:0 0 2px;font-size:.62rem}'
     + '.academy-side-fill{flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:thin;margin-top:8px;border-top:1px solid #1b3540;padding-top:8px}.academy-side-fill h3{font-size:.63rem;margin:0 0 5px;color:#86a2b0;display:flex;justify-content:space-between;align-items:center}.academy-side-fill h3 small{color:#5f7684;font-weight:600;letter-spacing:0;text-transform:none}'
@@ -33,10 +33,16 @@
   function trio() {
     const ids = ['academy-direction', 'academy-unusual-volume', 'academy-sml-vix'];
     const els = ids.map((id) => document.getElementById(id)).filter(Boolean);
-    if (els.length < 2 || els[0].parentElement.classList.contains('academy-market-trio')) return;
-    const wrap = document.createElement('div'); wrap.className = 'academy-market-trio';
-    els[0].parentElement.insertBefore(wrap, els[0]);
-    for (const el of els) wrap.appendChild(el);
+    const chat = document.querySelector('#academy-below > .academy-chat');
+    let wrap = document.querySelector('.academy-market-trio');
+    if (!wrap) {
+      if (els.length < 2) return;
+      wrap = document.createElement('div'); wrap.className = 'academy-market-trio';
+      els[0].parentElement.insertBefore(wrap, els[0]);
+    }
+    /* on desktop the Discord chat joins the row as a short horizontal window; the phone layout keeps its own place for it */
+    for (const el of els) if (el.parentElement !== wrap) wrap.appendChild(el);
+    if (chat && !phone() && chat.parentElement !== wrap) wrap.appendChild(chat);
   }
 
   /* 2. the side column: an empty Level 2 collapses and the column shows the live scanner's top rows */
