@@ -84,3 +84,14 @@ test('progress reads in R and percent for either side; speech is split into shor
   assert.equal(parts[0], 'One short sentence.'); assert.ok(parts.length >= 4);
   const a = L.setupScript({ sym: 'A', why: [] }, tt({ confidence: 'low' }), null, { n: 1 }).map((x) => x.say).join(' '); assert.match(a, /Walls/); assert.doesNotMatch(a, /not advice/);
 });
+
+test('the desk says only short tags out loud: a ticker and a phrase from a small fixed bank, never the full read', () => {
+  const all = [...L.OPENERS.long, ...L.OPENERS.short, ...Object.values(L.TARGET_SAY)];
+  assert.ok(all.every((p) => p.length <= 28), 'every phrase is a few words');
+  assert.ok(L.OPENERS.long.includes('Check this stock out.') && L.OPENERS.long.includes('This stock is running.'));
+  const seen = new Set(); for (let i = 0; i < 40; i++) seen.add(L.opener('long')); assert.ok(seen.size > 1 && [...seen].every((p) => L.OPENERS.long.includes(p)));
+  let prev = null; for (let i = 0; i < 40; i++) { const o = L.opener('long'); assert.notEqual(o, prev, 'never the same opener twice in a row'); prev = o; }
+  assert.ok(L.OPENERS.short.includes(L.opener('short')));
+  const src = fs.readFileSync(path.join(__dirname, 'academy-auto-live.js'), 'utf8');
+  assert.doesNotMatch(src, /await speak\(s\.say\);/, 'no step reads its full text aloud');
+});
