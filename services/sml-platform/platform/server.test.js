@@ -2633,3 +2633,11 @@ test('Editions and persona bots: a member picks Trader or Analyst, the analyst c
   const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
   assert.match(html, /id = 'edition-btn'/); assert.match(html, /body\.sml-edition-trader #click-alert-toggle,body\.sml-edition-trader #article-btn\{display:none!important\}/, 'the Trader edition hides the publishing tools');
 });
+
+test('the free trial lets a member in from outside the Academy server: the pass check and the identity lookup do not wait for the Loop Bucks shop to be configured', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  assert.ok(src.includes('withFreeUsers(academyPasses ? withPasses(academyAccessBase, academyPasses) : academyAccessBase'), 'withPasses whenever the pass service exists');
+  assert.ok(src.includes('identityAccess: config.academyBillingInDiscordLinks || academyTrial.configured || !!academyPasses ? createIdentityAccess({}) : null'), 'the member outside the server is named');
+  assert.ok(src.includes("if (academyPasses && await academyPasses.hasActive(userId).catch(() => false)) return 'academy';"), 'the renew check reads the pass too');
+  assert.ok(!src.includes('academyPasses.configured && await academyPasses.hasActive'), 'no configured gate left on the pass read');
+});

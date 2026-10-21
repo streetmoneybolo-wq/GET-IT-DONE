@@ -5259,9 +5259,11 @@ async function main() {
   const academyAccessBase = createAcademyAccess({ guildId: config.academyGuildId,
     allowedRoleIds: [...academyMemberRoleIds, ...config.academyAccessRoleIds], memberRoleIds: academyMemberRoleIds,
     retryRateLimited: academyGateFlags || config.academyAccessRoleIds.length > 0,
-    identityAccess: config.academyBillingInDiscordLinks || (academyPasses && academyPasses.configured) ? createIdentityAccess({}) : null });
+    /* a member outside the Academy server is named by /users/@me so a held pass (bought, or the free trial) can let them in */
+    identityAccess: config.academyBillingInDiscordLinks || academyTrial.configured || !!academyPasses ? createIdentityAccess({}) : null });
   const freeUsers = loadFreeUserIds();
-  const academyAccess = withFreeUsers(academyPasses && academyPasses.configured ? withPasses(academyAccessBase, academyPasses) : academyAccessBase, freeUsers, createIdentityAccess({}));
+  /* a pass already held only needs the store (the free trial writes one), so the pass check is on whenever the pass service exists, whether or not the Loop Bucks shop (prices + wallet) is configured */
+  const academyAccess = withFreeUsers(academyPasses ? withPasses(academyAccessBase, academyPasses) : academyAccessBase, freeUsers, createIdentityAccess({}));
   const academyOAuth = createAcademyOAuth({ clientId: config.academyAppId, clientSecret: config.academyClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess, freeSessions: config.academyFreeSessions });
   /* The Academy in-app chat (switchable Day Trade / Swing Trade / Short Sale / Options Trading
@@ -5790,7 +5792,7 @@ async function main() {
     const accessRoles = config.academyAccessRoleIds.map(String);
     if (held && held.some((r) => memberRoles.includes(r))) return 'member';
     if (held && held.some((r) => accessRoles.includes(r))) return 'academy';
-    if (academyPasses && academyPasses.configured && await academyPasses.hasActive(userId).catch(() => false)) return 'academy';
+    if (academyPasses && await academyPasses.hasActive(userId).catch(() => false)) return 'academy';
     return held ? 'free' : 'none';
   };
   const academyAlertSources = academyAlerts && perMemberAlerts ? createAlertSources({
