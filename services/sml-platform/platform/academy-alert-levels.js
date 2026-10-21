@@ -23,10 +23,19 @@ const num = (v) => { if (v == null || v === '') return null; const n = Number(v)
 function fromRecord(rows, { symbol = '', now = Date.now() } = {}) {
   const sym = String(symbol || '').toUpperCase();
   const mine = (rows || []).filter((r) => r && r.symbol && (!sym || String(r.symbol).toUpperCase() === sym) && !String(r.symbol).includes(' '));
-  const byChain = new Map();
-  for (const r of mine) { const root = r.followUp ? r.rootRef : (r.ref || r.id); const k = String(root); (byChain.get(k) || byChain.set(k, []).get(k)).push(r); }
+  /* One trade, one chain. A later post on the same stock and side with a FURTHER target is the member moving the target up (a PT SMASHED, or an
+     update of the same alert), even when the record has not marked the first target as reached yet: the line keeps the ORIGINAL entry and only the
+     target moves. A chain that was stopped, missed or abandoned is over, so the next post starts a new one. */
+  const dead = (p) => p.result === 'stopped' || p.result === 'missed' || p.result === 'abandoned' || (p.status === 'closed' && p.result !== 'win');
+  const chains = [], open = new Map();
+  for (const r of mine.slice().sort((x, y) => x.alertedAt - y.alertedAt)) {
+    const key = String(r.symbol).toUpperCase() + ':' + (r.side === 'short' ? 'short' : 'long'), ch = open.get(key), last = ch && ch[ch.length - 1], short = r.side === 'short';
+    const further = last && num(r.target) > 0 && num(last.target) > 0 && (short ? num(r.target) < num(last.target) : num(r.target) > num(last.target));
+    if (last && !dead(last) && (r.followUp || further) && r.alertedAt - last.alertedAt <= 21 * DAY) ch.push(r);
+    else { const fresh = [r]; chains.push(fresh); open.set(key, fresh); }
+  }
   const out = [];
-  for (const posts of byChain.values()) {
+  for (const posts of chains) {
     const asc = posts.slice().sort((a, b) => a.alertedAt - b.alertedAt), first = asc[0], cur = asc[asc.length - 1];
     if (!(num(cur.target) > 0) || !(num(first.entry) > 0)) continue;
     if (cur.result === 'stopped' || cur.result === 'missed' || cur.result === 'abandoned') continue;

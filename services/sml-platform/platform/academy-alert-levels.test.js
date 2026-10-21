@@ -51,3 +51,12 @@ test('the chart layer: weight by distance, colours by role, edge chips, smart-ra
   assert.match(srv, /\/academy-activity\/my-alert-levels/); assert.match(srv, /alertLevelsUi/);
   assert.match(fs.readFileSync(path.join(__dirname, 'academy-click-alert-ui.js'), 'utf8'), /smlAlertLevels\.refresh/);
 });
+
+test('an updated alert with a further target keeps the ORIGINAL entry even before the record marks the first target as reached', () => {
+  const first = row({ id: 20, alertedAt: NOW - 6 * H, entry: 100, target: 110, stop: 95 });
+  const update = row({ id: 21, alertedAt: NOW - 1 * H, entry: 108.4, target: 120, stop: 104 });
+  const l = fromRecord(linkFollowUps([first, update]), { symbol: 'AHT', now: NOW });
+  assert.equal(l.length, 1); assert.deepEqual([l[0].entry, l[0].target], [100, 120]);
+  const stopped = fromRecord(linkFollowUps([{ ...first, result: 'stopped', status: 'closed', closedAt: NOW - 3 * H }, update]), { symbol: 'AHT', now: NOW });
+  assert.equal(stopped.length, 1); assert.equal(stopped[0].entry, 108.4, 'after a stop the next alert is a new trade with its own entry');
+});
