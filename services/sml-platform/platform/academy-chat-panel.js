@@ -337,7 +337,23 @@
     const box = document.querySelector('.academy-chat'); if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  let retry = 0;
+  let retry = 0, failed = 0, gotHistory = false, histTimer = 0, renewing = null, lastAuthAt = Date.now(), hiddenAt = 0;
+  window.addEventListener('sml-academy-session', () => { lastAuthAt = Date.now(); });
+  const tokenOld = () => Date.now() - lastAuthAt > 11 * 60 * 1000;
+  /* one renewal at a time, shared; the main page's sign-in renews the Activity session silently and announces it */
+  function renewSession() {
+    if (typeof window.smlAcademyReauth !== 'function') return Promise.resolve();
+    if (!renewing) renewing = Promise.resolve(window.smlAcademyReauth()).catch(() => '').then((t) => { if (t) lastAuthAt = Date.now(); renewing = null; });
+    return renewing;
+  }
+  /* close whatever socket there is and open a fresh one now (with a renewed session if the old one is getting old) */
+  async function reconnect() {
+    clearTimeout(retry); clearTimeout(histTimer);
+    const old = ws; ws = null;
+    if (old) { old.onclose = null; old.onmessage = null; try { old.close(); } catch (_) { /* already gone */ } }
+    if (tokenOld()) await renewSession();
+    connect();
+  }
   function connect() {
     const token = window.smlAcademySessionToken;
     if (!token) { status.textContent = 'SIGN IN FIRST'; return; }
@@ -346,11 +362,23 @@
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const url = proto + '://' + location.host + '/academy-activity/chat?token=' + encodeURIComponent(token) + '&name=' + encodeURIComponent(displayName());
     try { ws = new WebSocket(url); } catch (_) { status.textContent = 'OFFLINE'; return; }
-    ws.onopen = () => { status.textContent = 'LIVE'; while (queue.length) ws.send(queue.shift()); join(current || 'global'); };
-    ws.onclose = () => { status.textContent = 'RECONNECTING'; clearTimeout(retry); retry = setTimeout(connect, 3000); };
+    const mine = ws; let opened = false;
+    ws.onopen = () => {
+      opened = true; failed = 0; status.textContent = 'LIVE'; while (queue.length) ws.send(queue.shift()); gotHistory = false; join(current || 'global');
+      /* the room's history should follow the join within moments; if it does not (a socket that looks open and is not), say it again, then start over */
+      clearTimeout(histTimer); histTimer = setTimeout(() => { if (ws === mine && !gotHistory) { join(current || 'global'); histTimer = setTimeout(() => { if (ws === mine && !gotHistory) reconnect(); }, 5000); } }, 4000);
+    };
+    /* a socket the server refused (an expired session answers 401 before it ever opens) is retried only after the session has been renewed;
+       retrying with the same dead token forever is what left the chat blank */
+    ws.onclose = () => {
+      if (ws !== mine) return;
+      status.textContent = 'RECONNECTING'; clearTimeout(retry); failed = opened ? 0 : failed + 1;
+      retry = setTimeout(async () => { if (!opened || tokenOld()) await renewSession(); connect(); }, Math.min(15000, opened ? 1200 : 1500 * 2 ** Math.min(failed, 3)));
+    };
     ws.onerror = () => {};
     ws.onmessage = (event) => {
       let msg; try { msg = JSON.parse(event.data); } catch (_) { return; }
+      if (msg.type === 'history') gotHistory = true;
       if (msg.type === 'history' && msg.channel === current) { msgs = new Map(msg.messages.map((m) => [m.id, m])); renderAll(); }
       else if (msg.type === 'message' && msg.channel === current) { msgs.set(msg.message.id, msg.message); renderAll(); }
       else if (msg.type === 'deleted' && msg.channel === current) { if (msg.soft && msgs.has(msg.id)) { Object.assign(msgs.get(msg.id), { deleted: true, body: '', authorName: '' }); } else msgs.delete(msg.id); renderAll(); }
@@ -373,11 +401,17 @@
   paintMuted();
   window.addEventListener('sml-academy-session', connect);
   /* back from a minimised window: the socket may look open and be dead, and its token may have expired, so open a fresh one with the current token and reload the room */
-  window.addEventListener('sml-academy-resume', () => {
-    if (!window.smlAcademySessionToken) return;
-    const old = ws; ws = null; clearTimeout(retry);
-    if (old) { old.onclose = null; old.onmessage = null; try { old.close(); } catch (_) { /* already gone */ } }
-    connect();
-  });
+  window.addEventListener('sml-academy-resume', () => { if (window.smlAcademySessionToken) void reconnect(); });
+  /* the page cannot always tell the panel it was away (a minimised Discord window may not report it), so the panel watches for itself:
+     coming back after a while, or the network returning, opens a fresh socket; a socket that is gone is replaced at once */
+  const nudge = (force) => {
+    if (document.hidden || !window.smlAcademySessionToken) return;
+    const away = hiddenAt ? Date.now() - hiddenAt : 0; hiddenAt = 0;
+    const dead = !ws || ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED;
+    if (force || away > 20000 || dead) void reconnect();
+  };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hiddenAt = Date.now(); else nudge(false); });
+  window.addEventListener('focus', () => nudge(false)); window.addEventListener('online', () => nudge(true)); window.addEventListener('pageshow', () => nudge(false));
+  let beat = Date.now(); setInterval(() => { const now = Date.now(), gap = now - beat; beat = now; if (gap > 10000) nudge(true); }, 2000);
   if (window.smlAcademySessionToken) connect();
 })();
