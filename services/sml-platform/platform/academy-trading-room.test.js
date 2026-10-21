@@ -146,7 +146,7 @@ test('the room UI and the owner tools are wired into the page', () => {
   const fs = require('fs'), path = require('path');
   const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
   const srv = read('server.js'), ui = read('academy-room-ui.js'), prof = read('academy-profile-ui.js'), dc = read('academy-desktop-compact.js'), nav = read('academy-toolbar-nav.js');
-  assert.match(srv, /ACADEMY_PROFILE_UI \+ ACADEMY_ROOM_UI/); assert.match(srv, /\/academy-activity\/room\/checkout/); assert.match(srv, /rooms: tradingRoom/);
+  assert.match(srv, /ACADEMY_PROFILE_UI \+ ACADEMY_ROOM_UI/); assert.match(srv, /sub === '\/checkout'/); assert.match(srv, /rooms: tradingRoom/);
   assert.match(ui, /window\.smlRoom = \{ open: openRoom, door, close \}/); assert.match(ui, /\/checkout/); assert.match(ui, /data-tpl/);
   assert.match(prof, /smlRoom\.door\(/);
   assert.match(dc, /sml-owner-tools/); assert.match(dc, /'evolve-btn', 'squeeze-btn', 'challenge-toggle', 'sml-sig-fab'/); assert.match(nav, /!b\.dataset\.ownerSlot/);
