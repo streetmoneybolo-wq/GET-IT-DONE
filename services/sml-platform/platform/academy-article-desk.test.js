@@ -41,11 +41,11 @@ test('the composed piece is a letter, not a report: a lede with a side, at most 
   assert.ok(a.wordCount >= 700 && a.wordCount <= 1500, 'a readable length: ' + a.wordCount);
   const text = a.textHtml.replace(/<[^>]+>/g, ' ').replace(/&#39;/g, "'").replace(/\s+/g, ' ');
   assert.equal((text.match(/not financial advice/gi) || []).length, 1, 'one disclaimer'); assert.ok(!/Not a forecast|LABELLED SPECULATION|argues with itself/i.test(a.bodyHtml), 'no stacked disclaimers, no meta');
-  assert.ok(/\bI\b/.test(text), 'first person'); assert.ok(!/—/.test(text), 'no em dash'); assert.ok(!/\b(delve|tapestry|landscape|in conclusion)\b/i.test(text));
+  assert.ok(!/\b(I|me|my|we|our|you|your)\b/.test(text.replace(/\$[A-Z]+ [^.]*\./g, '')), 'news has no voice: no first or second person'); assert.ok(!/—/.test(text), 'no em dash'); assert.ok(!/\b(delve|tapestry|landscape|in conclusion)\b/i.test(text));
   const sentences = text.split(/(?<=[.!?])\s+/).map((x) => x.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '')).filter((x) => x.split(' ').length >= 6);
   assert.equal(new Set(sentences).size, sentences.length, 'no sentence appears twice');
   assert.match(a.bodyHtml, /<svg class="mem-chart"/); assert.match(a.bodyHtml, /data-live-endpoint="https:\/\/sml-platform-api\.onrender\.com\/academy-activity\/article-chart"/);
-  assert.match(a.bodyHtml, /Smart money is accumulating/); assert.match(a.bodyHtml, /HEAVY: \$4\.1M block/); assert.match(a.bodyHtml, /THE BULL CASE/); assert.match(a.bodyHtml, /KILL SWITCH/); assert.match(a.bodyHtml, /EARNINGS COUNTDOWN/); assert.match(a.bodyHtml, /YOUR CALL ON \$ABCD/); assert.match(a.bodyHtml, /SHARE THIS READ/);
+  assert.match(a.bodyHtml, /Smart money is accumulating/); assert.match(a.bodyHtml, /HEAVY: \$4\.1M block/); assert.match(a.bodyHtml, /THE BULL CASE/); assert.match(a.bodyHtml, /KILL SWITCH/); assert.match(a.bodyHtml, /EARNINGS COUNTDOWN/); assert.match(a.bodyHtml, /READER POLL: \$ABCD/); assert.match(a.bodyHtml, /SHARE THIS READ/);
   for (const h of ['https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0001234567', 'https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data/daily-short-sale-volume-files', 'https://www.nasdaq.com/market-activity/stocks/abcd/short-interest', 'https://www.cboe.com/delayed_quotes/abcd/quote_table', 'https://abcd.example', 'https://stockmarketloop.com/stocks/abcd/', 'https://discord.gg/makingeasymoney']) assert.ok(a.links.some((l) => l.startsWith(h)), 'link ' + h);
   assert.ok(!a.links.some((l) => /investor\.gov/.test(l)), 'no explainer links: the readers know what gamma is');
   assert.equal((a.bodyHtml.match(/<script/g) || []).length, 1, 'one enhancement script at the end'); assert.ok(a.js.includes('localStorage') && !/<\/script/.test(a.js));

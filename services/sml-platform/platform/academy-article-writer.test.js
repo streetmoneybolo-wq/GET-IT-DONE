@@ -35,14 +35,14 @@ test('the checks: new numbers, dashes, repeats, template headings, FAQ and discl
   assert.ok(W.validate({ ...good, lede: ['Short.'], sections: [{ heading: 'a', paragraphs: ['b'] }, { heading: 'c', paragraphs: ['d'] }, { heading: 'e', paragraphs: ['f'] }], bottom: 'g' }, s).reasons.some((r) => r.startsWith('too_short_')));
 });
 
-test('the house writer: every angle validates, three sections plus a close, first person, no two seeds alike, no sentence twice', () => {
+test('the house writer: every angle validates, three sections plus a close, third person only, no two seeds alike, no sentence twice', () => {
   for (const angle of ['gamma', 'short', 'earnings', 'tape', 'structure']) {
     const st = { ...story(), angle, lean: angle === 'earnings' ? 'bearish' : 'bullish', facts: story().facts, scenario: story().scenario, timeframe: '1 to 2 weeks' };
     const s = W.factSheet({ story: st, c: base, dossier });
     const a = W.housePiece(s, 7), b = W.housePiece(s, 8);
     const v = W.validate(a, s); assert.deepEqual(v, { ok: true, reasons: [] }, angle + ' ' + v.reasons.join(','));
     assert.equal(a.sections.length, 3); assert.ok(a.lede.length >= 2 && a.bottom && a.bull.length >= 1 && a.bear.length >= 1 && a.kill.length >= 3);
-    assert.ok(/\bI\b/.test([...a.lede, ...a.sections.flatMap((x) => x.paragraphs)].join(' ')), angle + ' first person');
+    assert.ok(!/\b(I|me|my|we|our|you|your)\b/.test([a.title, a.dek, ...a.lede, ...a.sections.flatMap((x) => x.paragraphs), a.bottom].join(' ')), angle + ': news has no voice, so no first or second person');
     assert.notEqual(a.title + a.dek + a.sections[0].heading, b.title + b.dek + b.sections[0].heading, angle + ' varies by seed');
     assert.ok(a.title.includes('$ABCD'));
   }
@@ -89,7 +89,7 @@ test('the model gets room to finish, a rejected draft is retried with its reason
 
 /* ---------- the fast path: the house piece is the body, the model writes only the front, and a clock decides ---------- */
 const frontReply = (front) => async (url, opts) => ({ ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: JSON.stringify(front) }], stop_reason: 'end_turn' }), _body: JSON.parse(opts.body) });
-const goodFront = (s) => ({ title: `${s.S}: dealers have to buy and $13.00 is where it shows`, dek: 'Hedging flows have a deadline here, and the strike is already known.', lede: [`I think ${s.S} runs. The target is $13.00 and I am wrong below $11.68.`, 'The options book is doing the work, not the chart. Dealers hedge, and hedging is not optional.'] });
+const goodFront = (s) => ({ title: `${s.S}: dealers have to buy and $13.00 is where it shows`, dek: 'Hedging flows have a deadline here, and the strike is already known.', lede: [`${s.S} may run, according to the desk's scenario. The target is $13.00 and the scenario fails below $11.68.`, 'The options book is doing the work, not the chart. Dealers hedge, and hedging is not optional.'] });
 
 test('fast write: the model rewrites only the front, in one small call, and the body stays the house body', async () => {
   const s = sheet(); const calls = [];
@@ -150,4 +150,12 @@ test('the banned list now carries the cliches and exaggerations a news desk woul
 
 test('the prompts carry the newsroom rules: facts vs interpretation vs uncertainty, no invented causes or quotes, a provocative but supported headline', () => {
   for (const text of [W.SYSTEM]) for (const must of [/verified facts/i, /interpretation/i, /uncertainty/i, /caused/i, /never invent quotes/i, /contrarian/i, /edit your draft once/i, /what investors may watch next/i]) assert.match(text, must);
+});
+
+test('news has no voice: a model draft in the first or second person is refused, and the prompts say so', () => {
+  const s = sheet(); const good = W.housePiece(s, 1);
+  for (const bad of ['I think this runs.', 'We expect a move.', 'My read is long.', 'You should watch the wall.', 'Your edge is the tape.']) assert.ok(W.validate({ ...good, lede: [bad, ...good.lede.slice(1)] }, s).reasons.includes('first_or_second_person'), bad);
+  assert.ok(!W.validate(good, s).reasons.includes('first_or_second_person'));
+  assert.match(W.SYSTEM, /never use I, me, my, we, our or you/i); assert.match(W.SYSTEM, /verified facts/i); assert.match(W.SYSTEM, /never invent quotes/i);
+  for (const phrase of ['It remains to be seen.', 'a stunning rally']) assert.match(phrase, W.BANNED);
 });
