@@ -43,3 +43,8 @@ test('colours: bids teal, asks rose, alpha rising with brightness; the intraday 
   assert.match(H.colorFor('ask', 0), /^rgba\(150,50,90,0\.120\)$/);
   assert.equal(H.TF_MS['1m'], 60_000); assert.equal(H.TF_MS['30m'], 1_800_000); assert.equal(H.TF_MS['1D'], undefined);
 });
+
+test('the heat layer averages thin columns into buckets, draws a book profile with named walls, and zooms in when switched on', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'academy-heatmap.js'), 'utf8');
+  assert.match(src, /bw = Math\.max\(colW, 3\)/); assert.match(src, /the book profile/); assert.match(src, /' sh @ '/); assert.match(src, /function heatZoom/);
+});

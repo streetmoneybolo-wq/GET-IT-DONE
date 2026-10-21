@@ -101,22 +101,55 @@
     const pad = M.pad, right = pad.l + M.pw, top = pad.t, bottom = M.priceBottom || (pad.t + M.ph);
     c.save(); c.beginPath(); c.rect(pad.l, top, M.pw, bottom - top); c.clip();
     const pxPerTick = Math.abs(M.y(M.lo) - M.y(M.lo + S.tick));
-    const ticksPerRow = Math.max(1, Math.ceil(2 / Math.max(pxPerTick, 1e-6)));
+    const ticksPerRow = Math.max(1, Math.ceil(3 / Math.max(pxPerTick, 1e-6)));
     const binPrice = S.tick * ticksPerRow;
     const colW = Math.max(1.5, (S.everyMs / (M.dt || 60_000)) * M.step);
-    const mids = [];
+    /* five-second columns are far thinner than a pixel on a 5m chart: they are averaged into buckets at least 3px wide, so the heat is a smooth field
+       and not one column's colours fighting over the same pixels (that read as a barcode) */
+    const bw = Math.max(colW, 3), buckets = new Map(), mids = [];
     for (const col of S.cols) {
       const xi = M.idxOfTime(col.t); if (!fin(xi)) continue;
-      const x = M.x(xi) - colW / 2;
-      if (x + colW < pad.l || x > right) continue;
-      const bins = H.binColumn(col, binPrice);
-      for (const [k, v] of bins) {
+      const x = M.x(xi);
+      if (x + bw < pad.l || x - bw > right) continue;
+      const key = Math.floor((x - pad.l) / bw);
+      let bk = buckets.get(key); if (!bk) { bk = { n: 0, bins: new Map() }; buckets.set(key, bk); }
+      bk.n += 1;
+      for (const [k, v] of H.binColumn(col, binPrice)) { const r = bk.bins.get(k) || { bid: 0, ask: 0 }; r.bid += v.bid; r.ask += v.ask; bk.bins.set(k, r); }
+      if (col.b.length && col.a.length) mids.push([x, M.y((col.b[0][0] + col.a[0][0]) / 2)]);
+    }
+    for (const [key, bk] of buckets) {
+      const x = pad.l + key * bw;
+      for (const [k, v] of bk.bins) {
         const p = k * binPrice; if (p < M.lo || p > M.hi) continue;
         const y1 = M.y(p + binPrice / 2), y2 = M.y(p - binPrice / 2), hh = Math.max(1, y2 - y1);
-        if (v.bid > 0) { c.fillStyle = H.colorFor('bid', H.intensity(v.bid, S.ref)); c.fillRect(x, y1, colW + 0.5, hh); }
-        if (v.ask > 0) { c.fillStyle = H.colorFor('ask', H.intensity(v.ask, S.ref)); c.fillRect(x, y1, colW + 0.5, hh); }
+        const bid = v.bid / bk.n, ask = v.ask / bk.n;
+        if (bid > 0) { c.fillStyle = H.colorFor('bid', H.intensity(bid, S.ref)); c.fillRect(x, y1, bw + 0.5, hh); }
+        if (ask > 0) { c.fillStyle = H.colorFor('ask', H.intensity(ask, S.ref)); c.fillRect(x, y1, bw + 0.5, hh); }
       }
-      if (col.b.length && col.a.length) mids.push([x + colW / 2, M.y((col.b[0][0] + col.a[0][0]) / 2)]);
+    }
+    /* the book profile: the 20 minutes added up per price and drawn as bars growing out of the price axis, so where the size sits reads at any zoom;
+       the biggest bid and ask levels are named with their size */
+    const tot = new Map();
+    for (const col of S.cols) for (const [k, v] of H.binColumn(col, binPrice)) { const r = tot.get(k) || { bid: 0, ask: 0 }; r.bid += v.bid; r.ask += v.ask; tot.set(k, r); }
+    const ncol = Math.max(1, S.cols.length);
+    let peak = 0; for (const v of tot.values()) peak = Math.max(peak, v.bid / ncol, v.ask / ncol);
+    if (peak > 0) {
+      const maxW = Math.min(M.pw * 0.22, 190);
+      c.save(); c.globalCompositeOperation = 'source-over';
+      const top = { bid: null, ask: null };
+      for (const [k, v] of tot) {
+        const p = k * binPrice; if (p < M.lo || p > M.hi) continue;
+        const y1 = M.y(p + binPrice / 2), y2 = M.y(p - binPrice / 2), hh = Math.max(1.5, y2 - y1 - 0.5);
+        const bAvg = v.bid / ncol, aAvg = v.ask / ncol, side = bAvg >= aAvg ? 'bid' : 'ask', sz = Math.max(bAvg, aAvg);
+        if (sz <= 0) continue;
+        const len = Math.max(2, (sz / peak) * maxW);
+        c.fillStyle = side === 'bid' ? 'rgba(54,214,176,.55)' : 'rgba(255,110,140,.55)';
+        c.fillRect(right - len, y1, len, hh);
+        if (!top[side] || sz > top[side].sz) top[side] = { sz, p, y: (y1 + y2) / 2, len };
+      }
+      c.font = '800 9px ui-monospace,monospace'; c.textBaseline = 'middle'; c.textAlign = 'right';
+      for (const side of ['ask', 'bid']) { const t = top[side]; if (!t) continue; const txt = (side === 'bid' ? 'BID ' : 'ASK ') + Math.round(t.sz).toLocaleString() + ' sh @ ' + t.p.toFixed(2); const tw = c.measureText(txt).width + 10; c.fillStyle = 'rgba(8,16,24,.88)'; c.fillRect(right - t.len - tw - 4, t.y - 8, tw, 16); c.fillStyle = side === 'bid' ? '#5df0b0' : '#ff8ea1'; c.fillText(txt, right - t.len - 9, t.y); }
+      c.restore();
     }
     if (mids.length > 1) { c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 1.2; c.beginPath(); mids.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.stroke(); }
     /* sweep-versus-wall markers at the wall's price when the case resolved: a filled triangle for a confirmed breakout (pointing the breakout's way),
@@ -141,9 +174,9 @@
   function legend(w) {
     const x = (window.smlChartModel().pad.l) + 8, y = window.smlChartModel().pad.t + 8, gw = 90;
     ctx.font = '800 9px ui-monospace,monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(8,16,24,.82)'; ctx.fillRect(x - 4, y - 4, gw + 118, 22);
+    ctx.fillStyle = 'rgba(8,16,24,.82)'; ctx.fillRect(x - 4, y - 4, gw + 232, 22);
     for (let i = 0; i < gw; i++) { const a = i / gw; ctx.fillStyle = H.colorFor(i % 2 ? 'bid' : 'ask', a); ctx.fillRect(x + i, y + 2, 1, 10); }
-    ctx.fillStyle = '#b9c8d1'; ctx.fillText('RESTING SIZE  dim → ' + Math.round(S.ref).toLocaleString() + '+', x + gw + 6, y + 7);
+    ctx.fillStyle = '#b9c8d1'; ctx.fillText('BOOK HEAT · last 20 min · brighter = more size, bars = totals · ' + Math.round(S.ref).toLocaleString() + '+ sh', x + gw + 6, y + 7);
     void w;
   }
 
@@ -183,7 +216,18 @@
   const stage = chartCanvas.parentElement || document;
   stage.addEventListener('mousemove', (e) => { if (!S.on || !S.cols.length) return; const r = chartCanvas.getBoundingClientRect(); S.hover = { px: e.clientX - r.left, py: e.clientY - r.top }; if (!window.smlChartGesture) draw(); }, { passive: true });
   stage.addEventListener('mouseleave', () => { if (S.hover) { S.hover = null; draw(); } }, { passive: true });
-  btn.addEventListener('click', () => { S.on = !S.on; save(); btn.classList.toggle('on', S.on); S.offKey = ''; draw(); if (S.on) poll(); });
+  /* turning HEAT on zooms in so the twenty minutes of book fills a readable share of the plot (and the zoom is given back when it goes off) */
+  function heatZoom(on) {
+    const P = window.smlChartPro; if (!P || !P.model || !P.setView) return;
+    try {
+      const M = P.model(); if (!M) return;
+      if (!on) { if (S.prevN) P.setView(S.prevN); S.prevN = 0; return; }
+      const ms = H.TF_MS[M.tf]; if (!ms) return;
+      const want = Math.max(8, Math.round((20 * 60_000 / M.dt) / 0.4));
+      if (M.slots > want) { S.prevN = M.slots; P.setView(want); }
+    } catch (_) { /* the chart is not ready */ }
+  }
+  btn.addEventListener('click', () => { S.on = !S.on; save(); btn.classList.toggle('on', S.on); S.offKey = ''; heatZoom(S.on); draw(); if (S.on) poll(); });
   btn.classList.toggle('on', S.on);
   window.addEventListener('sml-chart-view', () => { if (S.on && !window.smlChartGesture) draw(); });
   window.addEventListener('resize', () => { S.offKey = ''; draw(); });
