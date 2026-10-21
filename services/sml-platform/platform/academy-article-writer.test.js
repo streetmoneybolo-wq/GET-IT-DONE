@@ -149,7 +149,7 @@ test('the banned list now carries the cliches and exaggerations a news desk woul
 });
 
 test('the Grandmaster-Obi engine prompt: story first, fact vs interpretation vs speculation, a stance, a conditional call, the invalidation, a curiosity-gap headline, original synthesis, no invented past', () => {
-  for (const must of [/MARKET NARRATIVE ENGINE/, /Grandmaster-Obi/, /not summarize market data/i, /ONE central narrative/i, /FACT, INTERPRETATION, SPECULATION/, /Never invent evidence/i, /"Lean bullish"/, /"Binary, event-driven"/, /Never end on "it could go either way"/, /conditional/i, /proves it wrong|proves him wrong/i, /curiosity gap/i, /Original information gain/i, /Do NOT invent mistakes, slang, anecdotes, memories/i, /never mention the Academy/i, /"stance"/, /"question"/, /"ifRight"/, /"wrongIf"/, /no "Reading the data/i]) assert.match(W.SYSTEM, must);
+  for (const must of [/MARKET NARRATIVE ENGINE/, /Grandmaster-Obi/, /not summarize market data/i, /ONE central narrative/i, /FACT, INTERPRETATION, SPECULATION/, /Never invent evidence/i, /"Lean bullish"/, /"Binary, event-driven"/, /Never end on "it could go either way"/, /conditional/i, /proves it wrong|proves him wrong/i, /Compelling, intriguing, specific/, /Original information gain/i, /Do NOT invent mistakes, slang, anecdotes, memories/i, /never mention the Academy/i, /"stance"/, /"question"/, /"ifRight"/, /"wrongIf"/, /no "Reading the data/i]) assert.match(W.SYSTEM, must);
 });
 
 test('Grandmaster-Obi has an opinion and no invented past: a draft needs a stance, a question, a conditional call and an invalidation, and may not invent experience, memories or feelings', () => {
@@ -218,7 +218,7 @@ test('the narrative is built from an anomaly in the data: the stance follows vol
   assert.ok(sh.metrics.upRun >= 5 && sh.metrics.volRatio <= 1.05, JSON.stringify(sh.metrics));
   assert.equal(W.anomalyFor(sh).kind, 'quietclimb');
   const piece = W.housePiece(sh, 0);
-  assert.match(piece.title, /Volume|Rising Without a Crowd/); assert.match(piece.lede.join(' '), /volume/i);
+  assert.match(piece.title, /Volume|Crowd|Climb|Chasing/); assert.match(piece.lede.join(' '), /volume/i);
   assert.ok(['Lean bullish', 'Neutral, waiting on confirmation', 'Bullish'].includes(piece.stance));
   /* the quotable fact is its own sentence, with the numbers, and the opinion comes after it as a separate sentence */
   const fact = piece.lede.find((l) => /20-day high of \$[\d.]+ and \$[\d.]+ above its 20-day low/.test(l)); assert.ok(fact, 'a clean factual passage: ' + piece.lede.join(' | '));
@@ -233,4 +233,35 @@ test('the narrative is built from an anomaly in the data: the stance follows vol
   assert.equal(W.stanceFor({ lean: 'bearish', metrics: { distLowPct: 2, volRatio: 0.8, relVol: 0.9 } }), 'Lean bearish');
   /* no template headings, and the sections differ from article to article only by story */
   for (const seed of [0, 1, 2, 3]) for (const sec of W.housePiece(sh, seed).sections) assert.ok(!/^(Reading the data|The context|The key details|The scenario|Risks and limits|Bull case|Bear case)$/i.test(sec.heading), sec.heading);
+});
+
+test('headlines are compelling and honest: a tension or a promise, a real number, a dollar-sign ticker, the right length, no clickbait, and plenty of variety', () => {
+  const bars = []; let p0 = 100; for (let i = 0; i < 80; i++) { const o = p0, c = i < 60 ? p0 * (1 + Math.sin(i / 3) * 0.004) : p0 * 1.004; bars.push({ t: Date.UTC(2026, 6, 1) + i * 86_400_000, o, h: Math.max(o, c) * 1.003, l: Math.min(o, c) * 0.997, c, v: 1_000_000 }); p0 = c; }
+  const c = { symbol: 'HEAD', name: 'Headline Inc', price: bars[79].c, changePct: 3.4, relVol: 2.1, adv: 1_000_000, daily: bars };
+  const st = E.rankStories([c], { force: true })[0]; const base = W.factSheet({ story: st, c, dossier: {} });
+  const variants = {
+    quietclimb: { ...base, lean: 'bullish', metrics: { ...base.metrics, upRun: 9, volRatio: 0.9 } },
+    nearhigh: { ...base, lean: 'bullish', metrics: { ...base.metrics, upRun: 1, volRatio: 1.3, distHighPct: 1.0, gapHi: base.metrics.gapHi || 1.15 } },
+    nearlow: { ...base, lean: 'bearish', metrics: { ...base.metrics, upRun: 0, volRatio: 1.3, distLowPct: 1.0 } },
+    surge: { ...base, lean: 'bullish', metrics: { ...base.metrics, upRun: 1, volRatio: 1.3, distHighPct: 9, relVol: 2.1, changePct: 3.4 } },
+    compress: { ...base, lean: 'bullish', metrics: { ...base.metrics, upRun: 1, volRatio: 1.3, distHighPct: 9, relVol: 0.9, changePct: 0.2, squeeze: 0.6 } },
+    range: { ...base, lean: 'bullish', metrics: { ...base.metrics, upRun: 1, volRatio: 1.3, distHighPct: 9, relVol: 0.9, changePct: 0.2, squeeze: 1.1 } }
+  };
+  const all = new Set();
+  for (const [kind, sh] of Object.entries(variants)) {
+    assert.equal(W.anomalyFor(sh).kind, kind);
+    const titles = new Set();
+    for (let seed = 0; seed < 12; seed++) { const p = W.housePiece(sh, seed); titles.add(p.title); all.add(p.title);
+      assert.ok(p.title.length >= 40 && p.title.length <= 100, kind + ' length ' + p.title.length + ': ' + p.title); assert.ok(p.title.includes('$HEAD'), p.title);
+      assert.ok(/\?|\bHere's\b|\bWhy\b|\bWhat\b|\bThat's\b|\bWho\b|\bWhich\b|\bHow\b/.test(p.title), 'a question or a promise: ' + p.title);
+      assert.ok(!/you won'?t believe|shocking|insane|to the moon|guaranteed|can'?t lose/i.test(p.title), p.title); assert.ok(!/—|–/.test(p.title)); }
+    assert.ok(titles.size >= 2, kind + ' has variety: ' + [...titles].join(' | '));
+  }
+  assert.ok(all.size >= 14, 'a wide pool of headlines: ' + all.size);
+  for (const angle of ['gamma', 'short', 'earnings', 'tape', 'structure']) { const ts = new Set(); for (let seed = 0; seed < 9; seed++) { const p = W.housePiece({ ...base, angle }, seed); ts.add(p.title); assert.ok(p.title.length >= 40 && p.title.length <= 100 && p.title.includes('$HEAD'), p.title); } assert.ok(ts.size >= 2, angle); }
+  /* numbers in a headline come from the sheet: the gap, the high, the target */
+  const nh = W.housePiece(variants.nearhigh, 0); assert.equal(W.validate(nh, variants.nearhigh, { minWords: 0 }).reasons.filter((r) => /new_number|clickbait/.test(r)).length, 0, nh.title);
+  const good = W.housePiece(base, 1);
+  assert.ok(W.validate({ ...good, title: "$HEAD Is Going to the Moon. You Won't Believe Why" }, base, { minWords: 0 }).reasons.includes('clickbait_title'));
+  assert.match(W.SYSTEM, /Compelling, intriguing, specific/); assert.match(W.SYSTEM, /two facts in tension/); assert.match(W.SYSTEM, /no clickbait/);
 });
