@@ -126,7 +126,7 @@ function ledeFor(st, c, d, seed) {
   const two = `${S} trades at ${px(c.price)}${num(c.changePct) != null ? ` (${pct(c.changePct)} on the session)` : ''}${num(c.relVol) != null ? ` on ${c.relVol.toFixed(1)}x its usual volume` : ''}. ${number ? cap(number.charAt(0).toLowerCase() + number.slice(1)) : ''}`;
   const three = it && it.phase && it.phase !== 'undecided'
     ? `The smart-money read calls it ${it.phase}${it.side && it.side !== 'neither' ? ' with ' + it.side + ' in control' : ''}, which is the part the headline writers keep missing.`
-    : `This piece builds the case for ${px(st.pt)} from the Academy's data desk, then tries to break it. If the case cannot survive its own cross-examination, it does not deserve your money.`;
+    : `This piece builds the case for ${px(st.pt)} from the desk's own data, then tries to break it. If the case cannot survive its own cross-examination, it does not deserve your money.`;
   return [pick(L, seed), two.trim(), three];
 }
 
@@ -559,7 +559,7 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   /* the sources, one line: the primary records this piece leans on, and the site's own pages */
   const keys = ['edgar', ...(st.angle === 'short' || st.angle === 'tape' || d.shortInsight ? ['finraShort', 'nasdaqSi'] : []), ...(c.gamma && c.gamma.available ? ['cboe'] : []), ...(c.earnings && num(c.earnings.daysAway) != null && c.earnings.daysAway <= 45 ? ['nasdaqEr'] : []), ...(src.ir ? ['ir'] : []), 'stocks', ...(src.discord ? ['discord'] : [])];
   text(`<p class="mem-sources">Sources and further reading: ${[...new Set(keys)].filter((k) => src[k]).map((k) => link(src[k])).join(' · ')}.</p>`);
-  text(`<p class="mem-disclosure">Data as of ${esc(when)} from the ${esc(publication)} Academy data desk: options positioning, FINRA short volume, the off-exchange trade record, the structure map, SEC filings and the ticker's headlines. ${esc(author)} and the ${esc(publication)} publication may hold or trade positions in the names discussed. This is speculation and education, not financial advice.</p>`);
+  text(`<p class="mem-disclosure">Data as of ${esc(when)}: options positioning, FINRA short volume, the off-exchange trade record, the structure map, SEC filings and the ticker's headlines. ${esc(author)} (Grandmaster-Obi) and ${esc(publication)} may hold or trade positions in the names discussed. This is speculation and education, not financial advice.</p>`);
 
   const share = modShare(url || siteUrl + '/stocks/' + c.symbol.toLowerCase() + '/', title);
   const bodyInner = header + '\n<div itemprop="articleBody">\n' + chunks.map((ch) => ch.html).join('\n') + '\n</div>\n' + share;

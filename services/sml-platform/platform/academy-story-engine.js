@@ -254,7 +254,7 @@ function draftArticle(st, c, { asOf = Date.now(), author = 'Vaughn McNair', publ
   const label = ANGLES[st.angle].label;
   const lines = [];
   lines.push(`<p><strong>${esc(pick(hooks, seed))}</strong></p>`);
-  lines.push(`<p>${esc(S)} is trading at ${px(p)}${num(c.changePct) != null ? ` (${pct(c.changePct)} on the day)` : ''}${num(c.relVol) != null ? ` on ${c.relVol.toFixed(1)}x its normal volume` : ''}. What follows reads the Academy's data on the name, builds the case for ${px(st.pt)}, then tries hard to break it. If a setup cannot survive its own cross-examination, it does not deserve your attention.</p>`);
+  lines.push(`<p>${esc(S)} is trading at ${px(p)}${num(c.changePct) != null ? ` (${pct(c.changePct)} on the day)` : ''}${num(c.relVol) != null ? ` on ${c.relVol.toFixed(1)}x its normal volume` : ''}. What follows reads the data on the name, builds the case for ${px(st.pt)}, then tries hard to break it. If a setup cannot survive its own cross-examination, it does not deserve your attention.</p>`);
   lines.push(`<h2>What the data says</h2><ul>${st.facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>`);
   if (c.direction && c.direction.label) lines.push(`<p>Backdrop: the market read is <strong>${esc(c.direction.label)}</strong> (bias ${c.direction.bias >= 0 ? '+' : ''}${c.direction.bias}), ${c.direction.bias >= 20 ? 'a tailwind for the long case' : c.direction.bias <= -20 ? 'a headwind for any long idea' : 'neither help nor hindrance'}.</p>`);
   lines.push(`<h2>Why it matters: the mechanism</h2>${V.mechanism(st, c, seed).map((t) => `<p>${esc(t)}</p>`).join('')}`);
@@ -263,7 +263,7 @@ function draftArticle(st, c, { asOf = Date.now(), author = 'Vaughn McNair', publ
   lines.push(`<h2>The case against</h2><p>${esc(V.counter(st, c, seed))}</p>`);
   lines.push(`<h2>What kills it</h2><p>${esc(cap(st.scenario.invalidation))}. If that happens, the story is wrong and the position should not exist anymore. No averaging down, no hoping, no renaming the thesis after the fact.</p>`);
   lines.push(`<h2>Bottom line</h2><p>${esc(bottomLine(st, c, seed))}</p>`);
-  lines.push(`<p class="disclosure"><small>Data as of ${esc(when)} from the ${esc(publication)} Academy data desk: options positioning, FINRA daily short volume, the off-exchange trade record and the smart-money structure map. Levels are rounded, scenarios are illustrations rather than forecasts, and nothing here is a recommendation. This is speculation and education, not financial advice; ${esc(author)} and the ${esc(publication)} publication may hold or trade positions in the names discussed.</small></p>`);
+  lines.push(`<p class="disclosure"><small>Data as of ${esc(when)}: options positioning, FINRA daily short volume, the off-exchange trade record and the smart-money structure map. Levels are rounded, scenarios are illustrations rather than forecasts, and nothing here is a recommendation. This is speculation and education, not financial advice; ${esc(author)} (Grandmaster-Obi) and ${esc(publication)} may hold or trade positions in the names discussed.</small></p>`);
   const parts = {
     kicker: V.KICKER[st.angle] || 'MARKETS', dek, lean: st.lean, symbol: c.symbol, symbolLine: `${S}: ${label}`, price: p,
     changePct: num(c.changePct), relVol: num(c.relVol), pt: st.pt, ptPct: st.ptPct, stop: num(st.stop), timeframe: st.timeframe, keyStat: V.keyStat(st, c),
