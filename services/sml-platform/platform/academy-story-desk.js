@@ -170,13 +170,20 @@ function createStoryDesk({
   const rememberAudio = (pkg) => {
     if (!state || !pkg || !pkg.audio || !pkg.slug || !pkg.audio.parts.length) return;
     state.audio = state.audio || {};
-    state.audio[pkg.slug] = { parts: pkg.audio.parts, hash: pkg.audio.hash, at: now() };
+    const prev = state.audio[pkg.slug];
+    state.audio[pkg.slug] = { parts: pkg.audio.parts, hash: pkg.audio.hash, intro: pkg.audio.intro, introHash: pkg.audio.introHash, rest: pkg.audio.rest, full: !!(prev && prev.full && prev.hash === pkg.audio.hash), at: now() };
     const keys = Object.keys(state.audio); if (keys.length > 300) for (const k of keys.sort((a, b) => state.audio[a].at - state.audio[b].at).slice(0, keys.length - 300)) delete state.audio[k];
   };
   async function audioFor(slug, hash = '') {
     await load();
     const e = state && state.audio && Object.prototype.hasOwnProperty.call(state.audio, slug) ? state.audio[slug] : null;
-    return e && (!hash || e.hash === hash) ? e : null;
+    return e && (!hash || e.hash === hash || e.introHash === hash) ? e : null;
+  }
+  /* the owner picks which articles get the whole piece in their own voice (the rest hear the opening in it and a free browser voice for the remainder) */
+  async function setFullVoice(slug, on) {
+    const e = await audioFor(slug); if (!e) return null;
+    e.full = !!on; await save();
+    return { slug, full: e.full, chars: e.parts.reduce((n, p) => n + p.length, 0), introChars: (e.intro || []).reduce((n, p) => n + p.length, 0) };
   }
   const save = async () => { if (store) { try { await store.write(state); } catch (error) { logger('warn', 'story_state_save_failed', { error: String(error && error.message || error) }); } } };
   const note = (text, extra = {}) => { state.log.push({ t: now(), text, ...extra }); if (state.log.length > 200) state.log.splice(0, state.log.length - 200); };
@@ -288,7 +295,7 @@ function createStoryDesk({
   function packageFor(built, url = '') {
     const pkg = url ? built.compose(url) : built.pkg;
     return { title: pkg.title, dek: pkg.dek, slug: pkg.slug, tags: pkg.tags, keyword: pkg.keyword, lean: pkg.lean, pt: pkg.pt, ptPct: pkg.ptPct, angle: pkg.angle, wordCount: pkg.wordCount, readMinutes: pkg.readMinutes,
-      modules: pkg.modules, sections: pkg.sections, links: pkg.links, faq: pkg.faq, seo: pkg.seo, html: pkg.bodyHtml, css: pkg.css, js: pkg.js, head: pkg.headHtml, document: pkg.document, blocks: pkg.blocks, audio: pkg.audio ? { url: pkg.audio.url, hash: pkg.audio.hash, parts: pkg.audio.parts.length } : null, url };
+      modules: pkg.modules, sections: pkg.sections, links: pkg.links, faq: pkg.faq, seo: pkg.seo, html: pkg.bodyHtml, css: pkg.css, js: pkg.js, head: pkg.headHtml, document: pkg.document, blocks: pkg.blocks, audio: pkg.audio ? { url: pkg.audio.url, listenUrl: pkg.audio.listenUrl, hash: pkg.audio.hash, parts: pkg.audio.parts.length, chars: pkg.audio.parts.reduce((n, p) => n + p.length, 0), introChars: pkg.audio.intro.reduce((n, p) => n + p.length, 0) } : null, url };
   }
 
   async function tell(results) {
@@ -437,7 +444,7 @@ function createStoryDesk({
     return { ok: true, ...done, remaining: ids.filter((id) => !state.rebuilt[id]).length };
   }
   async function status() { await load(); return { day: state.day, count: state.count, written: Object.keys(state.written).length, log: state.log.slice(-20).reverse(), record: recordNow(), schedule: schedule.map((s) => ({ at: s.at, subjects: s.subjects, done: !!state.sched[`${state.day}:${s.at}`] })) }; }
-  return { tick, write, warm, audioFor, status, candidate, load, settle, rebuildOld, record: recordNow };
+  return { tick, write, warm, audioFor, setFullVoice, status, candidate, load, settle, rebuildOld, record: recordNow };
 }
 
 module.exports = { createStoryDesk, createLettersPublisher, createPolisher };

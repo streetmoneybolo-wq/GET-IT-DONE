@@ -45,10 +45,12 @@ test('a piece the desk wrote carries a listen player (the letter frame and the f
   const c = { symbol: 'QUIE', name: 'Quiet Corp', price: bars[bars.length - 1].c, changePct: 0.2, relVol: 0.9, adv: 900_000, daily: bars };
   const st = E.rankStories([c], { force: true })[0];
   const out = desk.composeArticle({ story: st, c, dossier: {}, audioEndpoint: 'https://api.example/academy-activity/article-audio' });
-  assert.match(out.audio.url, /^https:\/\/api\.example\/academy-activity\/article-audio\?slug=[a-z0-9-]+&v=[0-9a-f]{12}$/);
+  assert.match(out.audio.url, /^https:\/\/api\.example\/academy-activity\/article-audio\?slug=[a-z0-9-]+&v=[0-9a-f]{12}&mode=intro$/);
+  assert.match(out.audio.listenUrl, /^https:\/\/api\.example\/academy-activity\/article-listen\?slug=[a-z0-9-]+$/);
+  assert.ok(out.audio.intro.length >= 1 && out.audio.intro.join('').length <= 700 && out.audio.rest.length > 0);
   assert.equal(out.audio.url.includes(out.slug), true);
   assert.ok(out.audio.parts.length >= 2 && out.audio.parts[out.audio.parts.length - 1] === A.CLOSER);
-  assert.match(out.bodyHtml, /<audio controls preload="none" src="https:\/\/api\.example/);
+  assert.match(out.bodyHtml, /<audio controls preload="none" src="https:\/\/api\.example/); assert.match(out.bodyHtml, /article-listen\?slug=/);
   const glance = out.blocks.find((b) => b.id === 'mod-glance');
   assert.match(glance.html, /<audio controls/); assert.ok(glance.height >= 320 || glance.height > 0);
   assert.match(out.document, /mem-listen/);
@@ -58,5 +60,15 @@ test('a piece the desk wrote carries a listen player (the letter frame and the f
 
 test('the public audio route is wired: it looks the piece up by slug and hash, refuses anything else, rate limits, answers ranges and caches for good', () => {
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
-  for (const piece of ["path === '/academy-activity/article-audio'", 'desk.audioFor(', 'no_such_article_audio', 'getPartsAudio', "'accept-ranges': 'bytes'", 'immutable', '206', '416', 'audioEndpoint:']) assert.ok(server.includes(piece), piece);
+  for (const piece of ["path === '/academy-activity/article-listen'", "path === '/academy-activity/articles/voice'", 'full_voice_not_enabled', "path === '/academy-activity/article-audio'", 'desk.audioFor(', 'no_such_article_audio', 'getPartsAudio', "'accept-ranges': 'bytes'", 'immutable', '206', '416', 'audioEndpoint:']) assert.ok(server.includes(piece), piece);
+});
+
+test('the opening is a small, fixed share of the piece, so a normal article costs a fraction of the full read', () => {
+  const para = (n) => Array.from({ length: n }, (_, i) => `Sentence number ${i} says something specific about the stock and its range.`).join(' ');
+  const r = A.audioScript({ title: '$ABCD Is Moving and Nobody Agrees Why', dek: 'A skeptical look at the move.', lede: [para(3), para(2)], sections: Array.from({ length: 5 }, (_, i) => ({ heading: 'Section ' + i, paragraphs: [para(6)] })), bottom: para(2) });
+  const introChars = r.intro.join('').length, fullChars = r.parts.join('').length;
+  assert.ok(introChars <= A.INTRO_CHARS + 100, 'intro ' + introChars);
+  assert.ok(fullChars > introChars * 3, `full ${fullChars} vs intro ${introChars}`);
+  assert.ok(r.rest.length > 500 && r.rest.endsWith(A.CLOSER), 'the rest is the browser-voice text');
+  assert.notEqual(r.hash, r.introHash);
 });

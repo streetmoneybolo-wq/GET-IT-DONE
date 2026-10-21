@@ -359,7 +359,7 @@ function modPoll(st, c, id, discordUrl = '') {
 /* the letter's one frame: the figures in a fixed three-column grid (so it wraps the same at every reader width), the
    countdown as a single row. Heights are measured in a browser at the phone width
    of 328 px (the tallest case; a desktop frame is up to 80 px roomier), so the frame never clips. */
-const LISTEN_CSS = '.mem-listen{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04)}.mem-listen b{flex:none;font:800 10px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--acc)}.mem-listen audio{flex:1;min-width:0;height:36px}';
+const LISTEN_CSS = '.mem-listen{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04)}.mem-listen b{flex:none;font:800 10px/1 ui-monospace,monospace;letter-spacing:.12em;color:var(--acc)}.mem-listen audio{flex:1;min-width:0;height:36px}.mem-listen a{flex:none;padding:7px 10px;border:1px solid var(--acc);border-radius:8px;color:var(--acc);font:800 10px/1 ui-monospace,monospace;letter-spacing:.1em;text-decoration:none}';
 const GLANCE_CSS = LISTEN_CSS + '.mem-glance>*{margin:0 0 8px!important}.mem-glance>*:last-child{margin-bottom:0!important}.mem-glance .mem-board{grid-template-columns:repeat(3,1fr);gap:6px}.mem-glance .mem-board>div{padding:8px 10px}.mem-glance .mem-board span{font-size:9px;letter-spacing:.08em}.mem-glance .mem-board b{margin-top:5px;font-size:15px;line-height:1.15}.mem-glance .mem-count{flex-direction:row;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 12px}.mem-glance .mem-count b{font-size:18px}.mem-glance .mem-track{padding:10px 12px}.mem-glance .mem-track p{margin-top:6px;font-size:12px}';
 const GLANCE_H = { board: 131, countdown: 67, tracker: 161, listen: 62 };
 const glanceHeight = (names) => names.reduce((sum, n) => sum + (GLANCE_H[n] || 0) + 8, 0) - 8;
@@ -516,8 +516,10 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   /* listen to this article: a short script of the piece, voiced on first play in the Academy voice and stored (academy/article-audio.js) */
   const audio = require('./academy/article-audio').audioScript({ ...n, title });
   const slugNow = engine.slugify(title);
-  const audioUrl = audioEndpoint && audio.parts.length ? `${audioEndpoint}${audioEndpoint.includes('?') ? '&' : '?'}slug=${encodeURIComponent(slugNow)}&v=${audio.hash}` : '';
-  const listenHtml = audioUrl ? `<div class="mem-listen"><b>LISTEN</b><audio controls preload="none" src="${esc(audioUrl)}" aria-label="Listen to this article"></audio></div>` : '';
+  /* the player carries the opening only (the owner's voice, a few hundred characters); the listen page reads the rest with the listener's own voice, or the whole piece in the owner's voice when the owner has turned that on for this article */
+  const audioUrl = audioEndpoint && audio.intro.length ? `${audioEndpoint}${audioEndpoint.includes('?') ? '&' : '?'}slug=${encodeURIComponent(slugNow)}&v=${audio.introHash}&mode=intro` : '';
+  const listenUrl = audioEndpoint && audio.parts.length ? audioEndpoint.replace(/article-audio$/, 'article-listen') + '?slug=' + encodeURIComponent(slugNow) : '';
+  const listenHtml = audioUrl ? `<div class="mem-listen"><b>LISTEN</b><audio controls preload="none" src="${esc(audioUrl)}" aria-label="Listen to the start of this article"></audio>${listenUrl ? `<a href="${esc(listenUrl)}" target="_blank" rel="noopener">FULL</a>` : ''}</div>` : '';
   const id = String(Math.abs(seedOf(c.symbol + asOf)) % 100000);
   const when = draft.parts.when;
   const readMin = (words) => Math.max(3, Math.round(words / 230));
@@ -583,7 +585,7 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
     if (ch.name === 'board') {
       if (glanceParts.length) blocks.push({ id: 'mod-glance', type: 'custom_code', html: `<div class="mem-article mem-letter mem-glance" data-theme="dark">${listenHtml}${glanceParts.map((m) => m.letter).join('')}</div>`, css: CSS + '\n' + GLANCE_CSS + glanceParts.map((m) => m.css || '').join(''), height: glanceHeight(glanceParts.map((m) => m.name).concat(listenHtml ? ['listen'] : [])) });
       /* a plain link as well: if the reader's frame will not play audio, the link opens the same recording in the browser's own player */
-      if (audioUrl) blocks.push(...native(`<p><strong>Listen:</strong> <a href="${esc(audioUrl)}">hear this article read aloud</a> (about ${Math.max(1, Math.round(audio.chars / 900))} min).</p>`));
+      if (audioUrl) blocks.push(...native(`<p><strong>Listen:</strong> <a href="${esc(listenUrl || audioUrl)}">hear this article read aloud</a> (about ${Math.max(1, Math.round(audio.chars / 900))} min).</p>`));
       continue;
     }
     /* no chart block: the cover image at the top of the letter is this same scenario poster, and a second copy only repeats it */
@@ -596,7 +598,7 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   }
   const links = [...bodyInner.matchAll(/href="([^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, '&')).filter((h) => /^https?:/.test(h));
   return {
-    title, dek: plain(n.dek || draft.dek), slug: slugNow, audio: { parts: audio.parts, hash: audio.hash, url: audioUrl }, tags: draft.tags, tldr: draft.tldr, keyword: seo.keyword, seo, lean: st.lean, pt: st.pt, ptPct: st.ptPct, angle: st.angle,
+    title, dek: plain(n.dek || draft.dek), slug: slugNow, audio: { parts: audio.parts, hash: audio.hash, intro: audio.intro, introHash: audio.introHash, rest: audio.rest, url: audioUrl, listenUrl }, tags: draft.tags, tldr: draft.tldr, keyword: seo.keyword, seo, lean: st.lean, pt: st.pt, ptPct: st.ptPct, angle: st.angle,
     bodyHtml, textHtml: textOnly, css: CSS, js: JS, headHtml, document, blocks, wordCount, readMinutes: readMin(wordCount), links: [...new Set(links)],
     modules: chunks.filter((ch) => ch.kind === 'module').map((ch) => ch.name), sections: [...bodyInner.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => plain(m[1]).replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')), parts: draft.parts, asOfIso: draft.asOfIso, faq: [],
     narrative: { source: n.source || 'house', checked: n.checked || null, headings: secs.map((sx) => plain(sx.heading)) }, sheet: { lines: sheet.lines.length, numbers: sheet.numbers.size }
