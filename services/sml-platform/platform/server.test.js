@@ -2666,3 +2666,17 @@ test('Auto-trade route is owner only, reports the simulated account, and a kill 
   });
   await withServer({ academyOAuth }, async (base) => assert.equal((await fetch(`${base}/academy-activity/autotrade`, { headers: { authorization: 'Bearer owner' } })).status, 503));
 });
+
+test('the app download page is served at /app/get and /download with its script and styles, and the native links are https-only', async () => {
+  const keep = { a: process.env.SML_APP_ANDROID_URL, w: process.env.SML_APP_WINDOWS_URL };
+  process.env.SML_APP_ANDROID_URL = 'https://github.com/x/y/releases/latest/download/app.apk'; process.env.SML_APP_WINDOWS_URL = 'javascript:alert(1)';
+  try {
+    await withServer({}, async (base) => {
+      for (const p of ['/app/get', '/download', '/get-the-app']) { const r = await fetch(base + p); assert.equal(r.status, 200, p); assert.match(r.headers.get('content-type'), /text\/html/); assert.match(r.headers.get('content-security-policy'), /script-src 'self'/); assert.match(await r.text(), /Get the StockMarketLoop app/); }
+      const js = await fetch(base + '/app/get.js'); assert.equal(js.status, 200); assert.match(await js.text(), /beforeinstallprompt/);
+      assert.equal((await fetch(base + '/app/get.css')).status, 200);
+      const d = await (await fetch(base + '/app/downloads.json')).json();
+      assert.equal(d.android, 'https://github.com/x/y/releases/latest/download/app.apk'); assert.equal(d.windows, '', 'a non-https link is dropped'); assert.equal(d.ios, '');
+    });
+  } finally { if (keep.a === undefined) delete process.env.SML_APP_ANDROID_URL; else process.env.SML_APP_ANDROID_URL = keep.a; if (keep.w === undefined) delete process.env.SML_APP_WINDOWS_URL; else process.env.SML_APP_WINDOWS_URL = keep.w; }
+});

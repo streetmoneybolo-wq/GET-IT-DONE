@@ -1,0 +1,8 @@
+{
+  "appId": "com.stockmarketloop.app",
+  "appName": "StockMarketLoop",
+  "webDir": "www",
+  "server": { "url": "https://sml-platform-api.onrender.com/app/", "cleartext": false, "allowNavigation": ["sml-platform-api.onrender.com", "stockmarketloop.com", "*.stockmarketloop.com"] },
+  "android": { "allowMixedContent": false },
+  "backgroundColor": "#06110d"
+}

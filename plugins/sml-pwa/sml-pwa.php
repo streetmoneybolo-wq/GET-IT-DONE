@@ -2,13 +2,14 @@
 /**
  * Plugin Name: SML PWA
  * Description: Makes stockmarketloop.com installable as an app on Android, iPhone/iPad and desktop: web app manifest, service worker (offline fallback, cached assets), home-screen icons, an install prompt and the iPhone "Add to Home Screen" hint. The app is the whole site.
- * Version: 1.2.1
+ * Version: 1.3.0
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_PWA_VERSION', '1.2.1' );
+define( 'SML_PWA_VERSION', '1.3.0' );
+define( 'SML_PWA_GET_APP_URL', 'https://sml-platform-api.onrender.com/app/get' ); // the install page: steps for iPhone, Android and desktop, plus the native downloads
 define( 'SML_PWA_SW_PATH', '/sml-sw.js' );
 define( 'SML_PWA_MANIFEST_PATH', '/sml-manifest.webmanifest' ); // its own path: the site already answers /manifest.webmanifest elsewhere (SML App Links)
 define( 'SML_PWA_OFFLINE_PATH', '/sml-pwa-offline' );
@@ -34,6 +35,12 @@ function sml_pwa_serve() {
 		header( 'Content-Type: application/manifest+json; charset=utf-8' );
 		header( 'Cache-Control: public, max-age=3600' );
 		echo wp_json_encode( sml_pwa_manifest(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ); // phpcs:ignore WordPress.Security.EscapeOutput
+		exit;
+	}
+	/* stockmarketloop.com/download and /get-the-app land on the install page. Filter 'sml_pwa_get_app_url' changes where. */
+	if ( in_array( $path, array( '/download', '/get-the-app' ), true ) ) {
+		nocache_headers();
+		wp_redirect( esc_url_raw( apply_filters( 'sml_pwa_get_app_url', SML_PWA_GET_APP_URL ) ), 302, 'SML PWA' ); // phpcs:ignore WordPress.Security.SafeRedirect
 		exit;
 	}
 	if ( $path === SML_PWA_OFFLINE_PATH ) {
@@ -192,4 +199,12 @@ self.addEventListener('notificationclick', (e) => {
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => { const c = list.find((x) => 'focus' in x); if (c) { c.navigate(url); return c.focus(); } return self.clients.openWindow(url); }));
 });
 JS;
+}
+
+/* [sml_get_app] puts a "Get the app" button anywhere (a page, a widget, the header menu's custom HTML). Optional: label="Download the app". */
+add_shortcode( 'sml_get_app', 'sml_pwa_get_app_shortcode' );
+function sml_pwa_get_app_shortcode( $atts ) {
+	$atts = shortcode_atts( array( 'label' => 'Get the app' ), $atts, 'sml_get_app' );
+	$url  = esc_url( apply_filters( 'sml_pwa_get_app_url', SML_PWA_GET_APP_URL ) );
+	return '<a class="sml-get-app" href="' . $url . '" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#00c47d;color:#04140d;font-weight:800;text-decoration:none">' . esc_html( $atts['label'] ) . '</a>';
 }

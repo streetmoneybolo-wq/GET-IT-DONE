@@ -979,7 +979,7 @@ const ACADEMY_MANIFEST = JSON.stringify({ name: 'Making Easy Money Academy', sho
 const APP_SHELL_DIR = pathModule.join(__dirname, 'app-shell');
 const APP_SHELL = (() => {
   const files = {};
-  for (const [name, type] of [['index.html', 'text/html; charset=utf-8'], ['app.js', 'text/javascript; charset=utf-8'], ['app.css', 'text/css; charset=utf-8'], ['sw.js', 'text/javascript; charset=utf-8']]) {
+  for (const [name, type] of [['index.html', 'text/html; charset=utf-8'], ['app.js', 'text/javascript; charset=utf-8'], ['app.css', 'text/css; charset=utf-8'], ['sw.js', 'text/javascript; charset=utf-8'], ['get.html', 'text/html; charset=utf-8'], ['get.js', 'text/javascript; charset=utf-8'], ['get.css', 'text/css; charset=utf-8']]) {
     try { files[name] = { body: fs.readFileSync(pathModule.join(APP_SHELL_DIR, name)), type }; } catch (_) { /* a missing file is a 404 */ }
   }
   return files;
@@ -2215,6 +2215,18 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     const connectOptions = { billingApiSecret, pool, logger, now };
 
     /* The StockMarketLoop app shell at /app/: the page, its script and style, the service worker, manifest and icons. */
+    /* The download page: install steps for iPhone, Android and desktop, plus any native downloads the owner published
+       (SML_APP_IOS_URL, SML_APP_ANDROID_URL, SML_APP_WINDOWS_URL, SML_APP_MAC_URL, SML_APP_LINUX_URL; https only). */
+    if (request.method === 'GET' && (path === '/app/get' || path === '/app/get/' || path === '/download' || path === '/get-the-app')) {
+      const page = APP_SHELL['get.html'];
+      if (!page) { sendJson(response, 404, { ok: false, error: 'not_found' }); return; }
+      response.writeHead(200, { 'Content-Type': page.type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache', 'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" });
+      response.end(page.body); return;
+    }
+    if (request.method === 'GET' && path === '/app/downloads.json') {
+      const url = (v) => { const t = String(v || '').trim(); return /^https:\/\/[^\s"'<>]+$/i.test(t) ? t : ''; };
+      sendJson(response, 200, { ios: url(process.env.SML_APP_IOS_URL), android: url(process.env.SML_APP_ANDROID_URL), windows: url(process.env.SML_APP_WINDOWS_URL), mac: url(process.env.SML_APP_MAC_URL), linux: url(process.env.SML_APP_LINUX_URL) }); return;
+    }
     if (request.method === 'GET' && (path === '/app' || path.startsWith('/app/'))) {
       if (path === '/app') { response.writeHead(301, { Location: '/app/' + (request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '') }); response.end(); return; }
       const name = path === '/app/' ? 'index.html' : path.slice('/app/'.length);
