@@ -761,3 +761,34 @@ test('the channel list is ranked for the alert: options channels for a contract,
   assert.equal(tracked.find((c) => c.id === CHAN).tracking, true); assert.ok(tracked.find((c) => c.id === CHAN).suggested);
   assert.equal((await svc.channels(USER, GUILD)).length, 4, 'without a kind the plain list comes back');
 });
+
+/* ---------- dragging the alert's PT line on the chart: raise, lower, or close from where it lands ---------- */
+test('a dragged PT posts PT RAISED, PT LOWERED, or take profits depending on where it lands against the live price', async () => {
+  const store = CA.createClickAlertStore(), posts = [], svc = routeService(store, posts);
+  const entry = lastClose * 0.9, pt = lastClose * 1.1;
+  const alert = { id: '1', symbol: 'TEST', entry, target: pt, currentTarget: pt, at: Date.now() - 1000, channelId: CHAN, plan: null };
+  const up = await svc.deskAction(U, { alert, action: 'move', target: lastClose * 1.2 });
+  assert.equal(up.ok, true); assert.equal(up.move, 'raise'); assert.equal(up.newTarget, lastClose * 1.2);
+  assert.match(posts[0].body.content, /𝐏𝐓 𝐑𝐀𝐈𝐒𝐄𝐃/); assert.ok(!/SMASHED|𝐒𝐌𝐀𝐒𝐇/.test(posts[0].body.content));
+  assert.equal(posts[0].channelId, CHAN);
+  const down = await svc.deskAction(U, { alert: { ...alert, currentTarget: lastClose * 1.2 }, action: 'move', target: lastClose * 1.05 });
+  assert.equal(down.ok, true); assert.equal(down.move, 'lower'); assert.match(posts[1].body.content, /𝐏𝐓 𝐋𝐎𝐖𝐄𝐑𝐄𝐃/);
+  assert.equal(posts[1].body.message_reference.message_id, up.messageId, 'replies to the newest post on the stock in that channel');
+  const same = await svc.deskAction(U, { alert: { ...alert, currentTarget: lastClose * 1.05 }, action: 'move', target: lastClose * 1.0501 });
+  assert.equal(same.ok, false); assert.equal(same.code, 'target_unchanged');
+  const closed = await svc.deskAction(U, { alert, action: 'move', target: lastClose * 0.95 });
+  assert.equal(closed.ok, true); assert.equal(closed.move, 'close'); assert.match(posts[2].body.content, /𝐓𝐀𝐊𝐄 𝐏𝐑𝐎𝐅𝐈𝐓𝐒/);
+  const bad = await svc.deskAction(U, { alert, action: 'move', target: 0 });
+  assert.equal(bad.ok, false); assert.equal(bad.code, 'invalid_target');
+});
+
+test('after a dragged PT the next update is routed from the new target, and a sale ends the tracking', async () => {
+  const store = CA.createClickAlertStore(), posts = [], svc = routeService(store, posts);
+  const alert = { id: '1', symbol: 'TEST', entry: lastClose * 0.9, target: lastClose * 1.1, currentTarget: lastClose * 1.1, at: Date.now() - 1000, channelId: CHAN };
+  await svc.deskAction(U, { alert, action: 'move', target: lastClose * 1.2 });
+  const last = await store.last({ userId: USER, symbol: 'TEST', sinceMs: 86_400_000, channelId: CHAN });
+  assert.equal(last.target, lastClose * 1.2); assert.equal(last.confidence, 'raised');
+  await svc.deskAction(U, { alert, action: 'move', target: lastClose * 0.9 });
+  const after = await svc.send(U, { symbol: 'TEST', target: lastClose * 1.3, mode: 'smashed', images: false });
+  assert.equal(after.code, 'invalid_channel', 'closed: no tracked alert to route to');
+});
