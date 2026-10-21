@@ -5888,7 +5888,7 @@ async function main() {
     },
     chartEndpoint: config.academyTrialPublicUrl ? config.academyTrialPublicUrl + '/academy-activity/article-chart' : '',
     /* the listen-to-this-article audio element points here (served by /academy-activity/article-audio below) */
-    audioEndpoint: config.academyTrialPublicUrl && (academyVoice.configured || academyVoice.stored) && String(process.env.SML_ARTICLE_AUDIO || 'on').toLowerCase() !== 'off' ? config.academyTrialPublicUrl + '/academy-activity/article-audio' : '',
+    audioEndpoint: config.academyTrialPublicUrl && config.academyVoiceId && String(process.env.SML_ARTICLE_AUDIO || 'on').toLowerCase() !== 'off' ? config.academyTrialPublicUrl + '/academy-activity/article-audio' : '',
     /* the prose is written by the model as the byline from the fact sheet (SML_STORY_WRITER=off keeps the house writer only) */
     writer: createArticleWriter({ ai: config.anthropicApiKey && String(process.env.SML_STORY_WRITER || 'on').toLowerCase() !== 'off' ? { apiKey: config.anthropicApiKey, model: config.academyAskModel } : null, logger: log }),
     discordUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || ''),
