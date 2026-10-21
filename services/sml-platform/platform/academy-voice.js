@@ -249,6 +249,22 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     return { audio: await inflight.get(digest), cached: false };
   }
 
+  /** A list of short parts (an article's listen script, academy/article-audio.js): each part is stored by its own text, so any part spoken before, in any article or lesson, is reused and only new text is paid for. */
+  async function getPartsAudio({ parts, userId, internal = false }) {
+    if (!configured && !stored) {
+      const error = new Error('academy voice is not configured');
+      error.code = 'integration_unconfigured';
+      throw error;
+    }
+    if (!Array.isArray(parts) || !parts.length || parts.length > 12 || parts.some((p) => typeof p !== 'string' || !p || p.length > 700)) throw new TypeError('invalid parts');
+    if (internal !== true) consume(String(userId || 'unknown'));
+    const results = new Array(parts.length); let next = 0;
+    const worker = async () => { while (next < parts.length) { const index = next; next += 1; results[index] = await partAudio(parts[index], { previous: parts[index - 1] || '', next: parts[index + 1] || '' }); } };
+    await Promise.all(Array.from({ length: Math.min(PART_CONCURRENCY, parts.length) }, worker));
+    const buffers = results.map((r) => stripId3(r.audio));
+    return { audio: Buffer.concat(buffers), cached: results.every((r) => r.cached), reused: results.filter((r) => r.cached).length, total: results.length, durationMs: buffers.reduce((n, b) => n + Math.max(1, mp3DurationMs(b)), 0) };
+  }
+
   async function getDisciplineEpisodeAudio({ episodeId, userId }) {
     const episode = episodeFor(episodeId);
     if (!episode) throw new TypeError('invalid discipline episode');
@@ -269,7 +285,7 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     return { audio, cached: allCached, partCount };
   }
 
-  return { configured, stored, getLessonAudio, getTourAudio, getDisciplineAudio, getDisciplineEpisodeAudio };
+  return { configured, stored, getLessonAudio, getPartsAudio, getTourAudio, getDisciplineAudio, getDisciplineEpisodeAudio };
 }
 
 module.exports = { createAcademyVoice, narrationFor, mp3DurationMs, stripId3, pronounce };

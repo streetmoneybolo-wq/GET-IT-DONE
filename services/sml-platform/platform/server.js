@@ -4136,6 +4136,38 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Listen to an article in the Academy voice. Public (a reader of a Loop Letter has no Academy session), but it can only voice the listen script of a piece the
+       desk itself wrote (looked up by slug and checked against its hash), each part is stored once by its text, and a visitor is rate limited. The URL carries the
+       script's hash, so a browser or CDN can keep the file for good. Range requests are answered so a player can seek. */
+    if ((request.method === 'GET' || request.method === 'HEAD') && path === '/academy-activity/article-audio') {
+      if (!academyVoice || !(academyVoice.configured || academyVoice.stored)) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const desk = getStoryDesk();
+      const q = new URL(request.url || '/', 'http://localhost').searchParams;
+      const entry = desk && typeof desk.audioFor === 'function' ? await desk.audioFor(String(q.get('slug') || '').slice(0, 120), String(q.get('v') || '').slice(0, 24)) : null;
+      if (!entry) { sendJson(response, 404, { ok: false, error: 'no_such_article_audio' }); return; }
+      const forwarded = String(request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+      const listener = `article:${crypto.createHash('sha256').update(`${forwarded}\0${String(request.headers['user-agent'] || '').slice(0, 160)}`).digest('hex').slice(0, 24)}`;
+      try {
+        const result = await academyVoice.getPartsAudio({ parts: entry.parts, userId: listener });
+        const total = result.audio.length, range = /^bytes=(\d*)-(\d*)$/.exec(String(request.headers.range || ''));
+        const headers = { 'content-type': 'audio/mpeg', 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff', 'access-control-allow-origin': '*', 'x-academy-voice-reused': `${result.reused}/${result.total}` };
+        let start = 0, end = total - 1, status = 200;
+        if (range && (range[1] !== '' || range[2] !== '')) {
+          start = range[1] === '' ? Math.max(0, total - Number(range[2])) : Number(range[1]); end = range[1] === '' || range[2] === '' ? total - 1 : Math.min(total - 1, Number(range[2]));
+          if (!(start <= end) || start >= total) { response.writeHead(416, { 'content-range': `bytes */${total}` }); response.end(); return; }
+          status = 206; headers['content-range'] = `bytes ${start}-${end}/${total}`;
+        }
+        headers['content-length'] = end - start + 1;
+        response.writeHead(status, headers);
+        response.end(request.method === 'HEAD' ? undefined : result.audio.subarray(start, end + 1));
+      } catch (error) {
+        const limited = error && (error.code === 'rate_limited' || error.code === 'provider_rate_limited');
+        logger(error && error.cached ? 'warn' : 'error', 'academy_article_audio_failed', { error, slug: String(q.get('slug') || '').slice(0, 80), cached: !!(error && error.cached) });
+        sendJson(response, limited ? 429 : 503, { ok: false, error: limited ? 'rate_limited' : 'voice_temporarily_unavailable' });
+      }
+      return;
+    }
+
     /* The trial countdown (academy-trial-countdown.js): how long the signed-in member's free trial has left, from the pass itself */
     if (request.method === 'GET' && path === '/academy-activity/trial-status') {
       if (!academyOAuth || !academyTrial || typeof academyTrial.statusFor !== 'function') { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -5855,6 +5887,8 @@ async function main() {
       memAlgo: async (s) => { const r = await sentimentCandles(s, '1D'); return r && Array.isArray(r.bars) && r.bars.length >= 60 ? require('./academy-mem-algo').analyze(r.bars, 'swing', {}, '1D', {}) : null; }
     },
     chartEndpoint: config.academyTrialPublicUrl ? config.academyTrialPublicUrl + '/academy-activity/article-chart' : '',
+    /* the listen-to-this-article audio element points here (served by /academy-activity/article-audio below) */
+    audioEndpoint: config.academyTrialPublicUrl && (academyVoice.configured || academyVoice.stored) && String(process.env.SML_ARTICLE_AUDIO || 'on').toLowerCase() !== 'off' ? config.academyTrialPublicUrl + '/academy-activity/article-audio' : '',
     /* the prose is written by the model as the byline from the fact sheet (SML_STORY_WRITER=off keeps the house writer only) */
     writer: createArticleWriter({ ai: config.anthropicApiKey && String(process.env.SML_STORY_WRITER || 'on').toLowerCase() !== 'off' ? { apiKey: config.anthropicApiKey, model: config.academyAskModel } : null, logger: log }),
     discordUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || ''),

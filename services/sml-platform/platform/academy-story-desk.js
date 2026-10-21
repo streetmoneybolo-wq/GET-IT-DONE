@@ -125,7 +125,7 @@ function createStoryDesk({
   universe, candles, gamma = null, shortData = null, finra = null, institutional = null, darkPool = null, smc = null, sentiment = null, earnings = null, playbook = null, direction = null, runner = null, company = null,
   heat = null, publisher = null, polisher = null, dm = null, ownerIds = [], store = null, marketState = null, now = Date.now, logger = () => {},
   perTick = 18, maxPerTick = 3, maxPerDay = 12, dedupeDays = 3, autopublish = false, windowFrom = 420, windowTo = 990, siteUrl = 'https://stockmarketloop.com', byline = 'Vaughn McNair', publication = 'Making Easy Money',
-  insights = {}, chartEndpoint = '', discordUrl = '', authorPath = '/n/grandmasterobi/', writer = null,
+  insights = {}, chartEndpoint = '', audioEndpoint = '', discordUrl = '', authorPath = '/n/grandmasterobi/', writer = null,
   /* scheduled pieces: [{ at: minutes into the ET day, subjects: ['the market', 'nasdaq'] }], each slot once per trading
      day in the hour after its time (the market-open and the market-close reads) */
   schedule = [], settlePerTick = 20,
@@ -165,6 +165,18 @@ function createStoryDesk({
       for (const subject of slot.subjects) { try { const r = await write(subject, { file: true, scheduled: true }); out.push({ subject, ok: r.ok, error: r.error || (r.filed && r.filed.error) || '', url: r.filed ? r.filed.url : '' }); } catch (error) { out.push({ subject, ok: false, error: String(error && error.message || error) }); } }
     }
     return out;
+  }
+  /* the listen scripts of the pieces written (slug -> parts), kept with the desk's state so the public audio route can find a piece's script after a restart; only text the desk itself wrote can be voiced */
+  const rememberAudio = (pkg) => {
+    if (!state || !pkg || !pkg.audio || !pkg.slug || !pkg.audio.parts.length) return;
+    state.audio = state.audio || {};
+    state.audio[pkg.slug] = { parts: pkg.audio.parts, hash: pkg.audio.hash, at: now() };
+    const keys = Object.keys(state.audio); if (keys.length > 300) for (const k of keys.sort((a, b) => state.audio[a].at - state.audio[b].at).slice(0, keys.length - 300)) delete state.audio[k];
+  };
+  async function audioFor(slug, hash = '') {
+    await load();
+    const e = state && state.audio && Object.prototype.hasOwnProperty.call(state.audio, slug) ? state.audio[slug] : null;
+    return e && (!hash || e.hash === hash) ? e : null;
   }
   const save = async () => { if (store) { try { await store.write(state); } catch (error) { logger('warn', 'story_state_save_failed', { error: String(error && error.message || error) }); } } };
   const note = (text, extra = {}) => { state.log.push({ t: now(), text, ...extra }); if (state.log.length > 200) state.log.splice(0, state.log.length - 200); };
@@ -244,9 +256,10 @@ function createStoryDesk({
     const { media, gifInfo, posterMedia } = gif;
     const coverUrl = posterMedia && posterMedia.url ? posterMedia.url : (media && media.url ? media.url : '');
     /* the prose: the model writes as the byline from the fact sheet (checked: no new numbers, no repeats, no padding); the house writer otherwise */
-    const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author: byline, publication, siteUrl, authorUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic, record: recordNow(), narrative });
+    const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author: byline, publication, siteUrl, authorUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic, record: recordNow(), narrative, audioEndpoint });
     const guess = compose('');
     const pkg = file ? compose(`${siteUrl}${authorPath}${guess.slug}/`) : guess;
+    rememberAudio(pkg);
     /* the figures lead as the composer's one tight frame; the cover image is the scenario chart, so the body carries no second copy */
     const body = [...pkg.blocks, { id: 'd1', type: 'disclosure', position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' }];
     const blocks = body;
@@ -275,7 +288,7 @@ function createStoryDesk({
   function packageFor(built, url = '') {
     const pkg = url ? built.compose(url) : built.pkg;
     return { title: pkg.title, dek: pkg.dek, slug: pkg.slug, tags: pkg.tags, keyword: pkg.keyword, lean: pkg.lean, pt: pkg.pt, ptPct: pkg.ptPct, angle: pkg.angle, wordCount: pkg.wordCount, readMinutes: pkg.readMinutes,
-      modules: pkg.modules, sections: pkg.sections, links: pkg.links, faq: pkg.faq, seo: pkg.seo, html: pkg.bodyHtml, css: pkg.css, js: pkg.js, head: pkg.headHtml, document: pkg.document, blocks: pkg.blocks, url };
+      modules: pkg.modules, sections: pkg.sections, links: pkg.links, faq: pkg.faq, seo: pkg.seo, html: pkg.bodyHtml, css: pkg.css, js: pkg.js, head: pkg.headHtml, document: pkg.document, blocks: pkg.blocks, audio: pkg.audio ? { url: pkg.audio.url, hash: pkg.audio.hash, parts: pkg.audio.parts.length } : null, url };
   }
 
   async function tell(results) {
@@ -424,7 +437,7 @@ function createStoryDesk({
     return { ok: true, ...done, remaining: ids.filter((id) => !state.rebuilt[id]).length };
   }
   async function status() { await load(); return { day: state.day, count: state.count, written: Object.keys(state.written).length, log: state.log.slice(-20).reverse(), record: recordNow(), schedule: schedule.map((s) => ({ at: s.at, subjects: s.subjects, done: !!state.sched[`${state.day}:${s.at}`] })) }; }
-  return { tick, write, warm, status, candidate, load, settle, rebuildOld, record: recordNow };
+  return { tick, write, warm, audioFor, status, candidate, load, settle, rebuildOld, record: recordNow };
 }
 
 module.exports = { createStoryDesk, createLettersPublisher, createPolisher };

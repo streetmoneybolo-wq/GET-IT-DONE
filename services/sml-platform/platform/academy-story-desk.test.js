@@ -264,3 +264,17 @@ test('a scheduled piece is not on the fast path (it can take the full model draf
   const out = await h.desk.write('ABCD', { file: false, scheduled: true });
   assert.equal(out.ok, true); assert.equal(out.timing.fast, false); assert.equal(out.timing.warm, false);
 });
+
+test('a piece written by the desk can be voiced later: its listen script is kept by slug (and hash) and survives a restart; nothing else can be looked up', async () => {
+  const h = harness({ deps: { audioEndpoint: 'https://api.example/academy-activity/article-audio' } });
+  const r = await h.desk.write('ABCD', { file: false });
+  assert.equal(r.ok, true);
+  const url = r.article.audio ? r.article.audio.url : '';
+  assert.ok(url.includes('/article-audio?slug='), 'the article links its audio');
+  const slug = new URL(url).searchParams.get('slug'), hash = new URL(url).searchParams.get('v');
+  const e = await h.desk.audioFor(slug, hash);
+  assert.ok(e && e.parts.length >= 2 && e.hash === hash);
+  assert.equal(await h.desk.audioFor(slug, 'deadbeef0000'), null, 'a wrong hash is not served');
+  assert.equal(await h.desk.audioFor('__proto__'), null); assert.equal(await h.desk.audioFor('constructor'), null); assert.equal(await h.desk.audioFor('not-written'), null);
+  const saved = h.saved(); assert.ok(saved && saved.audio && saved.audio[slug], 'kept with the desk state');
+});
