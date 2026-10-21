@@ -79,7 +79,7 @@
     var subject = String(el.input.value || '').trim();
     if (!subject) { status('Type a ticker or a topic first.'); el.input.focus(); return; }
     S.busy = true; el.write.disabled = true; el.file.disabled = true;
-    status((file ? 'Writing and filing ' : 'Writing ') + subject.toUpperCase() + ': reading the Academy desks, drawing the chart, composing the piece (20 to 60 seconds)', true);
+    status((file ? 'Writing and filing ' : 'Writing ') + subject.toUpperCase() + ': reading the Academy desks, drawing the chart, composing the piece (about 10 seconds)', true);
     var t0 = Date.now();
     var r = await api('/write', { symbol: subject, file: !!file, publish: false });
     S.busy = false; el.write.disabled = false; el.file.disabled = false;
@@ -89,7 +89,7 @@
       return;
     }
     paint(r);
-    status('Done in ' + Math.round((Date.now() - t0) / 1000) + ' s. ' + (file ? (r.filed && r.filed.url ? 'Filed as a draft letter.' : 'Composed; filing did not return a URL.') : 'Composed. Copy the HTML, the CSS and the SEO head from the tabs.'));
+    status('Done in ' + (Math.round((Date.now() - t0) / 100) / 10) + ' s' + (r.timing ? ' (' + (r.timing.warm ? 'data already warm, ' : 'gathered in ' + (Math.round(r.timing.gatherMs / 100) / 10) + ' s, ') + 'written in ' + (Math.round(r.timing.writeMs / 100) / 10) + ' s)' : '') + '. ' + (file ? (r.filed && r.filed.url ? 'Filed as a draft letter.' : 'Composed; filing did not return a URL.') : 'Composed. Copy the HTML, the CSS and the SEO head from the tabs.'));
   }
   function copy(k, b) {
     var a = area(k); if (!a) return;

@@ -172,23 +172,26 @@ function createStoryDesk({
   async function bars1d(symbol) { const p = await timed(() => candles(symbol, '1D'), 10_000); return p && Array.isArray(p.bars) ? p.bars : []; }
 
   /* everything the engine scores for one symbol, from the Academy's services (each read raced against a timeout) */
-  async function candidate(row, { withHeat = true, withDarkPool = true } = {}) {
+  async function candidate(row, { withHeat = true, withDarkPool = true, fast = false } = {}) {
+    /* fast (on demand): every read gets at most five seconds, and the market direction rides along with the rest instead of after them */
+    const tm = (fn, ms) => timed(fn, fast ? Math.min(ms, 5_000) : ms);
     const symbol = String(row.symbol).toUpperCase();
     const daily = await bars1d(symbol); if (daily.length < 30) return null;
     const last = daily[daily.length - 1];
     const price = num(row.price) || num(last.c); if (!(price > 0)) return null;
     const vols = daily.slice(-21, -1).map((b) => Number(b.v) || 0), adv = avg(vols);
     const relVol = num(row.relVol) || (num(row.volume) && adv ? num(row.volume) / adv : null);
-    const [gx, sd, fin, inst, dp, sent, earn, pb, co] = await Promise.all([
-      gamma ? timed(() => gamma.get(symbol), 15_000) : null,
-      shortData ? timed(() => shortData(symbol), 8_000) : null,
-      finra ? timed(() => finra.forSymbol(symbol, daily.slice(-3).map((b) => etDate(Number(b.t)))), 12_000) : null,
-      institutional ? timed(() => institutional.get(symbol), 8_000) : null,
-      darkPool && withDarkPool ? timed(() => darkPool(symbol), 12_000) : null,
-      sentiment ? timed(() => sentiment.get(symbol), 10_000) : null,
-      earnings ? timed(() => earnings(symbol), 6_000) : null,
-      playbook ? timed(() => playbook(symbol), 10_000) : null,
-      company ? timed(() => company(symbol), 6_000) : null
+    const [gx, sd, fin, inst, dp, sent, earn, pb, co, dirNow] = await Promise.all([
+      gamma ? tm(() => gamma.get(symbol), 15_000) : null,
+      shortData ? tm(() => shortData(symbol), 8_000) : null,
+      finra ? tm(() => finra.forSymbol(symbol, daily.slice(-3).map((b) => etDate(Number(b.t)))), 12_000) : null,
+      institutional ? tm(() => institutional.get(symbol), 8_000) : null,
+      darkPool && withDarkPool ? tm(() => darkPool(symbol), 12_000) : null,
+      sentiment ? tm(() => sentiment.get(symbol), 10_000) : null,
+      earnings ? tm(() => earnings(symbol), 6_000) : null,
+      playbook ? tm(() => playbook(symbol), 10_000) : null,
+      company ? tm(() => company(symbol), 6_000) : null,
+      direction ? tm(() => direction(), 8_000) : null
     ]);
     let m = null;
     if (smc) { try { const a = smc.analyze(daily); if (a) { const last = daily.length - 1; m = { structure: a.structure.events.filter((e) => e.idx >= last - 3).map((e) => ({ type: e.type, dir: e.dir, level: r2(e.level) })).reverse(), sweeps: a.liquidity.filter((l) => l.sweptAt != null && l.sweptAt >= last - 5).map((l) => ({ kind: l.kind, level: r2(l.level) })), fvgs: a.fvg.filter((g) => g.filledAt == null && last - g.i <= 60).map((g) => ({ dir: g.dir, top: r2(g.top), bottom: r2(g.bottom), filled: false })).reverse(), orderBlocks: a.structure.orderBlocks.filter((o) => o.invalidAt == null).slice(-2).map((o) => ({ dir: o.dir, top: r2(o.top), bottom: r2(o.bottom) })).reverse(), range: a.range ? { hi: r2(a.range.hi), lo: r2(a.range.lo), pos: a.range.pos } : null, vwap: a.vwap[last] ? { level: r2(a.vwap[last].vwap), above: last >= 0 && daily[last].c >= a.vwap[last].vwap } : null, openLiquidity: a.liquidity.filter((l) => l.takenAt == null && l.sweptAt == null).slice(-6).map((l) => ({ kind: l.kind, level: r2(l.level), count: l.count })) }; } } catch (_) { m = null; } }
@@ -202,21 +205,20 @@ function createStoryDesk({
     const earningsIn = earn && num(earn.daysAway) != null ? { daysAway: Number(earn.daysAway), date: earn.date || null, timing: pb && pb.timing || null, impliedPct: pb && pb.implied ? num(pb.implied.impliedPct) : null, histAvgMovePct: pb && pb.history && num(pb.history.avgMovePct) != null ? num(pb.history.avgMovePct) : (pb && Array.isArray(pb.history) && pb.history.length ? avg(pb.history.map((h) => Math.abs(num(h.movePct, 0)))) : null) } : null;
     const sentIn = sent && sent.ok && sent.available !== false ? { score: num(sent.score), label: sent.label, crowdedLong: !!(sent.components && sent.components.options && sent.components.options.crowdedLong) } : null;
     let run = null; if (runner && daily.length > 25) { try { run = runner.trailFor({ daily, entry: daily[daily.length - 21].c, sinceT: daily[daily.length - 21].t }); } catch (_) { run = null; } }
-    const dir = direction ? await timed(() => direction(), 8_000) : null;
+    const dir = dirNow;
     const name = (co && (co.name || co.company_name)) || row.name || '';
-    const h = heat && withHeat ? await timed(() => heat.heatFor(symbol, name), 25_000) : null;
+    const h = heat && withHeat ? await tm(() => heat.heatFor(symbol, name), fast ? 3_000 : 25_000) : null;
     return { symbol, name, price, changePct: num(row.changePct), relVol: relVol != null ? r2(relVol) : null, adv, marketCap: co ? num(co.market_cap) : null, daily, gamma: gx && gx.available ? gx : null, short, tape, smc: m, earnings: earningsIn, sentiment: sentIn, institutional: inst && inst.available ? { bias: num(inst.bias), label: inst.label } : null, runner: run, direction: dir && dir.ok ? { bias: dir.bias, label: dir.label } : null, heat: h || null };
   }
 
   /* the piece: the dossier (every insight the Academy has on the name) and, when the piece is being filed, the GIF and the
      poster uploaded first so the social image is known; then the composer (academy-article-desk.js) writes the article with
      its modules, backlinks, stylesheet and head. compose() is pure, so the package is re-made with the final letter URL. */
-  async function produce(story, c, { file = true, topic = null } = {}) {
+  async function produce(story, c, { file = true, topic = null, dossier: preDossier = null, fast = false } = {}) {
     const asOf = now();
     const upload = file && publisher && publisher.configured();
-    const [dossier, gif] = await Promise.all([
-      desk2.buildDossier(c.symbol, insights).catch((error) => { logger('warn', 'story_dossier_failed', { symbol: c.symbol, error: String(error && error.message || error) }); return {}; }),
-      (async () => {
+    const dossierP = preDossier ? Promise.resolve(preDossier) : desk2.buildDossier(c.symbol, insights, fast ? { budgetMs: 6_000 } : {}).catch((error) => { logger('warn', 'story_dossier_failed', { symbol: c.symbol, error: String(error && error.message || error) }); return {}; });
+    const gifP = (async () => {
         // the GIF: the last 40 daily candles, then the path (trigger, confirmation, target)
         let media = null, gifInfo = null, posterMedia = null;
         if (!upload || !memoryOk()) { if (upload) logger('info', 'story_gif_skipped_memory', { symbol: c.symbol }); return { media, gifInfo, posterMedia }; }
@@ -231,13 +233,17 @@ function createStoryDesk({
           }
         } catch (error) { logger('warn', 'story_gif_failed', { symbol: c.symbol, error: String(error && error.message || error) }); }
         return { media, gifInfo, posterMedia };
-      })()
-    ]);
+      })();
+    /* the model's front (or the house piece) is written while the GIF is drawn: both only need the dossier / the candles */
+    const writeP = dossierP.then(async (d) => {
+      if (!(writer && typeof writer.write === 'function')) return null;
+      try { return await writer.write(desk2.factSheet({ story, c, dossier: d, record: recordNow() }), fast ? { fast: true, deadlineMs: 5_000 } : {}); }
+      catch (error) { logger('warn', 'story_writer_failed', { symbol: c.symbol, error: String(error && error.message || error) }); return null; }
+    });
+    const [dossier, gif, narrative] = await Promise.all([dossierP, gifP, writeP]);
     const { media, gifInfo, posterMedia } = gif;
     const coverUrl = posterMedia && posterMedia.url ? posterMedia.url : (media && media.url ? media.url : '');
     /* the prose: the model writes as the byline from the fact sheet (checked: no new numbers, no repeats, no padding); the house writer otherwise */
-    let narrative = null;
-    if (writer && typeof writer.write === 'function') { try { narrative = await writer.write(desk2.factSheet({ story, c, dossier, record: recordNow() })); } catch (error) { logger('warn', 'story_writer_failed', { symbol: c.symbol, error: String(error && error.message || error) }); narrative = null; } }
     const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author: byline, publication, siteUrl, authorUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic, record: recordNow(), narrative });
     const guess = compose('');
     const pkg = file ? compose(`${siteUrl}${authorPath}${guess.slug}/`) : guess;
@@ -333,15 +339,42 @@ function createStoryDesk({
   /* one subject on demand (the owner's "write about X": a ticker, or a topic the market trades through a proxy): the best
      angle, written in full. file:false composes the package to copy from without touching the site; file:true (the
      default) also files it as a Loop Letter draft (publish:true publishes it when the signed-in account is the byline). */
-  async function write(input, { publish = false, file: doFile = true, scheduled = false } = {}) {
+  /* what the desk has already gathered on a name (the engine's candidate and the dossier), kept six minutes: a second piece on the same name, or one on a
+     name the warm-up has visited, starts from here instead of from the data feeds */
+  const hot = new Map(), HOT_MS = 6 * 60_000, HOT_MAX = 24;
+  async function gather(symbol, { fast = true } = {}) {
+    const hit = hot.get(symbol);
+    if (hit && now() - hit.at < HOT_MS) return { ...hit, cached: true };
+    const [c, dossier] = await Promise.all([
+      candidate({ symbol }, { fast }),
+      desk2.buildDossier(symbol, insights, fast ? { budgetMs: 6_000 } : {}).catch((error) => { logger('warn', 'story_dossier_failed', { symbol, error: String(error && error.message || error) }); return {}; })
+    ]);
+    if (c) { hot.set(symbol, { at: now(), c, dossier }); while (hot.size > HOT_MAX) hot.delete(hot.keys().next().value); }
+    return { at: now(), c, dossier, cached: false };
+  }
+  /* the warm-up: the names people ask for (the scheduled reads, the market proxies, what was written lately) are gathered ahead of the request */
+  async function warm(extra = []) {
+    await load();
+    const recent = Object.keys(state.written || {}).map((k) => k.split(':')[0]).slice(-6);
+    const subjects = [...schedule.flatMap((sl) => sl.subjects), ...extra].map((x) => desk2.resolveSubject(x)).filter(Boolean).map((x) => x.symbol);
+    const list = [...new Set(['SPY', 'QQQ', ...subjects, ...recent])].slice(0, 6);
+    let n = 0;
+    for (const symbol of list) { if (!memoryOk()) break; const hit = hot.get(symbol); if (hit && now() - hit.at < HOT_MS - 60_000) continue; try { await gather(symbol, { fast: false }); n += 1; } catch (error) { logger('warn', 'story_warm_failed', { symbol, error: String(error && error.message || error) }); } }
+    return { warmed: n, hot: hot.size };
+  }
+  async function write(input, { publish = false, file: doFile = true, scheduled = false, fast = !scheduled } = {}) {
+    const t0 = now();
     await load();
     const subject = desk2.resolveSubject(input);
     if (!subject) return { ok: false, error: 'invalid_symbol' };
-    const c = await candidate({ symbol: subject.symbol });
+    const g = fast ? await gather(subject.symbol, { fast: true }) : { c: await candidate({ symbol: subject.symbol }), dossier: null, cached: false };
+    const c = g.c;
     if (!c) return { ok: false, error: 'no_data', subject };
+    const tGather = now();
     const ranked = engine.rankStories([c]);
     if (!ranked.length) return { ok: false, error: 'no_angle', heat: c.heat, subject };
-    const built = await produce(ranked[0], c, { file: doFile, topic: subject.topic });
+    const built = await produce(ranked[0], c, { file: doFile, topic: subject.topic, dossier: g.dossier && Object.keys(g.dossier).length ? g.dossier : null, fast });
+    const tBuilt = now();
     let filed = null;
     if (doFile) {
       filed = await file(ranked[0], c, built);
@@ -352,7 +385,7 @@ function createStoryDesk({
       await tell([filed]);
     } else { logOutcome(ranked[0], c, { filed: false }); await save(); }
     const article = packageFor(built, filed && filed.url ? filed.url : '');
-    return { ok: true, subject, story: { ...ranked[0], facts: ranked[0].facts }, dossier: Object.fromEntries(Object.entries(built.dossier || {}).map(([k, v]) => [k, !!(v && (Array.isArray(v) ? v.length : true))])),
+    return { ok: true, timing: { gatherMs: tGather - t0, writeMs: tBuilt - tGather, totalMs: now() - t0, warm: !!g.cached, fast }, subject, story: { ...ranked[0], facts: ranked[0].facts }, dossier: Object.fromEntries(Object.entries(built.dossier || {}).map(([k, v]) => [k, !!(v && (Array.isArray(v) ? v.length : true))])),
       draft: { title: article.title, dek: article.dek, meta: article.seo.meta_desc, tags: article.tags, wordCount: article.wordCount, readMinutes: article.readMinutes, seo: article.seo, document: article.document, modules: article.modules, sections: article.sections, links: article.links },
       article, filed };
   }
@@ -390,7 +423,7 @@ function createStoryDesk({
     return { ok: true, ...done, remaining: ids.filter((id) => !state.rebuilt[id]).length };
   }
   async function status() { await load(); return { day: state.day, count: state.count, written: Object.keys(state.written).length, log: state.log.slice(-20).reverse(), record: recordNow(), schedule: schedule.map((s) => ({ at: s.at, subjects: s.subjects, done: !!state.sched[`${state.day}:${s.at}`] })) }; }
-  return { tick, write, status, candidate, load, settle, rebuildOld, record: recordNow };
+  return { tick, write, warm, status, candidate, load, settle, rebuildOld, record: recordNow };
 }
 
 module.exports = { createStoryDesk, createLettersPublisher, createPolisher };

@@ -2135,12 +2135,14 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       /* every Academy route is timed into the Evolve ledger (academy-evolve.js); a data route that has not answered by the budget is cut with a 503 */
       const startedAt = now();
       let timedOut = false;
+      /* an article is gathered, written and (optionally) filed in one request: it gets a longer budget than a data read (it aims for ten seconds; this is the ceiling) */
+      const budget = /^\/academy-activity\/(articles|story)\/write$/.test(path) ? 60_000 : routeBudgetMs;
       const watchdog = path === '/academy-activity/' ? null : setTimeout(() => {
         if (response.headersSent || response.writableEnded) return;
         timedOut = true;
         logger('warn', 'academy_route_timeout', { path: path.slice(0, 80), method: request.method });
         try { sendJson(response, 503, { ok: false, error: 'timeout' }); } catch (_) { try { response.destroy(); } catch (__) {} }
-      }, routeBudgetMs);
+      }, budget);
       if (watchdog && watchdog.unref) watchdog.unref();
       response.once('close', () => { if (watchdog) clearTimeout(watchdog); });
       if (academyEvolve) response.once('finish', () => { try { academyEvolve.observeRoute(path, response.statusCode, now() - startedAt, { timeout: timedOut }); } catch (_) {} });
@@ -5859,6 +5861,12 @@ async function main() {
     schedule: String(process.env.SML_STORY_SCHEDULE || 'on').toLowerCase() === 'off' ? [] : [{ at: 585, subjects: ['the market', 'nasdaq'] }, { at: 950, subjects: ['the market', 'nasdaq'] }],
     memoryOk: () => process.memoryUsage().rss < (Number(process.env.SML_STORY_PAUSE_MB) || 1500) * 1024 * 1024
   }) : null;
+  /* the Article Desk keeps the names people ask for gathered ahead of time, so a request starts from the engine's own read (SML_STORY_WARM=off skips it) */
+  if (storyDesk && String(process.env.SML_STORY_WARM || 'on').toLowerCase() !== 'off') {
+    const warmTick = () => { storyDesk.warm().catch((error) => log('warn', 'story_warm_failed', { error: String(error && error.message || error) })); };
+    setTimeout(warmTick, 90_000).unref();
+    const warmTimer = setInterval(warmTick, 5 * 60_000); if (warmTimer.unref) warmTimer.unref();
+  }
   const getStoryDesk = () => storyDesk;
   if (storyDesk) {
     let storySkip = '';

@@ -188,6 +188,36 @@ function housePiece(sheet, seed = 0) {
   ], bottom, bull: bull.slice(0, 4), bear: bear.slice(0, 4), kill: kill.slice(0, 4), source: 'house' };
 }
 
+
+/* ---------- the fast path (on demand): the house writer is the body, the model only writes the front ---------- */
+/* A whole piece from the model is 2,500 tokens and a minute. The house writer composes the same shape in milliseconds from the same
+ * fact sheet; the model is asked only for the part a reader meets first (headline, standfirst, lede: about 300 tokens, two or three
+ * seconds), under the same checks, and loses the race to a clock. Whatever the model does or does not return, the piece is whole. */
+const LEDE_SYSTEM = `You are Vaughn McNair, a trader who writes a markets letter for other traders at Making Easy Money. First person, direct, confident, a little dry, honest about doubt. Short punches after long sentences. You rewrite only the front of a piece: the headline, the one-sentence standfirst and the two or three paragraph lede.
+HARD RULES. Use only numbers that appear in the FACT SHEET, exactly as written; never add a number, level, date or statistic. No dashes of any kind (use commas or full stops). No filler words (delve, landscape, leverage, unlock, robust, seamless). No disclaimers, no definitions of basics. Never repeat a sentence. The headline is 40 to 100 characters, contains the ticker with its dollar sign and one number from the sheet. The lede takes a side in its first sentence, states the target and the line that says you are wrong, and reads like a person talking.
+OUTPUT exactly one JSON object: {"title": string, "dek": string, "lede": [string, string, optional string]}. Nothing before or after it.`;
+
+async function polishFront({ ai, fetchImpl, sheet, piece, deadlineMs }) {
+  const body = {
+    model: ai.fastModel || 'claude-haiku-5-5', max_tokens: 700, system: LEDE_SYSTEM,
+    messages: [{ role: 'user', content: `TICKER: ${sheet.S}\nANGLE: ${sheet.angleLabel}\nLEAN: ${sheet.lean}\nTARGET: ${px(sheet.pt)} (${pct(sheet.ptPct)}) over ${sheet.timeframe}${sheet.stop != null ? `\nINVALIDATION: ${px(sheet.stop)}` : ''}\n\nFACT SHEET:\n${sheetText(sheet)}\n\nCURRENT FRONT (rewrite it in your voice, keep every fact):\nTITLE: ${piece.title}\nDEK: ${piece.dek}\nLEDE:\n${piece.lede.join('\n')}` }]
+  };
+  /* the clock is enforced twice: the request is aborted at the deadline, and the wait itself is raced so a stalled connection cannot hold the piece */
+  let timer = null;
+  const clock = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('front_deadline')), deadlineMs + 250); });
+  let res, data;
+  try {
+    res = await Promise.race([fetchImpl('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ai.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(deadlineMs) }), clock]);
+    data = await Promise.race([res.json().catch(() => ({})), clock]);
+  } finally { clearTimeout(timer); }
+  if (!res.ok) throw new Error('anthropic_' + res.status);
+  const n = parseJson((data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(''));
+  if (!n || typeof n !== 'object') throw new Error('front_not_an_object');
+  const front = { title: plain(n.title), dek: plain(n.dek), lede: (Array.isArray(n.lede) ? n.lede : []).map(plain).filter(Boolean) };
+  if (!front.title || !front.dek || front.lede.length < 2 || front.lede.length > 3) throw new Error('front_shape');
+  return front;
+}
+
 /* ---------- the model writer ---------- */
 const SYSTEM = `You are Vaughn McNair, a trader who writes a markets letter for other traders at Making Easy Money. You write the way you talk: direct, confident, a little dry, honest about doubt. First person. Varied rhythm: short punches after long sentences, a fragment now and then, an aside, a rhetorical question when it earns its place. You have opinions ("I don't trust this", "this reminds me of") and you say what you are watching and why. You tell the story of the setup, not the dataset.
 HARD RULES. Use only numbers that appear in the FACT SHEET, written exactly as given; never add a number, a level, a date or a statistic that is not there. Never repeat a sentence or a phrase. No glossary, no definitions of basics (your readers know what gamma, short interest and dark pools are). No FAQ. No disclaimers of any kind (the publisher adds one). No em dashes. No bullet lists inside paragraphs. No headings like "What the data says", "Key takeaways", "Bottom line" or "Sources". Do not write "X happens, which means Y, and that is what causes Z" cadence; break symmetry. Do not describe yourself or the piece ("this piece argues with itself"). Between 650 and 1000 words in total. Three to five sections, each with a short human heading. Write plain text, no markdown.
@@ -222,9 +252,25 @@ function createArticleWriter({ ai = null, fetchImpl = globalThis.fetch, logger =
     return { text: (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(''), stop: data.stop_reason || '' };
   }
   /* the model's draft, checked; a failed check gets one retry with the reasons; then the house writer */
-  async function write(sheet, { attempts = 2 } = {}) {
+  async function write(sheet, { attempts = 2, fast = false, deadlineMs = 5_000 } = {}) {
     const seed = seedOf(sheet.symbol + sheet.angle + Math.floor(now() / 3_600_000));
     if (!enabled) return { ...housePiece(sheet, seed), checked: { ok: true, reasons: ['ai_off'] } };
+    if (fast) {
+      /* on demand: the house piece is ready at once; the model's front replaces the house front only when it arrives in time and passes the same checks */
+      const house = housePiece(sheet, seed);
+      try {
+        const front = await polishFront({ ai, fetchImpl, sheet, piece: house, deadlineMs });
+        const merged = { ...house, ...front, source: 'house+model' };
+        const base = new Set(validate(house, sheet, { minWords: 0, maxWords: 5000 }).reasons);
+        const bad = validate(merged, sheet, { minWords: 0, maxWords: 5000 }).reasons.filter((r) => !base.has(r));
+        if (!bad.length) return { ...merged, checked: { ok: true, reasons: ['fast_front'] } };
+        logger('warn', 'article_front_rejected', { symbol: sheet.symbol, reasons: bad.slice(0, 4) });
+        return { ...house, checked: { ok: true, reasons: ['house_front', ...bad.slice(0, 3)] } };
+      } catch (error) {
+        logger('warn', 'article_front_failed', { symbol: sheet.symbol, error: String(error && error.message || error) });
+        return { ...house, checked: { ok: true, reasons: ['house_front', String(error && error.message || error).slice(0, 60)] } };
+      }
+    }
     let last = null;
     for (let i = 0; i < attempts; i++) {
       try {

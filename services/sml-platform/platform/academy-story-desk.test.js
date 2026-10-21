@@ -229,3 +229,33 @@ test('rebuildOld rewrites each old desk letter once, leaves hand-written letters
   const desk2 = createStoryDesk({ publisher: { configured: () => true, feed: async () => [9], readLetter: async () => ({ id: 9, title: 't' }), updateLetter: async () => { throw new Error('no'); }, getLetter: async () => ({}) }, logger: (l, e, f) => logs.push([e, f]) });
   assert.equal((await desk2.rebuildOld()).halted, 'no_blocks'); assert.ok(logs.some((x) => x[0] === 'story_rebuild_no_blocks' && x[1].keys.includes('title')));
 });
+
+test('an on-demand piece is gathered in parallel, reports its timing, and a second piece on the same name starts from what the desk already holds', async () => {
+  let candleCalls = 0, directionCalls = 0;
+  const h = harness({ deps: { candles: async () => { candleCalls += 1; return { bars: daily(80) }; }, direction: async () => { directionCalls += 1; return { ok: true, bias: 25, label: 'Lean bullish' }; } } });
+  const first = await h.desk.write('ABCD', { file: false });
+  assert.equal(first.ok, true);
+  assert.equal(first.timing.fast, true); assert.equal(first.timing.warm, false);
+  assert.ok(first.timing.totalMs >= first.timing.gatherMs && first.timing.gatherMs >= 0);
+  const calls = candleCalls;
+  const second = await h.desk.write('ABCD', { file: false });
+  assert.equal(second.ok, true); assert.equal(second.timing.warm, true, 'the second piece reuses the gathered data');
+  assert.equal(candleCalls, calls, 'no new candle read');
+  assert.equal(directionCalls, 1);
+});
+
+test('the warm-up gathers the market proxies and the scheduled names ahead of a request, and a request then starts warm', async () => {
+  const asked = [];
+  const h = harness({ deps: { candles: async (s) => { asked.push(s); return { bars: daily(80) }; }, schedule: [{ at: 585, subjects: ['the market'] }] } });
+  const w = await h.desk.warm(['ABCD']);
+  assert.ok(w.warmed >= 2 && w.hot >= 2);
+  assert.ok(asked.includes('SPY') && asked.includes('QQQ'));
+  const out = await h.desk.write('ABCD', { file: false });
+  assert.equal(out.ok, true); assert.equal(out.timing.warm, true);
+});
+
+test('a scheduled piece is not on the fast path (it can take the full model draft)', async () => {
+  const h = harness();
+  const out = await h.desk.write('ABCD', { file: false, scheduled: true });
+  assert.equal(out.ok, true); assert.equal(out.timing.fast, false); assert.equal(out.timing.warm, false);
+});
