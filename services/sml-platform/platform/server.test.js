@@ -2557,3 +2557,43 @@ test('the pre-alert route is session-gated, validates its inputs, and answers GO
     assert.match(far.advice, /never blocks/);
   });
 });
+
+test('Trading Room routes: the owner sets the room up, visitors see locked doors, followers chat, tiers are bought through the checkout', async () => {
+  const { createTraderAlerts } = require('./academy-trader-alerts');
+  const { createTradingRoom } = require('./academy-trading-room');
+  const { OWNER_IDS } = require('./academy-free-users');
+  const A = OWNER_IDS[0], B = '200000000000000002', V = '400000000000000004';
+  const traderAlerts = createTraderAlerts({ logger: () => {}, names: async () => 'Ace' });
+  const tradingRoom = createTradingRoom({ traderAlerts, names: async (id) => (id === A ? 'Ace' : 'Fan'), logger: () => {} });
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer owner' ? { ok: true, userId: A, tier: 'academy' } : a === 'Bearer member' ? { ok: true, userId: B, tier: 'academy' } : a === 'Bearer free' ? { ok: true, userId: V, tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const checkouts = [];
+  const traderAlertsCheckout = async (i) => { checkouts.push(i); const o = await tradingRoom.offerFor(i.traderId, i.tier, i.plan); return o.ok ? { ok: true, url: 'https://pay.example/x', priceCents: o.priceCents, tier: i.tier } : { ok: false, error: o.error }; };
+  const J = (tok, body) => ({ method: 'POST', headers: { authorization: 'Bearer ' + tok, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const G = (tok) => ({ headers: { authorization: 'Bearer ' + tok } });
+  await withServer({ academyOAuth, traderAlerts, tradingRoom, traderAlertsCheckout }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/room?owner=${A}`)).status, 401);
+    assert.equal((await fetch(`${base}/academy-activity/room?owner=${A}`, G('member'))).status, 404, 'a closed room does not exist for visitors');
+    assert.equal((await fetch(`${base}/academy-activity/room/template`, J('free', { key: 'classic' }))).status, 403, 'setting up needs Academy access');
+    assert.equal((await fetch(`${base}/academy-activity/room/template`, J('owner', { key: 'nope' }))).status, 400);
+    assert.equal((await fetch(`${base}/academy-activity/room/template`, J('owner', { key: 'classic' }))).status, 200);
+    const mine = await (await fetch(`${base}/academy-activity/room`, G('owner'))).json();
+    assert.equal(mine.role.kind, 'owner'); assert.ok(mine.advice.some((a) => a.id === 'open') && mine.templates.length >= 5 && mine.settings.tiers.length === 1);
+    const saved = await (await fetch(`${base}/academy-activity/room/settings`, J('owner', { room: { enabled: true, name: 'Ace Trades', tiers: [{ name: 'Premium', prices: { month: 4900 } }], categories: mine.settings.categories } }))).json();
+    assert.equal(saved.ok, true); assert.equal(saved.room.tiers[0].prices.month, 4900);
+    const v = await (await fetch(`${base}/academy-activity/room?owner=${A}`, G('member'))).json();
+    assert.equal(v.ok, true); assert.equal(v.role.kind, 'visitor'); assert.equal(v.following, false); assert.equal(v.settings, undefined);
+    assert.equal((await fetch(`${base}/academy-activity/room/channel?owner=${A}&channel=general`, G('member'))).status, 403);
+    assert.equal((await fetch(`${base}/academy-activity/room/follow`, J('member', { owner: A }))).status, 200);
+    assert.equal((await (await fetch(`${base}/academy-activity/room/channel?owner=${A}&channel=general`, G('member'))).json()).ok, true);
+    const said = await fetch(`${base}/academy-activity/room/post`, J('member', { owner: A, channel: 'general', body: 'hi all' })); assert.equal(said.status, 200);
+    assert.equal((await fetch(`${base}/academy-activity/room/post`, J('member', { owner: A, channel: 'welcome', body: 'x' }))).status, 403);
+    const read = await (await fetch(`${base}/academy-activity/room/channel?owner=${A}&channel=general`, G('owner'))).json(); assert.equal(read.posts[0].body, 'hi all');
+    const paid = await fetch(`${base}/academy-activity/room/checkout`, J('member', { owner: A, tier: 'premium', plan: 'month' })); const pj = await paid.json();
+    assert.equal(paid.status, 200); assert.equal(pj.priceCents, 4900); assert.equal(checkouts[0].tier, 'premium'); assert.equal(checkouts[0].memberId, B);
+    assert.equal((await fetch(`${base}/academy-activity/room/checkout`, J('member', { owner: A, tier: 'premium', plan: 'week' }))).status, 400, 'a plan with no price is not for sale');
+    assert.equal((await fetch(`${base}/academy-activity/room/checkout`, J('member', { owner: A, plan: 'month' }))).status, 400);
+    const members = await (await fetch(`${base}/academy-activity/room/members`, G('owner'))).json(); assert.equal(members.total, 1);
+    assert.equal((await fetch(`${base}/academy-activity/room/ban`, J('owner', { member: B }))).status, 200);
+    assert.equal((await fetch(`${base}/academy-activity/room/post`, J('member', { owner: A, channel: 'general', body: 'still here' }))).status, 403);
+  });
+});

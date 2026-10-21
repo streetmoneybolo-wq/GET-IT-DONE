@@ -116,6 +116,7 @@ const { createHedgeService } = require('./academy-hedge');
 const PAPER_START_CASH = require('./academy-paper').RULES.startCash;
 const { createProfileService } = require('./academy-profile');
 const { createTraderAlerts } = require('./academy-trader-alerts');
+const { createTradingRoom } = require('./academy-trading-room');
 const { createCommunity } = require('./academy-community');
 const { createSocialNotify } = require('./academy-social-notify');
 const { createAlertChartBilling } = require('./alert-chart-billing');
@@ -1028,6 +1029,10 @@ const ACADEMY_BAR_RAIL = (() => {
 const ACADEMY_PROFILE_UI = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-profile-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
+// Trading room: the room behind a trader's profile (channels, free and paid access, the owner's setup).
+const ACADEMY_ROOM_UI = (() => {
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-room-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+})();
 const ACADEMY_LB_UI = (() => {
   try {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-lb-ui.js'), 'utf8') + '</script>';
@@ -1127,7 +1132,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_VIZ_KIT + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_DISCORD_EDGES + ACADEMY_MOBILE_COMPACT + ACADEMY_MOBILE_SHELL + ACADEMY_SIDE_WINDOW + ACADEMY_ONE_AT_A_TIME + ACADEMY_DESKTOP_COMPACT + ACADEMY_TOUR + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + ACADEMY_CANDLE_RECAP + ACADEMY_PROFILE_DESK + ACADEMY_PROFILE_MUSIC + ACADEMY_PROFILE_FX + ACADEMY_PROFILE_UI + ACADEMY_ASK_UI + ACADEMY_BAR_RAIL + ACADEMY_CLIPBOARD + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_VIZ_KIT + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_DISCORD_EDGES + ACADEMY_MOBILE_COMPACT + ACADEMY_MOBILE_SHELL + ACADEMY_SIDE_WINDOW + ACADEMY_ONE_AT_A_TIME + ACADEMY_DESKTOP_COMPACT + ACADEMY_TOUR + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + ACADEMY_CANDLE_RECAP + ACADEMY_PROFILE_DESK + ACADEMY_PROFILE_MUSIC + ACADEMY_PROFILE_FX + ACADEMY_PROFILE_UI + ACADEMY_ROOM_UI + ACADEMY_ASK_UI + ACADEMY_BAR_RAIL + ACADEMY_CLIPBOARD + '</body></html>');
   const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>');
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
@@ -2017,7 +2022,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getSqueezeList = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null, academyProfileWall = null,
-  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null, academySocialNotify = null, alertChartBilling = null,
+  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null, academySocialNotify = null, alertChartBilling = null, tradingRoom = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -3005,6 +3010,64 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         }
         sendJson(response, 404, { ok: false, error: 'not_found' }); return;
       } catch (error) { logger('error', 'academy_trader_alerts_failed', { error: String((error && error.message) || error) }); sendJson(response, 503, { ok: false, error: 'temporary_unavailable' }); return; }
+    }
+    /* TRADING ROOM (academy-trading-room.js): the room behind a trader's profile: channels that are public, free (members) or paid (by tier). Reads and chat need only a verified session; the owner's setup needs Academy access. */
+    if (path === '/academy-activity/room' || path.startsWith('/academy-activity/room/')) {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      if (!tradingRoom) { sendJson(response, 503, { ok: false, error: 'rooms_disabled' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const me = String(session.userId);
+      const rq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const readBody = async (max = 16_384) => { const raw = await readRequestBody(request, max).catch(() => null); try { return raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : null; } catch (_) { return null; } };
+      const SNOW = /^\d{15,25}$/;
+      const status = (r) => (r && r.ok ? 200 : r && (r.error === 'locked' || r.error === 'not_yours' || r.error === 'read_only') ? 403 : r && (r.error === 'no_room' || r.error === 'no_channel' || r.error === 'not_found') ? 404 : r && r.error === 'slow_mode' ? 429 : 400);
+      try {
+        const sub = path.slice('/academy-activity/room'.length);
+        if (request.method === 'GET' && (sub === '' || sub === '/')) {
+          const owner = rq.get('owner') || me; if (!SNOW.test(owner)) { sendJson(response, 400, { ok: false, error: 'invalid_user' }); return; }
+          let sellerReady = false, seller = null;
+          if (owner === me && alertChartBilling) { seller = await alertChartBilling.sellerStatus(me).catch(() => null); sellerReady = Boolean(seller && seller.ready); }
+          const r = await tradingRoom.view(me, owner, { sellerReady }); if (seller && r.ok) r.seller = seller;
+          const f = traderAlerts && owner !== me ? await traderAlerts.followState(me, owner).catch(() => null) : null; if (f && r.ok) r.following = Boolean(f.following);
+          sendJson(response, status(r), r); return;
+        }
+        if (request.method === 'GET' && sub === '/channel') {
+          const owner = rq.get('owner') || ''; if (!SNOW.test(owner)) { sendJson(response, 400, { ok: false, error: 'invalid_user' }); return; }
+          const r = await tradingRoom.channelContent(me, owner, rq.get('channel') || '', { since: rq.get('since') || 0, limit: rq.get('limit') || 60 }); sendJson(response, status(r), r); return;
+        }
+        if (request.method === 'GET' && sub === '/members') {
+          const r = await tradingRoom.members(me, { limit: rq.get('limit') || 100 }); sendJson(response, 200, r); return;
+        }
+        if (request.method === 'POST') {
+          const b = await readBody(sub === '/settings' ? 65_536 : 4096); if (!b) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+          const owner = String(b.owner || ''), ownerOnly = () => { if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return true; } return false; };
+          if (sub === '/post') {
+            if (!SNOW.test(owner)) { sendJson(response, 400, { ok: false, error: 'invalid_user' }); return; }
+            const gate = academyDataLimit.take(request); if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+            const r = await tradingRoom.post(me, owner, String(b.channel || ''), { body: b.body }); sendJson(response, status(r), r); return;
+          }
+          if (sub === '/delete') { const r = await tradingRoom.removePost(me, owner, String(b.id || '')); sendJson(response, status(r), r); return; }
+          if (sub === '/pin') { const r = await tradingRoom.pinPost(me, owner, String(b.id || ''), b.on !== false); sendJson(response, status(r), r); return; }
+          if (sub === '/follow') {
+            if (!SNOW.test(owner) || !traderAlerts) { sendJson(response, 400, { ok: false, error: 'invalid_user' }); return; }
+            const r = await traderAlerts.follow(me, owner, { on: b.on !== false, push: typeof b.push === 'boolean' ? b.push : null }); sendJson(response, r.ok ? 200 : 400, r); return;
+          }
+          if (sub === '/settings') { if (ownerOnly()) return; const r = await tradingRoom.save(me, b.room && typeof b.room === 'object' ? b.room : {}); sendJson(response, r.ok ? 200 : 400, r); return; }
+          if (sub === '/template') { if (ownerOnly()) return; const r = await tradingRoom.applyTemplate(me, String(b.key || '')); sendJson(response, r.ok ? 200 : 400, r); return; }
+          if (sub === '/ban') { if (ownerOnly()) return; const r = await tradingRoom.setBan(me, String(b.member || ''), b.on !== false); sendJson(response, r.ok ? 200 : 400, r); return; }
+          if (sub === '/checkout') {
+            const plan = String(b.plan || ''), tierId = String(b.tier || '');
+            if (!SNOW.test(owner) || !tierId || !(traderAlerts && plan in traderAlerts.PLANS)) { sendJson(response, 400, { ok: false, error: 'invalid_request' }); return; }
+            const start = traderAlertsCheckout || (alertChartBilling && alertChartBilling.configured ? (i) => alertChartBilling.checkout(i) : null);
+            if (!start) { sendJson(response, 503, { ok: false, error: 'checkout_unavailable' }); return; }
+            const gate = academyDataLimit.take(request); if (!gate.ok) { sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+            const r = await start({ memberId: me, traderId: owner, plan, tier: tierId });
+            sendJson(response, r && r.ok ? 200 : r && (r.error === 'plan_not_offered' || r.error === 'not_premium' || r.error === 'own_chart' || r.error === 'invalid_plan' || r.error === 'seller_not_ready') ? 400 : 503, r || { ok: false, error: 'checkout_unavailable' }); return;
+          }
+        }
+        sendJson(response, 404, { ok: false, error: 'not_found' }); return;
+      } catch (error) { logger('error', 'academy_room_failed', { error: String((error && error.message) || error) }); sendJson(response, 503, { ok: false, error: 'temporary_unavailable' }); return; }
     }
     if (path === '/academy-activity/presence' || path === '/academy-activity/profiles' || path.startsWith('/academy-activity/profiles/')) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -5707,6 +5770,16 @@ async function main() {
     }
   });
   if (traderAlerts) traderAlerts.ensureSchema().catch(() => {});
+  /* TRADING ROOM: the room behind each profile (channels, free and paid access, tiers); ACADEMY_ROOMS=off removes it */
+  const tradingRoom = process.env.ACADEMY_ROOMS === 'off' || !traderAlerts ? null : createTradingRoom({
+    pool: database.pool, traderAlerts, logger: log,
+    names: async (id) => {
+      try { if (academyProfilePages) { const s = await academyProfilePages.settingsOf(id); if (s && s.displayName) return s.displayName; } } catch (_) { /* fall through */ }
+      try { if (academyProfiles) { const c = await academyProfiles.profile(id); return c && c.discord ? (c.discord.name || c.discord.username || '') : ''; } } catch (_) { /* fall through */ }
+      return '';
+    }
+  });
+  if (tradingRoom) tradingRoom.ensureSchema().catch(() => {});
   /* would this member see this desk alert live right now? (their Academy level, read live from their roles, and the sources they follow) */
   const memberSeesAlertLive = async (userId, alertId) => {
     if (!academyAlerts) return false;
@@ -6087,7 +6160,7 @@ async function main() {
   const appAuth = createAppAuth({ store: createAppSessionStore({ pool: database.pool }), identity: appIdentity, secret: config.appTokenSecret, logger: log });
   /* premium Alert Charts sold through stockmarketloop.com's marketplace (Stripe Connect, 6% fee, disputes); off without Stripe or with ACADEMY_ALERT_CHART_BILLING=off */
   const alertChartBilling = !traderAlerts || process.env.ACADEMY_ALERT_CHART_BILLING === 'off' ? null : createAlertChartBilling({
-    pool: database.pool, stripe, billingService, loopKickBridge, loopKickConnect, traderAlerts, publicBase: POPOUT_BASE, logger: log,
+    pool: database.pool, stripe, billingService, loopKickBridge, loopKickConnect, traderAlerts, rooms: tradingRoom, publicBase: POPOUT_BASE, logger: log,
     names: async (id) => { try { if (academyProfilePages) { const s = await academyProfilePages.settingsOf(id); if (s && s.displayName) return s.displayName; } } catch (_) { /* fall through */ } try { if (academyProfiles) { const c = await academyProfiles.profile(id); return c && c.discord ? (c.discord.name || c.discord.username || '') : ''; } } catch (_) { /* fall through */ } return ''; }
   });
   if (alertChartBilling) { alertChartBilling.ensureSchema().catch(() => {}); log('info', 'alert_chart_billing_runtime', { configured: alertChartBilling.configured, stripe: Boolean(stripe), publicBase: POPOUT_BASE }); }
@@ -6144,7 +6217,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling, tradingRoom,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,

@@ -15,6 +15,10 @@
   const A = 'html body.sml-dc';
   css.textContent = [
     A + ' main .toolbar #company{display:none!important}',
+    /* the owner-only tools (EVOLVE, SQUEEZE, CHALLENGE, SIGNALS) live in the title bar, between the title and LESSONS, and never take a row of the toolbar or the rail */
+    '#sml-owner-tools{display:inline-flex;align-items:center;gap:4px;margin:0 2px;padding:0 8px;border-left:1px solid #284654;border-right:1px solid #284654}#sml-owner-tools.sml-empty{display:none}'
+      + '#sml-owner-tools>button{position:static!important;margin:0!important;padding:3px 8px!important;font-size:.62rem!important;line-height:1.2!important;height:auto!important;white-space:nowrap;transform:none!important}',
+    A + ' .academy-chart-tools button,' + A + ' #tool-rail .tg .row>button{padding-left:6px!important;padding-right:6px!important;font-size:.62rem!important}' + A + ' #tool-rail .tg>b{padding:3px 7px!important}' + A + ' .academy-chart-tools>label{font-size:0!important;gap:0!important}' + A + ' #academy-chart-type{max-width:98px}' + A + ' .academy-chart-tools .data-chip{padding:2px 7px!important;font-size:.6rem!important;margin-left:0!important}' + A + ' .academy-chart-tools .academy-chart-type-label,' + A + ' .academy-chart-tools>span{display:none!important}',
     A + ' .academy-chart-tools{flex-wrap:wrap!important;min-width:0}' + A + ' main .chart{min-width:0}' + A + ' .academy-chart-tools button,' + A + ' .academy-chart-tools select{white-space:nowrap;padding:3px 8px!important;font-size:.66rem!important;line-height:1.25}' + A + ' .academy-chart-tools{padding-top:3px!important;padding-bottom:3px!important;gap:4px!important}' + A + ' .academy-chart-tools>label>span,' + A + ' .academy-chart-tools .academy-chart-type-label{display:none}',
     /* the title bar stays one line: no wrapped title, no subtitle, tighter buttons (they wrapped it into a four-line block) */
     A + ' main .bar{flex-wrap:wrap;gap:4px 8px;padding-top:4px;padding-bottom:4px}' + A + ' main .bar>strong{white-space:nowrap;flex:none}' + A + ' main .bar>span{display:none!important}' + A + ' main .bar button,' + A + ' main .bar a{white-space:nowrap;flex:none;padding:4px 9px!important;font-size:.68rem!important;line-height:1.2}',
@@ -47,6 +51,23 @@
     }
     let lbl = document.querySelector('.toolbar .sml-dc-buylbl');
     if (buttons.length && !lbl) { lbl = document.createElement('span'); lbl.className = 'sml-dc-buylbl'; lbl.textContent = 'BUY'; buttons[0].parentElement.insertBefore(lbl, buttons[0]); }
+  }
+  /* two chart buttons get their short names (their tooltips keep the long ones): the tools row then fits one line */
+  function shortNames() {
+    for (const [id, short, full] of [['academy-select-range', 'Stats', 'Interval stats: drag across the chart to measure a range'], ['academy-pro-reset', 'Reset', 'Reset view: default zoom and automatic price scale']]) {
+      const b = document.getElementById(id); if (!b) continue;
+      if (b.textContent !== short && /^(Interval stats|Reset view)$/.test(b.textContent.trim())) { b.textContent = short; if (!b.title) b.title = full; }
+    }
+  }
+  const OWNER_TOOLS = ['evolve-btn', 'squeeze-btn', 'challenge-toggle', 'sml-sig-fab'];
+  function ownerTools(on) {
+    let box = document.getElementById('sml-owner-tools');
+    if (!on) { OWNER_TOOLS.forEach((id) => { const b = document.getElementById(id); if (b) { delete b.dataset.ownerSlot; restore(b); } }); if (box) box.remove(); return; }
+    const head = document.querySelector('body > main > .bar, main .bar'), title = head && head.querySelector(':scope > strong'); if (!head) return;
+    if (!box) { box = document.createElement('div'); box.id = 'sml-owner-tools'; box.className = 'sml-empty'; box.setAttribute('aria-label', 'Owner tools'); head.insertBefore(box, title ? title.nextSibling : head.firstChild); }
+    for (const id of OWNER_TOOLS) { const b = document.getElementById(id); if (b && b.parentElement !== box) { b.dataset.ownerSlot = '1'; relocate(b, box, null); } }
+    const any = [...box.children].some((b) => getComputedStyle(b).display !== 'none');
+    box.classList.toggle('sml-empty', !any);
   }
   /* where each piece lives while the desktop layout is on, and the way home for the phone layout */
   const homes = new Map();
@@ -82,9 +103,9 @@
     mo.observe(bar, { childList: true, characterData: true, subtree: true });
   }
   let timer = null;
-  function tick() { if (!document.body.classList.contains('sml-dc')) return; shorten(); moveTail(true); watch(); }
+  function tick() { if (!document.body.classList.contains('sml-dc')) return; shorten(); moveTail(true); ownerTools(true); shortNames(); watch(); }
   function enable() { document.body.classList.add('sml-dc'); tick(); if (!timer) timer = setInterval(tick, 1500); }
-  function disable() { document.body.classList.remove('sml-dc', 'sml-dc-narrow'); const l = document.querySelector('.sml-dc-buylbl'); if (l) l.remove(); moveTail(false); if (timer) { clearInterval(timer); timer = null; } }
+  function disable() { document.body.classList.remove('sml-dc', 'sml-dc-narrow'); const l = document.querySelector('.sml-dc-buylbl'); if (l) l.remove(); moveTail(false); ownerTools(false); if (timer) { clearInterval(timer); timer = null; } }
   window.addEventListener('resize', () => { if (document.body.classList.contains('sml-dc')) shorten(); });
   const sync = () => (MQ.matches ? disable() : enable());
   if (MQ.addEventListener) MQ.addEventListener('change', sync); else if (MQ.addListener) MQ.addListener(sync);

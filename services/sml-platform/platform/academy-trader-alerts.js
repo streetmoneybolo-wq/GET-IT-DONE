@@ -20,13 +20,20 @@ const r2 = (v) => Math.round(v * 100) / 100;
 const text = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b-\u001f]/g, '').trim().slice(0, max);
 const key = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24);
 
+/** A premium channel opens for an active grant; when the channel names tiers, the grant's tier must be one of them (a grant with no tier, from the owner or from before tiers existed, opens everything). */
+function tierAllows(channel, acc) {
+  if (!acc || !acc.ok) return false;
+  const tiers = channel && Array.isArray(channel.tiers) ? channel.tiers : [];
+  return !tiers.length || !acc.tier || acc.own === true || tiers.includes(acc.tier);
+}
+
 function defaultSettings() { return { channels: [{ key: 'main', name: 'Main', premium: false }], prices: { day: 0, week: 0, month: 0, year: 0, lifetime: 0 }, about: '', updatedAt: 0 }; }
 function cleanSettings(input, base = defaultSettings()) {
   const out = JSON.parse(JSON.stringify(base));
   if (input && typeof input === 'object') {
     if (Array.isArray(input.channels)) {
       const seen = new Set();
-      out.channels = input.channels.map((c) => ({ key: key(c && c.key) || key(c && c.name), name: text(c && c.name, 40), premium: Boolean(c && c.premium) })).filter((c) => c.key && c.name && !seen.has(c.key) && seen.add(c.key)).slice(0, MAX_CHANNELS);
+      out.channels = input.channels.map((c) => ({ key: key(c && c.key) || key(c && c.name), name: text(c && c.name, 40), premium: Boolean(c && c.premium), tiers: Array.isArray(c && c.tiers) ? c.tiers.map((t) => key(t)).filter(Boolean).slice(0, 4) : [] })).filter((c) => c.key && c.name && !seen.has(c.key) && seen.add(c.key)).slice(0, MAX_CHANNELS);
       if (!out.channels.length) out.channels = defaultSettings().channels;
     }
     if (input.prices && typeof input.prices === 'object') for (const p of Object.keys(PLANS)) if (input.prices[p] !== undefined) out.prices[p] = Math.max(0, Math.min(100_000_00, Math.round(num(input.prices[p], 0))));
@@ -87,6 +94,7 @@ function createTraderAlerts({ pool = null, candles = null, push = null, names = 
         await db.query('CREATE TABLE IF NOT EXISTS academy_alert_chart_settings (discord_id TEXT PRIMARY KEY, settings JSONB NOT NULL DEFAULT \'{}\', updated_at TIMESTAMPTZ NOT NULL DEFAULT now())');
         await db.query('CREATE TABLE IF NOT EXISTS academy_alert_follows (follower_id TEXT NOT NULL, trader_id TEXT NOT NULL, push BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (follower_id, trader_id))');
         await db.query('CREATE TABLE IF NOT EXISTS academy_alert_access (member_id TEXT NOT NULL, trader_id TEXT NOT NULL, plan TEXT NOT NULL, until TIMESTAMPTZ, source TEXT NOT NULL DEFAULT \'\', reference TEXT NOT NULL DEFAULT \'\', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (member_id, trader_id))');
+        await db.query('ALTER TABLE academy_alert_access ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT \'\'');
       } catch (error) { logger('warn', 'academy_trader_alerts_schema_failed', { error: String((error && error.message) || error) }); }
     })();
     return schemaReady;
@@ -154,24 +162,32 @@ function createTraderAlerts({ pool = null, candles = null, push = null, names = 
     if (!a) return { ok: false };
     if (a === b) return { ok: true, own: true, plan: 'owner', until: null };
     let row = null;
-    if (db) { await ensureSchema(); const r = await db.query('SELECT plan, until, source FROM academy_alert_access WHERE member_id = $1 AND trader_id = $2', [a, b]); row = r.rows[0] || null; }
+    if (db) { await ensureSchema(); const r = await db.query('SELECT plan, until, source, tier FROM academy_alert_access WHERE member_id = $1 AND trader_id = $2', [a, b]); row = r.rows[0] || null; }
     else row = mem.access.get(a + '>' + b) || null;
     if (!row) return { ok: false };
     const until = row.until ? new Date(row.until).getTime() : null;
-    if (until != null && until < now()) return { ok: false, expired: true, until: new Date(until).toISOString(), plan: String(row.plan) };
-    return { ok: true, plan: String(row.plan), until: until == null ? null : new Date(until).toISOString(), source: String(row.source || '') };
+    if (until != null && until < now()) return { ok: false, expired: true, until: new Date(until).toISOString(), plan: String(row.plan), tier: String(row.tier || '') };
+    return { ok: true, plan: String(row.plan), until: until == null ? null : new Date(until).toISOString(), source: String(row.source || ''), tier: String(row.tier || '') };
   }
   /* recorded when stockmarketloop.com confirms a payment (or the owner grants it); a renewal extends from the later of now and the current end */
-  async function grantAccess(memberId, traderId, { plan = 'month', source = '', reference = '' } = {}) {
+  async function grantAccess(memberId, traderId, { plan = 'month', source = '', reference = '', tier = '' } = {}) {
     const a = String(memberId), b = String(traderId);
     if (!SNOWFLAKE.test(a) || !SNOWFLAKE.test(b) || !(plan in PLANS)) return { ok: false, error: 'invalid_grant' };
     const days = PLANS[plan];
     const current = await access(a, b);
     const base = current.ok && current.until ? Math.max(now(), Date.parse(current.until)) : now();
     const until = days == null || (current.ok && current.until == null && !current.own) ? null : new Date(base + days * 86_400_000);
-    if (db) { await ensureSchema(); await db.query('INSERT INTO academy_alert_access (member_id, trader_id, plan, until, source, reference) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (member_id, trader_id) DO UPDATE SET plan = EXCLUDED.plan, until = EXCLUDED.until, source = EXCLUDED.source, reference = EXCLUDED.reference, created_at = now()', [a, b, plan, until, text(source, 40), text(reference, 120)]); }
-    else mem.access.set(a + '>' + b, { plan, until: until ? until.toISOString() : null, source: text(source, 40) });
+    if (db) { await ensureSchema(); await db.query('INSERT INTO academy_alert_access (member_id, trader_id, plan, until, source, reference, tier) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (member_id, trader_id) DO UPDATE SET plan = EXCLUDED.plan, until = EXCLUDED.until, source = EXCLUDED.source, reference = EXCLUDED.reference, tier = EXCLUDED.tier, created_at = now()', [a, b, plan, until, text(source, 40), text(reference, 120), key(tier)]); }
+    else mem.access.set(a + '>' + b, { plan, until: until ? until.toISOString() : null, source: text(source, 40), tier: key(tier) });
     return { ok: true, plan, until: until ? until.toISOString() : null };
+  }
+  /* who holds an active paid grant on this trader's room, newest first (the owner's member list) */
+  async function paidMembers(traderId, { limit = 200 } = {}) {
+    const b = String(traderId), lim = Math.max(1, Math.min(500, Number(limit) || 200));
+    let rows = [];
+    if (db) { await ensureSchema(); const r = await db.query('SELECT member_id, plan, until, source, tier, created_at FROM academy_alert_access WHERE trader_id = $1 AND (until IS NULL OR until > now()) ORDER BY created_at DESC LIMIT $2', [b, lim]); rows = r.rows.map((x) => ({ memberId: String(x.member_id), plan: String(x.plan), until: x.until ? new Date(x.until).toISOString() : null, source: String(x.source || ''), tier: String(x.tier || '') })); }
+    else for (const [k, v] of mem.access.entries()) { const [m, t] = k.split('>'); if (t === b && (!v.until || Date.parse(v.until) > now())) rows.push({ memberId: m, plan: v.plan, until: v.until, source: v.source || '', tier: v.tier || '' }); }
+    return rows.slice(0, lim);
   }
   async function revokeAccess(memberId, traderId) {
     const a = String(memberId), b = String(traderId);
@@ -267,7 +283,7 @@ function createTraderAlerts({ pool = null, candles = null, push = null, names = 
   async function decorate(alert, { viewerId = '', settings = null, thread = null, name = '' } = {}) {
     const s = settings || await settingsOf(alert.authorId);
     const channel = s.channels.find((c) => c.key === alert.channel) || { key: alert.channel, name: alert.channel, premium: false };
-    const locked = channel.premium && !(await access(viewerId, alert.authorId)).ok;
+    const locked = channel.premium && !tierAllows(channel, await access(viewerId, alert.authorId));
     const m = await metrics(alert);
     const base = { id: alert.id, authorId: alert.authorId, authorName: name || '', channel: channel.key, channelName: channel.name, premium: Boolean(channel.premium), locked, side: alert.side, status: alert.status, createdAt: alert.createdAt, closedAt: alert.closedAt,
       metrics: m ? { currentPct: m.currentPct, peakPct: m.peakPct, timeToPeakMs: m.timeToPeakMs, ageMs: m.ageMs, targetsHit: m.targets.filter((t) => t.hit).length, targetsTotal: m.targets.length, asOf: m.asOf } : null };
@@ -324,7 +340,7 @@ function createTraderAlerts({ pool = null, candles = null, push = null, names = 
     const followers = await followersOf(alert.authorId, { pushOnly: true });
     if (!followers.length) return;
     const allowed = new Set();
-    for (const f of followers) if (!channel.premium || (await access(f.id, alert.authorId)).ok) allowed.add(f.id);
+    for (const f of followers) if (!channel.premium || tierAllows(channel, await access(f.id, alert.authorId))) allowed.add(f.id);
     if (!allowed.size) return;
     const name = (await nameOf(alert.authorId)) || 'A trader you follow';
     const title = upd ? `${name}: ${upd.kind === 'pt_hit' ? 'target smashed' : upd.kind === 'close' ? 'closed' : upd.kind === 'sell' ? 'sell update' : 'update'} on $${alert.symbol}` : `${name}: new ${alert.side} alert on $${alert.symbol}`;
@@ -333,7 +349,7 @@ function createTraderAlerts({ pool = null, candles = null, push = null, names = 
     catch (error) { logger('warn', 'academy_trader_alert_push_failed', { error: String((error && error.message) || error) }); }
   }
 
-  return { ensureSchema, settingsOf, saveSettings, post, update, get, list, feed, stats, metrics, follow, followState, followersOf, followingOf, followerCount, access, grantAccess, revokeAccess, PLANS, INACTIVE_DAYS };
+  return { ensureSchema, settingsOf, saveSettings, post, update, get, list, feed, stats, metrics, follow, followState, followersOf, followingOf, followerCount, access, grantAccess, revokeAccess, paidMembers, PLANS, INACTIVE_DAYS };
 }
 
-module.exports = { createTraderAlerts, measure, cleanSettings, PLANS, KINDS, INACTIVE_DAYS };
+module.exports = { createTraderAlerts, tierAllows, measure, cleanSettings, PLANS, KINDS, INACTIVE_DAYS };

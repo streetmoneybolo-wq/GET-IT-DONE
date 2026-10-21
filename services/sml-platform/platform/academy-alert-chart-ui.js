@@ -82,7 +82,7 @@
       + '<label>ENTRY<input name="entry" type="number" step="0.0001" min="0" value="' + esc(pre && pre.entry || '') + '"></label>'
       + '<label>TARGETS (comma)<input name="targets" placeholder="110, 115, 120"></label>'
       + '<label>STOP (optional)<input name="stop" type="number" step="0.0001" min="0"></label>'
-      + '<label>CHANNEL<select name="channel">' + chans + '</select></label>'
+      + '<label>CHANNEL<select name="channel">' + chans.replace('value="' + esc(pre && pre.channel || '') + '"', 'value="' + esc(pre && pre.channel || '') + '" selected') + '</select></label>'
       + '<label class="full">NOTE<textarea name="note" maxlength="1200" placeholder="Why this alert: the setup, the plan, the risk…"></textarea></label>'
       + '<div class="btns"><button type="button" class="ac-b acc" data-ac="send-post">Post alert</button><button type="button" class="ac-b" data-ac="cancel-post">Cancel</button><span class="msg"></span></div></form>';
   }
@@ -116,6 +116,12 @@
   const openOut = (url) => { if (!url) return; if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url); else { try { window.open(url, '_blank', 'noopener'); } catch (_) { /* ignore */ } } };
 
   function chartHtml(d, host) {
+    const o = (mounts.get(host) || {}).opts || {};
+    if (o.channel) { // one room channel: just its alerts (a trading room channel of type alerts), plus the owner's post button
+      const list = d.alerts.filter((a) => a.channel === o.channel);
+      return (d.viewer.own ? '<div class="ac-top"><span class="sp"></span><button type="button" class="ac-b acc" data-ac="new">+ Post alert</button></div>' : '') + '<div class="ac-slot"></div>'
+        + (list.length ? list.map((a) => rowHtml(a, { own: d.viewer.own })).join('') : '<div class="ac-empty">' + (d.viewer.own ? 'No alerts in this channel yet. Post your first one: ticker, entry, targets, stop and why.' : 'No alerts in this channel yet.') + '</div>');
+    }
     const t = d.trader, v = d.viewer, s = t.settings || {};
     const prices = PLANS.filter(([k]) => s.prices && s.prices[k] > 0);
     let h = '<div class="ac-top"><h6 style="margin:0">ALERT CHART</h6>'
@@ -165,7 +171,7 @@
       if (act === 'nav') { nav(b.dataset.sym); return; }
       if (act === 'profile') { openProfile(b.dataset.user); return; }
       if (act === 'mine') { openProfile(''); return; }
-      if (act === 'new') { const s = st.settings || (await api('/settings')).settings; st.settings = s; slot.innerHTML = postForm(s, st.opts.feed ? { symbol: chartSymbol(), entry: chartPrice() } : {}); slot.querySelector('input[name=symbol]').focus(); return; }
+      if (act === 'new') { const s = st.settings || (await api('/settings')).settings; st.settings = s; slot.innerHTML = postForm(s, st.opts.feed ? { symbol: chartSymbol(), entry: chartPrice() } : { channel: st.opts.channel || '' }); slot.querySelector('input[name=symbol]').focus(); return; }
       if (act === 'cancel-post' || act === 'cancel-set') { slot.innerHTML = ''; return; }
       if (act === 'settings') { const [sr, seller] = await Promise.all([api('/settings'), api('/seller')]); const s = sr.settings || st.settings; st.settings = s; st.seller = seller; slot.innerHTML = settingsForm(s, seller); return; }
       if (act === 'site-link') { openOut(b.dataset.url); toast('Link your Discord on stockmarketloop.com, then open Channels & prices again.'); return; }

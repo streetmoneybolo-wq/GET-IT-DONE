@@ -117,7 +117,7 @@ test('a dispute on an Alert Chart sale: the trader\'s seller account, a 15% fee 
 });
 
 /* ---------- the service side ---------- */
-function world({ linked = true, ready = true, consented = true } = {}) {
+function world({ linked = true, ready = true, consented = true, rooms = null } = {}) {
   const rows = { sellers: consented ? [{ trader_discord_id: ACE, terms_accepted_at: new Date(T0) }] : [], subs: [] };
   const pool = { calls: [], async query(sql, values) {
     const text = String(sql).replace(/\s+/g, ' ').trim(); this.calls.push({ text, values });
@@ -136,7 +136,7 @@ function world({ linked = true, ready = true, consented = true } = {}) {
     createSellerOnboarding: async (p, s, input) => { billingService.onboarded = input; return { sellerId: 4, onboardingUrl: 'https://connect.stripe.com/setup/e/acct_4/x' }; }
   };
   const traderAlerts = { settingsOf: async (id) => (id === ACE ? { premium: true, prices: { day: 0, week: 0, month: 1999, year: 0, lifetime: 9900 } } : { premium: false, prices: {} }) };
-  const billing = AC.createAlertChartBilling({ pool, stripe, billingService, traderAlerts, names: async (id) => (id === ACE ? 'Ace' : ''), publicBase: 'https://sml-platform-api.onrender.com', logger: () => {}, now: () => T0,
+  const billing = AC.createAlertChartBilling({ pool, stripe, billingService, traderAlerts, rooms, names: async (id) => (id === ACE ? 'Ace' : ''), publicBase: 'https://sml-platform-api.onrender.com', logger: () => {}, now: () => T0,
     loopKickConnect: { connectUrl: ({ discordUserId }) => ({ ok: true, url: 'https://stockmarketloop.com/connect-discord/?lk=' + discordUserId }) } });
   return { pool, stripe, billingService, billing, rows };
 }
@@ -191,4 +191,19 @@ test('without Stripe or a database the service reports itself unconfigured', asy
   assert.equal((await b.checkout({ memberId: ME, traderId: ACE, plan: 'month' })).error, 'checkout_unavailable');
   assert.equal((await b.onboardSeller(ACE, { terms: true, fee: true, disputes: true, activity: true })).error, 'billing_unconfigured');
   const s = await b.sellerStatus(ACE); assert.equal(s.ok, true); assert.equal(s.configured, false); assert.equal(s.ready, false);
+});
+
+test('trading room tiers: the room sets the price, the tier is recorded on the sale and carried onto the access grant', async () => {
+  const rooms = { offerFor: async (trader, tier, plan) => (trader === ACE && tier === 'vip' && plan === 'month' ? { ok: true, priceCents: 7900 } : { ok: false, error: tier === 'vip' ? 'plan_not_offered' : 'no_tier' }) };
+  const w = world({ rooms });
+  const r = await w.billing.checkout({ memberId: ME, traderId: ACE, plan: 'month', tier: 'vip' });
+  assert.equal(r.ok, true); assert.equal(r.priceCents, 7900, 'the tier price, not the chart\u2019s own price list'); assert.equal(r.tier, 'vip');
+  assert.equal(w.stripe.created[0].params.line_items[0].price_data.unit_amount, 7900);
+  const row = w.rows.subs[0]; assert.equal(row[8], 7900); assert.equal(row[10], 'vip', 'the tier is stored with the sale');
+  assert.equal((await w.billing.checkout({ memberId: ME, traderId: ACE, plan: 'week', tier: 'vip' })).error, 'plan_not_offered');
+  assert.equal((await w.billing.checkout({ memberId: ME, traderId: ACE, plan: 'month', tier: 'ghost' })).error, 'not_premium');
+  const db = fakeClient((text) => text.startsWith('SELECT * FROM alert_chart_subscriptions WHERE checkout_key') ? { rows: [{ ...SUB, plan: 'month', tier: 'vip', price_cents: 7900 }] } : null);
+  const event = { type: 'checkout.session.completed', created: Math.floor(T0 / 1000), data: { object: { id: 'cs_1', payment_status: 'paid', currency: 'usd', amount_subtotal: 7900, amount_total: 7900, subscription: 'sub_1', customer: 'cus_1', metadata: { sml_kind: 'alert_chart', alert_chart_key: SUB.checkout_key } } } };
+  assert.equal(await M.applyMarketplaceEvent(db, event), 'processed');
+  const grant = db.calls.find((c) => c.text.startsWith('INSERT INTO academy_alert_access')); assert.equal(grant.values[5], 'vip');
 });

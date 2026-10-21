@@ -50,6 +50,9 @@ const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS alert_chart_charges_charge_idx ON alert_chart_charges (stripe_charge_id)',
   /* the access table the Academy reads (same definition as academy-trader-alerts.js, so either side may create it first) */
   'CREATE TABLE IF NOT EXISTS academy_alert_access (member_id TEXT NOT NULL, trader_id TEXT NOT NULL, plan TEXT NOT NULL, until TIMESTAMPTZ, source TEXT NOT NULL DEFAULT \'\', reference TEXT NOT NULL DEFAULT \'\', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (member_id, trader_id))',
+  /* the room tier a sale was for (academy-trading-room.js); empty for a plain Alert Chart sale */
+  'ALTER TABLE alert_chart_subscriptions ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT \'\'',
+  'ALTER TABLE academy_alert_access ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT \'\'',
   /* which product a marketplace dispute is about, and the facts the case is decided on (creator inactivity) */
   'ALTER TABLE marketplace_disputes ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT \'membership\'',
   'ALTER TABLE marketplace_disputes ADD COLUMN IF NOT EXISTS context JSONB NOT NULL DEFAULT \'{}\''
@@ -67,12 +70,12 @@ async function probe(client, fn) {
 
 /* ---------- the webhook side: runs inside the marketplace event transaction with a pg client ---------- */
 
-async function grantAccess(client, { memberId, traderId, plan, until, reference }) {
+async function grantAccess(client, { memberId, traderId, plan, until, reference, tier = '' }) {
   await client.query(
-    `INSERT INTO academy_alert_access (member_id, trader_id, plan, until, source, reference)
-     VALUES ($1,$2,$3,$4,'stockmarketloop',$5)
-     ON CONFLICT (member_id, trader_id) DO UPDATE SET plan = EXCLUDED.plan, until = EXCLUDED.until, source = EXCLUDED.source, reference = EXCLUDED.reference, created_at = now()`,
-    [memberId, traderId, plan, until, reference]
+    `INSERT INTO academy_alert_access (member_id, trader_id, plan, until, source, reference, tier)
+     VALUES ($1,$2,$3,$4,'stockmarketloop',$5,$6)
+     ON CONFLICT (member_id, trader_id) DO UPDATE SET plan = EXCLUDED.plan, until = EXCLUDED.until, source = EXCLUDED.source, reference = EXCLUDED.reference, tier = EXCLUDED.tier, created_at = now()`,
+    [memberId, traderId, plan, until, reference, String(tier || '')]
   );
 }
 async function endAccess(client, { memberId, traderId, reference, atSeconds }) {
@@ -122,7 +125,7 @@ async function settleCheckout(client, event, session, now) {
     [row.id, session.id || null, idOf(session.subscription) || null, idOf(session.customer) || null, idOf(session.payment_intent) || null, paidSec, until]
   );
   await recordCharge(client, { paymentIntentId: idOf(session.payment_intent), chargeId: null, subscriptionId: row.id, amountCents: session.amount_total != null ? session.amount_total : row.price_cents, currency: session.currency || row.currency });
-  await grantAccess(client, { memberId: row.subscriber_discord_id, traderId: row.trader_discord_id, plan: row.plan, until, reference: key });
+  await grantAccess(client, { memberId: row.subscriber_discord_id, traderId: row.trader_discord_id, plan: row.plan, until, reference: key, tier: row.tier });
   return 'processed';
 }
 
@@ -147,7 +150,7 @@ async function settleInvoice(client, event, invoice, now) {
     [row.id, subId || null, idOf(invoice.customer) || null, secondsOf(event, now), until]
   );
   await recordCharge(client, { paymentIntentId: idOf(invoice.payment_intent), chargeId: idOf(invoice.charge) || null, subscriptionId: row.id, amountCents: invoice.amount_paid != null ? invoice.amount_paid : row.price_cents, currency: invoice.currency || row.currency });
-  await grantAccess(client, { memberId: row.subscriber_discord_id, traderId: row.trader_discord_id, plan: row.plan, until, reference: row.checkout_key });
+  await grantAccess(client, { memberId: row.subscriber_discord_id, traderId: row.trader_discord_id, plan: row.plan, until, reference: row.checkout_key, tier: row.tier });
   return 'processed';
 }
 
@@ -226,7 +229,7 @@ async function pauseAlertChartAccess(client, context, { restore = false, now = D
   const s = context && context.subscription; if (!s) return;
   if (restore) {
     await client.query(`UPDATE alert_chart_subscriptions SET status = CASE WHEN canceled_at IS NULL THEN 'active' ELSE 'canceled' END, updated_at = now() WHERE id = $1`, [s.id]);
-    if (s.canceled_at == null) await grantAccess(client, { memberId: s.subscriber_discord_id, traderId: s.trader_discord_id, plan: s.plan, until: s.access_until || null, reference: s.checkout_key });
+    if (s.canceled_at == null) await grantAccess(client, { memberId: s.subscriber_discord_id, traderId: s.trader_discord_id, plan: s.plan, until: s.access_until || null, reference: s.checkout_key, tier: s.tier });
     return;
   }
   await client.query(`UPDATE alert_chart_subscriptions SET status = 'disputed', updated_at = now() WHERE id = $1`, [s.id]);
@@ -236,7 +239,7 @@ async function pauseAlertChartAccess(client, context, { restore = false, now = D
 /* ---------- the service side: seller status, Stripe onboarding and checkout, for the Academy routes ---------- */
 
 function createAlertChartBilling({ pool = null, stripe = null, billingService = null, loopKickBridge = null, loopKickConnect = null, traderAlerts = null,
-  names = null, publicBase = '', logger = () => {}, now = Date.now } = {}) {
+  names = null, rooms = null, publicBase = '', logger = () => {}, now = Date.now } = {}) {
   const db = pool && typeof pool.query === 'function' ? pool : null;
   const base = String(publicBase || '').replace(/\/+$/, '');
   const baseHost = (() => { try { return new URL(base).hostname; } catch (_) { return ''; } })();
@@ -325,16 +328,20 @@ function createAlertChartBilling({ pool = null, stripe = null, billingService = 
   }
 
   /* a subscriber's Stripe Checkout for one plan of one trader's chart; the price is the trader's stored setting */
-  async function checkout({ memberId, traderId, plan } = {}) {
+  async function checkout({ memberId, traderId, plan, tier = '' } = {}) {
     const me = String(memberId || ''), trader = String(traderId || ''), p = String(plan || '');
     if (!SNOWFLAKE.test(me) || !SNOWFLAKE.test(trader)) return { ok: false, error: 'invalid_user' };
     if (me === trader) return { ok: false, error: 'own_chart' };
     if (!ALERT_CHART_PLANS[p]) return { ok: false, error: 'invalid_plan' };
     if (!configured) return { ok: false, error: 'checkout_unavailable' };
     await ensureSchema();
+    /* a trading room sells by tier (its own prices); a plain Alert Chart sells from the chart's price list */
+    const tierId = String(tier || '').slice(0, 24);
+    const offer = tierId && rooms && typeof rooms.offerFor === 'function' ? await rooms.offerFor(trader, tierId, p) : null;
     const settings = traderAlerts && typeof traderAlerts.settingsOf === 'function' ? await traderAlerts.settingsOf(trader) : null;
-    if (!settings || !settings.premium) return { ok: false, error: 'not_premium' };
-    const priceCents = Number(settings.prices && settings.prices[p]) || 0;
+    if (tierId) { if (!offer || !offer.ok) return { ok: false, error: offer && offer.error === 'plan_not_offered' ? 'plan_not_offered' : 'not_premium' }; }
+    else if (!settings || !settings.premium) return { ok: false, error: 'not_premium' };
+    const priceCents = tierId ? Number(offer.priceCents) || 0 : Number(settings.prices && settings.prices[p]) || 0;
     if (priceCents < 100) return { ok: false, error: 'plan_not_offered' };
     const wpTrader = await wpUserOf(trader);
     if (!wpTrader) return { ok: false, error: 'seller_not_ready' };
@@ -348,9 +355,9 @@ function createAlertChartBilling({ pool = null, stripe = null, billingService = 
     let inserted;
     try {
       inserted = await db.query(
-        `INSERT INTO alert_chart_subscriptions (checkout_key, subscriber_discord_id, subscriber_wp_user_id, trader_discord_id, trader_wp_user_id, seller_id, connected_account_id, plan, price_cents, currency, platform_fee_bps)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'usd',$10) RETURNING id`,
-        [key, me, wpMember || null, trader, wpTrader, seller.id, seller.connected_account_id, p, priceCents, ALERT_CHART_FEE_BPS]
+        `INSERT INTO alert_chart_subscriptions (checkout_key, subscriber_discord_id, subscriber_wp_user_id, trader_discord_id, trader_wp_user_id, seller_id, connected_account_id, plan, price_cents, currency, platform_fee_bps, tier)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'usd',$10,$11) RETURNING id`,
+        [key, me, wpMember || null, trader, wpTrader, seller.id, seller.connected_account_id, p, priceCents, ALERT_CHART_FEE_BPS, tierId]
       );
     } catch (error) { logger('warn', 'alert_chart_checkout_insert_failed', { error: String((error && error.message) || error) }); return { ok: false, error: 'checkout_unavailable' }; }
     let session;
@@ -369,7 +376,7 @@ function createAlertChartBilling({ pool = null, stripe = null, billingService = 
     }
     try { await db.query('UPDATE alert_chart_subscriptions SET stripe_checkout_session_id = $2, updated_at = now() WHERE id = $1', [inserted.rows[0].id, session.id]); } catch (_) { /* the webhook binds it too */ }
     logger('info', 'alert_chart_checkout_opened', { member: me, trader, plan: p, priceCents });
-    return { ok: true, url: session.url, checkoutKey: key, plan: p, priceCents, feeBps: ALERT_CHART_FEE_BPS };
+    return { ok: true, url: session.url, checkoutKey: key, plan: p, tier: tierId, priceCents, feeBps: ALERT_CHART_FEE_BPS };
   }
 
   /* what the success page shows: whether the webhook has landed yet */

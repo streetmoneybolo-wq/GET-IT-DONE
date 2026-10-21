@@ -146,7 +146,7 @@
     if (!rail) return;
     for (const g of GROUPS) {
       const row = rail.querySelector('.tg[data-group="' + g.key + '"] .row');
-      const want = g.ids.map((id) => document.getElementById(id)).filter(Boolean);
+      const want = g.ids.map((id) => document.getElementById(id)).filter((b) => b && !b.dataset.ownerSlot);
       /* the designed order, whatever order the tools booted in; re-appending only when something is out of place */
       const have = [...row.children];
       if (want.length !== have.length || want.some((b, i) => have[i] !== b)) for (const b of want) row.appendChild(b);
