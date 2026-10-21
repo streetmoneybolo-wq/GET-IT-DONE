@@ -1,0 +1,20 @@
+{
+  "name": "stockmarketloop-desktop",
+  "productName": "StockMarketLoop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StockMarketLoop desktop app (Electron) around https://sml-platform-api.onrender.com/app/",
+  "author": "StockMarketLoop",
+  "main": "main.js",
+  "scripts": { "start": "electron .", "dist": "electron-builder --publish never" },
+  "devDependencies": { "electron": "^31.0.0", "electron-builder": "^24.13.3" },
+  "build": {
+    "appId": "com.stockmarketloop.desktop",
+    "productName": "StockMarketLoop",
+    "artifactName": "StockMarketLoop-${os}.${ext}",
+    "files": ["main.js", "package.json", "icon.png"],
+    "win": { "target": "nsis", "icon": "icon.png" },
+    "mac": { "target": "dmg", "category": "public.app-category.finance", "icon": "icon.png" },
+    "linux": { "target": "AppImage", "category": "Finance", "icon": "icon.png" }
+  }
+}
