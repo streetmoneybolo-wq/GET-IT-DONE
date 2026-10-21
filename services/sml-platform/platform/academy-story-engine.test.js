@@ -63,3 +63,22 @@ test('RSS items are counted inside the window', () => {
   assert.equal(E.parseRssCount(xml, Date.UTC(2026, 9, 14)), 2);
   assert.equal(E.slugify('$ABCD Gamma Squeeze Watch: Dealers Are Short Gamma!'), 'abcd-gamma-squeeze-watch-dealers-are-short-gamma');
 });
+
+test('the narrative angle: a quiet name still gets a story with a measured scenario, and only a piece asked for by name forces it', () => {
+  const E2 = require('./academy-story-engine');
+  const bars = []; let px0 = 20; for (let i = 0; i < 80; i++) { const o = px0, c = px0 * (1 + Math.sin(i / 5) * 0.004); bars.push({ t: Date.UTC(2026, 6, 1) + i * 86_400_000, o, h: Math.max(o, c) * 1.004, l: Math.min(o, c) * 0.996, c, v: 900_000 }); px0 = c; }
+  const quiet = { symbol: 'QUIE', name: 'Quiet Corp', price: bars[bars.length - 1].c, changePct: 0.2, relVol: 0.9, adv: 900_000, daily: bars };
+  assert.equal(E2.rankStories([quiet]).length, 0, 'unforced, a quiet name is skipped (the scheduled run stays selective)');
+  const out = E2.rankStories([quiet], { force: true });
+  assert.equal(out.length, 1); const st = out[0];
+  assert.equal(st.angle, 'narrative'); assert.equal(st.variant, 'buildup');
+  assert.ok(st.pt !== quiet.price && st.stop !== quiet.price && Math.sign(st.pt - quiet.price) === -Math.sign(st.stop - quiet.price));
+  assert.ok(st.facts.length >= 3 && st.facts.every((f) => typeof f === 'string' && f.length > 20));
+  assert.ok(st.scenario.trigger && st.scenario.confirm && st.scenario.target && st.scenario.invalidation && st.path.length === 2);
+  const hl = E2.headlineFor(st, quiet); assert.ok(hl.title.includes('$QUIE') && hl.title.length <= 95 && hl.meta.length <= 155);
+  const small = E2.rankStories([{ ...quiet, price: 0.8, adv: 1000 }], { force: true });
+  assert.equal(small.length, 1, 'price and volume floors do not stop a piece asked for by name');
+  assert.equal(E2.rankStories([{ symbol: 'NEW', price: 5, daily: bars.slice(0, 5) }], { force: true }).length, 0, 'but with no price history there is nothing to read');
+  const spec = E2.narrativeAngle({ ...quiet, relVol: 2.4, changePct: 5 }); assert.equal(spec.variant, 'speculation');
+  assert.equal(E2.narrativeAngle(quiet, { headline: 'Company X in talks' }).variant, 'rumor');
+});

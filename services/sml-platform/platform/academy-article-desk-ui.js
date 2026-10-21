@@ -84,7 +84,7 @@
     var r = await api('/write', { symbol: subject, file: !!file, publish: false });
     S.busy = false; el.write.disabled = false; el.file.disabled = false;
     if (!r.ok) {
-      var why = r.error === 'no_data' ? 'no price history for that name' : r.error === 'no_angle' ? 'no setup strong enough to write about right now (the desk would rather publish nothing)' : r.error === 'invalid_symbol' ? 'that is not a ticker or a topic the desk knows' : r.error === 'owner_only' ? 'owner account only' : r.error === 'story_desk_off' ? 'the Article Desk is switched off on the server' : (r.error || 'failed');
+      var why = r.error === 'no_data' ? 'no price history for that name' : r.error === 'no_angle' ? 'too little price history to build a read from' : r.error === 'invalid_symbol' ? 'that is not a ticker or a topic the desk knows' : r.error === 'owner_only' ? 'owner account only' : r.error === 'story_desk_off' ? 'the Article Desk is switched off on the server' : (r.error || 'failed');
       status('Could not write ' + subject.toUpperCase() + ': ' + why + '.');
       return;
     }

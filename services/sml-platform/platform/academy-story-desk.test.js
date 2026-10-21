@@ -98,7 +98,12 @@ test('write(subject, { file: false }) composes the package without touching the 
   assert.equal(r.article.url, ''); assert.ok(!/rel="canonical"/.test(r.article.head), 'no canonical before the piece has a URL');
   assert.ok(!Object.keys(h.saved() || {}).length || !(h.saved().written || {})['ABCD:' + r.story.angle], 'an unfiled piece is not marked written');
   const bad = await h.desk.write('???', { file: false }); assert.equal(bad.error, 'invalid_symbol');
-  const topic = await h.desk.write('quiet', { file: false }); assert.equal(topic.error, 'no_angle');
+  /* a quiet name is not refused: with no loud setup the desk writes the narrative (build-up, move or rumor) */
+  const quiet = await h.desk.write('quiet', { file: false });
+  assert.equal(quiet.ok, true); assert.equal(quiet.story.angle, 'narrative'); assert.ok(quiet.draft.title.includes('$QUIET') && quiet.draft.title.length <= 95, quiet.draft.title);
+  assert.ok(quiet.draft.sections.length >= 4 && quiet.article.html.length > 2000);
+  assert.match(quiet.article.html, /speculat/i, 'the speculative part is labelled');
+  assert.match(quiet.article.head, /NewsArticle/);
 });
 
 test('the polisher refuses output that invents a number or breaks the structure', async () => {
