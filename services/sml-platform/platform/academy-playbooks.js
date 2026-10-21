@@ -49,13 +49,23 @@
   });
   add('indicators', {
     intro: { s: '.academy-intelligence', pre: show('.academy-intelligence') },
+    active: { s: '.academy-active-indicators, .academy-intelligence', pre: show('.academy-intelligence') },
     search: { s: '#academy-indicator-search' },
-    live: { s: '#academy-indicator-category, .academy-intelligence' },
+    category: { s: '#academy-indicator-category' },
+    browse: { s: '#academy-indicator-toggle' },
+    chips: { s: '.academy-indicator-catalog.open, .academy-indicator-catalog, .academy-intelligence', pre: ensure('.academy-indicator-catalog.open', '#academy-indicator-toggle') },
+    interval: { s: '.intervals' },
     combo: { s: '.academy-intelligence' },
-    screener: { s: '#academy-screener, #academy-screener-toggle', pre: both(ensure('#academy-screener', '#academy-screener-toggle'), show('#academy-screener')) },
+    reading: { s: '.academy-intelligence' },
+    screener: { s: '#academy-screener-toggle, #academy-screener', pre: both(ensure('#academy-screener', '#academy-screener-toggle'), show('#academy-screener')) },
+    byind: { s: '#academy-screener', pre: both(ensure('#academy-screener', '#academy-screener-toggle'), () => { const t = $('#academy-screener [data-view="indicator"]'); if (t) t.click(); }) },
+    byhorizon: { s: '#academy-screener', pre: both(ensure('#academy-screener', '#academy-screener-toggle'), () => { const t = $('#academy-screener [data-view="horizon"]'); if (t) t.click(); }) },
     rows: { s: '#academy-screener' },
     suggest: { s: '#academy-screener-suggest, #academy-screener' },
-    targets: { s: '#targets-toggle' }
+    shares: { s: '#academy-screener-suggest, #academy-screener' },
+    targets: { s: '#targets-toggle' },
+    limits: { s: '.academy-intelligence' },
+    routine: { s: '.academy-intelligence' }
   });
   add('fda', {
     intro: { s: '#catalysts-toggle' },
