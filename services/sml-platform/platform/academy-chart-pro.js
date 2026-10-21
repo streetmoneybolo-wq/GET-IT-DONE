@@ -30,7 +30,13 @@
   const levelPrices = (sym) => { const out = []; for (const fn of LEVELS.values()) { try { const r = fn(sym); if (Array.isArray(r)) for (const x of r) out.push(+(x && typeof x === 'object' ? x.price : x)); } catch (_) { /* a broken layer never breaks the chart */ } } return out; };
   /* Drawing resolution for every chart layer. A phone screen packs 3 device pixels into each CSS pixel; four stacked full-size layers at that density is what makes dragging heavy,
      so cap it (1.5x on phones, 2x elsewhere). Coordinates stay in CSS pixels, so nothing moves; text and thin lines are only slightly softer. */
-  window.smlChartDpr = () => Math.min(window.devicePixelRatio || 1, stage.clientWidth && stage.clientWidth < 560 ? 1.5 : 2);
+  /* sharpness: every chart layer draws at the screen's real pixel density (a 2x laptop, a 3x phone), up to 3; it was 2 on desktop and 1.5 on a phone,
+     which left a phone chart at half its screen resolution */
+  /* a device that cannot keep up at full density (the measured drag frames below) steps down one notch and remembers it */
+  let dprCap = 3; try { const v = Number(localStorage.getItem('sml-chart-dpr-cap')); if (v >= 1.5 && v <= 3) dprCap = v; } catch (_) { /* storage can be blocked */ }
+  window.smlChartDpr = () => Math.min(window.devicePixelRatio || 1, dprCap);
+  /* moving the window to another screen, or zooming the page, changes the density: redraw at the new one */
+  (function watchDpr() { try { const mq = window.matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)'); const on = () => { setTimeout(() => { window.dispatchEvent(new Event('resize')); watchDpr(); }, 50); }; if (mq.addEventListener) mq.addEventListener('change', on, { once: true }); } catch (_) { /* older browsers: the next resize catches it */ } })();
   const fin = Number.isFinite;
   let qsCache = '', qsParsed = new URLSearchParams('');
   const q = () => { if (location.search !== qsCache) { qsCache = location.search; qsParsed = new URLSearchParams(qsCache); } return qsParsed; }; // parsed once per URL change, not on every call
@@ -179,6 +185,7 @@
     const f = PERF.frames; if (f.length < 15) return;
     const m = model(), by = {}; for (const k of Object.keys(PERF.byName)) by[k] = r1(mean(PERF.byName[k]));
     perfChip(r1(1000 / mean(f)), r1(pctl(f, 0.95)), r1(Math.max(...f)), by, r1(mean(PERF.layers.layers)));
+    { const cur = window.smlChartDpr(); if (cur > 2 && (pctl(f, 0.95) > 55 || 1000 / mean(f) < 22)) { dprCap = 2; try { localStorage.setItem('sml-chart-dpr-cap', '2'); } catch (_) { /* ignore */ } setTimeout(() => window.dispatchEvent(new Event('resize')), 0); } }
     if (PERF.sent >= 3 || performance.now() - PERF.lastSent < 30000) return;
     PERF.sent++; PERF.lastSent = performance.now();
     const body = { kind: 'perf', fps: r1(1000 / mean(f)), p95: r1(pctl(f, 0.95)), worst: r1(Math.max(...f)), n: f.length, layers: r1(mean(PERF.layers.layers)), pro: r1(mean(PERF.layers.pro)), by, dpr: window.devicePixelRatio || 1, cap: window.smlChartDpr ? window.smlChartDpr() : 1, w: stage.clientWidth, h: stage.clientHeight, tf: tfNow(), bars: m ? m.N : 0, view: m ? m.slots : 0, mem: !!document.querySelector('#mem-algo-toggle.on'), patterns: !!V.patterns, ua: navigator.userAgent.slice(0, 90) };

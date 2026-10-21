@@ -61,3 +61,11 @@ test('smart range: order-book walls and the click-to-alert entry, target and sto
   assert.match(d, /smlChartLevels\.register\('walls'/); assert.match(d, /walls\(S\.live\.book\)\.map\(\(w\) => w\.price\)/); assert.match(d, /levelsChanged\(\);\s*if \(chartCanvas\.parentElement/);
   assert.match(c, /smlChartLevels\.register\('click-alert'/); assert.match(c, /S\.entry, S\.target, S\.data && S\.data\.stop/); assert.match(c, /levelsChanged\(\);\s*if \(canvas\.parentElement/);
 });
+
+test('resolution: chart layers draw at the screen’s real density (up to 3), step down only when the measured drag is slow, and re-sharpen when the density changes', () => {
+  const fs = require('fs'), path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, 'academy-chart-pro.js'), 'utf8');
+  assert.match(src, /window\.smlChartDpr = \(\) => Math\.min\(window\.devicePixelRatio \|\| 1, dprCap\)/); assert.match(src, /let dprCap = 3/);
+  assert.match(src, /sml-chart-dpr-cap/); assert.match(src, /pctl\(f, 0\.95\) > 55/); assert.match(src, /resolution: /);
+  assert.match(fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'), /-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility/);
+});
