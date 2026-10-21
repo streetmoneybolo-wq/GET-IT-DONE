@@ -176,3 +176,8 @@ test('the pre-alert check is in the Click-to-Alert preview and panel, advises wi
   assert.ok(server.includes("path === '/academy-activity/prealert'") && server.includes('academyClickAlert.setLearned('), 'the route and the learned hand-off');
   assert.ok(!/prealert[^\n]{0,80}(throw|reject|status\(4)/i.test(ca), 'the check never rejects an alert');
 });
+
+test('the owner can replay the forensics of desk alerts on chosen symbols once, from the logs (ACADEMY_FORENSICS_REPLAY)', () => {
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  for (const bit of ['ACADEMY_FORENSICS_REPLAY', "'alert_forensics_replay'", '.slice(0, 5)']) assert.ok(server.includes(bit), bit);
+});

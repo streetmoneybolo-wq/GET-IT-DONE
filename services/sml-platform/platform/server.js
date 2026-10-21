@@ -5732,6 +5732,20 @@ async function main() {
       }
     };
     setTimeout(() => { judgeAlerts().catch(() => {}); setInterval(() => { judgeAlerts().catch(() => {}); }, 15 * 60_000).unref(); }, 3 * 60_000).unref();
+    /* One-shot replay for the owner: ACADEMY_FORENSICS_REPLAY=AHT,INO logs the full forensics report of every desk alert on those symbols, once, a few
+       minutes after boot (the stored alerts are read from the watcher's own state). Clear the variable afterwards. */
+    const replay = String(process.env.ACADEMY_FORENSICS_REPLAY || '').toUpperCase().split(',').map((x) => x.trim()).filter((x) => /^[A-Z][A-Z0-9.\-]{0,9}$/.test(x)).slice(0, 5);
+    if (replay.length && academyAutoPt) setTimeout(async () => {
+      for (const symbol of replay) {
+        try {
+          const [p5, p1] = await Promise.all([sentimentCandles(symbol, '5m').catch(() => null), sentimentCandles(symbol, '1D').catch(() => null)]);
+          for (const a of academyAutoPt.snapshot().filter((x) => x.symbol === symbol).sort((x, y) => y.at - x.at).slice(0, 3)) {
+            const report = alertForensics.analyzeAlert({ symbol, side: a.side, entry: a.entry, target: a.target, stop: a.stop, at: a.at, bars5: p5 && p5.bars, daily: p1 && p1.bars, detectedAt: a.hitAt });
+            log('info', 'alert_forensics_replay', { key: a.key, status: a.status, hitAt: a.hitAt ? new Date(a.hitAt).toISOString() : null, report });
+          }
+        } catch (error) { log('warn', 'alert_forensics_replay_failed', { symbol, error: String(error && error.message || error) }); }
+      }
+    }, 4 * 60_000).unref();
   }
   /* Signal radar: MEM ALGO buy signals across the wide scanner's universe, for the owner (OWNER_IDS + SML_ACADEMY_SIGNAL_USER_IDS).
      ACADEMY_SIGNAL_RADAR=off removes it. Reads 25 symbols a minute through Massive REST (sentimentCandles), so a 300-name universe
