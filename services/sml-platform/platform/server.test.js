@@ -2512,3 +2512,30 @@ test('Article Desk: the public live-chart feed answers bars and a quote with COR
   assert.match(html, /id = 'article-btn'/); assert.match(html, /academy-activity\/articles/); assert.match(html, /COPY HTML/); assert.match(html, /COPY CSS/); assert.match(html, /COPY HEAD/); assert.match(html, /'article-btn'\] \}/, 'the button sits in the SHARE group');
   assert.doesNotMatch(html, PAGE_BANNED);
 });
+
+test('the screener option route warms the chain, says plainly when a stock has no listed options, reports a busy feed, and judges contracts against the target ladder', async () => {
+  const daily = Array.from({ length: 120 }, (_, i) => { const t = Date.UTC(2026, 5, 1) + i * 86_400_000, c = 20 + Math.sin(i / 7) * 2 + i * 0.02; return { t, o: c, h: c * 1.015, l: c * 0.985, c, v: 1e6 }; });
+  let mode = 'ok', optionArgs = null; const asked = [];
+  const base0 = {
+    academyOAuth: { verifySession: (a) => (a === 'Bearer academy-session' ? { ok: true, userId: '1' } : { ok: false, status: 401, code: 'authorization_required' }) },
+    academyDataBridge: { get: async (kind, symbol) => { asked.push(symbol); if (mode === 'none') return { ok: false, status: 503, code: 'academy_data_unavailable', detail: 'Academy data is temporarily unavailable. Options data unavailable: Licensed options data returned an unusable response.' }; if (mode === 'busy') return { ok: false, status: 429, code: 'academy_data_unavailable', detail: 'The site answered 429.', retryAfterSec: 12 }; return { ok: true, status: 200, data: { rows: [] }, cached: true, ageSec: 40 }; } },
+    academyScreener: { snapshot: () => ({ ok: true }), barsFor: () => daily, optionFor: (args) => { optionArgs = args; return { verdict: 'CALL', contract: { strike: 21 }, targetUsed: { first: args.targets && args.targets.t1, source: 'target engine' } }; } }
+  };
+  await withServer(base0, async (base) => {
+    const h = { headers: { authorization: 'Bearer academy-session' } };
+    const warm = await (await fetch(`${base}/academy-activity/screener/option?symbol=AAA&side=call&horizon=swing&warm=1`, h)).json();
+    assert.deepEqual({ ok: warm.ok, warmed: warm.warmed, available: warm.available, cached: warm.cached }, { ok: true, warmed: true, available: true, cached: true });
+    const ok = await (await fetch(`${base}/academy-activity/screener/option?symbol=AAA&side=call&horizon=swing`, h)).json();
+    assert.equal(ok.suggestion.verdict, 'CALL');
+    assert.ok(optionArgs.targets && optionArgs.targets.t1 > 0 && optionArgs.targets.t2 > optionArgs.targets.t1, 'the engine\'s first and second targets reach the picker');
+    assert.ok(ok.shares && ok.shares.targets.length === 3 && ok.shares.stop.price > 0 && ok.source.ageSec === 40);
+    mode = 'none';
+    const none = await fetch(`${base}/academy-activity/screener/option?symbol=AAA&side=call&horizon=swing`, h);
+    assert.equal(none.status, 200); const nb = await none.json();
+    assert.equal(nb.suggestion.noOptions, true); assert.match(nb.suggestion.reason, /no listed options/); assert.ok(nb.shares.targets.length === 3, 'the plan for the shares stands in');
+    mode = 'busy';
+    const busy = await fetch(`${base}/academy-activity/screener/option?symbol=AAA&side=put&horizon=swing`, h);
+    assert.equal(busy.status, 429); const bb = await busy.json();
+    assert.equal(bb.error, 'busy'); assert.equal(bb.retryAfterSec, 12); assert.ok(bb.shares);
+  });
+});

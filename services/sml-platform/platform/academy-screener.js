@@ -114,7 +114,7 @@ function horizonRead(rawBars, horizon, patternCache) {
 }
 
 /** A call (long lean) or put (short lean) for this horizon, via the alerts desk's own contract picker. rows: a normalized chain. */
-function optionFor({ symbol, side = 'call', horizon = 'swing', rows, price, bars, now = Date.now() }) {
+function optionFor({ symbol, side = 'call', horizon = 'swing', rows, price, bars, now = Date.now(), targets = null }) {
   const b = clean(bars);
   const p = fin(price) && price > 0 ? price : (b.length ? b[b.length - 1].c : null);
   if (!fin(p) || !(p > 0)) return { verdict: 'WAIT', available: true, reason: 'Waiting for a live price.' };
@@ -122,12 +122,16 @@ function optionFor({ symbol, side = 'call', horizon = 'swing', rows, price, bars
   if (b.length > 15) { const a = algo.atr(b, 14); const v = a[a.length - 1]; if (fin(v) && v > 0) atrPct = v / p; }
   const put = side === 'put';
   const move = (atrPct || 0.04) * p * 3; // a three-ATR move is the screener's stand-in for an alert's target
-  const alert = { symbol, channel: horizon === 'mid' || horizon === 'long' ? 'longterm' : 'swings', entry: put ? p * 1.01 : p, target: put ? p - move : p + move };
-  const out = considerOptions({ alert, price: p, atrPct, plan: put ? { action: 'SELL', target: alert.target } : { action: 'HOLD', target: alert.target }, algoView: { bias: put ? 'short' : 'long' }, flow: null, rows, now });
+  /* the target engine's first and second targets (academy-target-engine.js) when it has them: a contract is judged against where this stock is likely to go, not a stand-in three-ATR move */
+  const t1 = targets && Number(targets.t1) > 0 && (put ? Number(targets.t1) < p : Number(targets.t1) > p) ? Number(targets.t1) : null;
+  const t2 = t1 && targets && Number(targets.t2) > 0 ? Number(targets.t2) : null;
+  const alert = { symbol, channel: horizon === 'mid' || horizon === 'long' ? 'longterm' : 'swings', entry: put ? p * 1.01 : p, target: t1 || (put ? p - move : p + move) };
+  const out = considerOptions({ alert, target2: t2, price: p, atrPct, plan: put ? { action: 'SELL', target: alert.target } : { action: 'HOLD', target: alert.target }, algoView: { bias: put ? 'short' : 'long' }, flow: null, rows, now });
   // the picker speaks in alert-desk terms; the screener has no alert, so say what the target actually is
   if (out && typeof out.reason === 'string') out.reason = put ? 'MEM ALGO leans short on this horizon, so the contract that fits is a put.' : 'MEM ALGO leans long on this horizon, so the contract that fits is a call.';
-  if (out && Array.isArray(out.flags)) out.flags = out.flags.map((f) => f.replace("the alert's own target", 'a three-ATR move'));
-  if (out && typeof out.summary === 'string') out.summary = out.summary.replace(/ignoring time value\.$/, 'ignoring time value (target = a three-ATR move).');
+  if (out && Array.isArray(out.flags)) out.flags = out.flags.map((f) => f.replace("the alert's own target", t1 ? 'the first target' : 'a three-ATR move'));
+  if (out && typeof out.summary === 'string') out.summary = out.summary.replace(/ignoring time value\.$/, t1 ? 'ignoring time value (target = the first price target, ' + Math.round(t1 * 100) / 100 + ').' : 'ignoring time value (target = a three-ATR move).');
+  if (out) { out.targetUsed = t1 ? { first: Math.round(t1 * 100) / 100, second: t2 ? Math.round(t2 * 100) / 100 : null, source: 'target engine' } : { first: out.target || null, second: null, source: 'three-ATR move' }; }
   return out;
 }
 

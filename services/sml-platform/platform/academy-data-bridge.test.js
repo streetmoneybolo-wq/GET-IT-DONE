@@ -89,3 +89,23 @@ test('a 429 from the site pauses every bridge call for its retry-after, and a br
   await bridge.get('earnings', 'AMD');
   assert.equal(calls.length, 2, 'after the pause the bridge tries again');
 });
+
+test('academy data bridge keeps a good chain for a minute and serves it as stale when the site fails or rate limits', async () => {
+  let t = 1_700_000_000_000, calls = 0, mode = 'ok';
+  const bridge = createAcademyDataBridge({
+    baseUrl: 'https://stockmarketloop.com', secret: 'c'.repeat(32), now: () => t,
+    fetchImpl: async () => { calls++; return mode === 'ok' ? new Response(JSON.stringify({ ok: true, rows: [1] }), { status: 200 }) : new Response(JSON.stringify({ message: 'slow down' }), { status: 429 }); }
+  });
+  const a = await bridge.get('options', 'NVDA');
+  assert.equal(a.ok, true); assert.equal(calls, 1);
+  t += 20_000;
+  const b = await bridge.get('options', 'NVDA');
+  assert.equal(calls, 1, 'a second read inside the minute costs no call'); assert.equal(b.cached, true); assert.equal(b.ageSec, 20);
+  t += 70_000; mode = 'down';
+  const c = await bridge.get('options', 'NVDA');
+  assert.equal(c.ok, true); assert.equal(c.stale, true); assert.ok(c.ageSec >= 90, 'the last good chain, with its age, while the site rate limits');
+  assert.equal(calls, 2);
+  t += 20 * 60_000;
+  const d = await bridge.get('options', 'NVDA');
+  assert.equal(d.ok, false, 'after fifteen minutes a stale chain is no longer served');
+});

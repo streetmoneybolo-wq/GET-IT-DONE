@@ -3668,10 +3668,38 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const side = optParams.get('side') === 'put' ? 'put' : 'call';
       const horizon = SCREENER_HORIZONS[optParams.get('horizon')] ? optParams.get('horizon') : 'swing';
       try {
-        const chain = await academyDataBridge.get('options', symbol, {}, { priority: 'interactive' });
-        if (!chain.ok) { sendJson(response, chain.status || 503, { ok: false, error: chain.code }); return; }
+        /* the chain, the daily candles and the day's candles are read together; the chain is cached by the bridge (a minute fresh, fifteen stale) so a hover that warmed it makes the click instant */
+        const warm = optParams.get('warm') === '1';
+        const chainP = academyDataBridge.get('options', symbol, {}, { priority: 'interactive' });
+        if (warm) { const c = await chainP; sendJson(response, 200, { ok: true, warmed: true, available: !!c.ok, cached: !!c.cached }); return; }
+        const wantsDay = horizon === 'day';
+        const swept = academyScreener.barsFor(symbol) || [];
+        const [chain, p1, p5] = await Promise.all([chainP, swept.length ? Promise.resolve(null) : settledValue(getAcademyCandles(symbol, '1D'), 3_000), wantsDay ? settledValue(getAcademyCandles(symbol, '5m'), 3_000) : Promise.resolve(null)]);
+        const daily = swept.length ? swept : ((p1 && Array.isArray(p1.bars) && p1.bars) || []);
+        const bars5 = p5 && Array.isArray(p5.bars) ? p5.bars : [];
+        const peek = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(symbol) : null;
+        const lastClose = daily.length ? Number(daily[daily.length - 1].c) : null;
+        const price = peek && Number(peek.last) > 0 ? Number(peek.last) : lastClose;
+        /* the target engine's ladder for this stock and direction: the contract is judged against it, and it is also the plan for the shares */
+        const dirName = side === 'put' ? 'short' : 'long';
+        const engineHorizon = horizon === 'day' ? 'day' : horizon === 'swing' ? 'swing' : 'position';
+        let ladder = price ? suggestPriceTargets({ symbol, direction: dirName, horizon: engineHorizon, price, bars5, daily, learned: (targetLearner || fallbackTargetLearner || { learned: () => null }).learned() }) : null;
+        if ((!ladder || !ladder.ok) && price && engineHorizon === 'day') ladder = suggestPriceTargets({ symbol, direction: dirName, horizon: 'swing', price, bars5, daily });
+        if (ladder && !ladder.ok) ladder = null;
+        const shares = ladder ? { direction: ladder.direction, horizon: ladder.horizonLabel, targets: ladder.targets.map((t) => ({ price: t.price, pct: t.pct, prob: t.prob })), stop: { price: ladder.stop.price, pct: ladder.stop.pct } } : null;
+        if (!chain.ok) {
+          const detail = String(chain.detail || '');
+          if (/unusable response|no (listed )?options|not (found|listed)/i.test(detail)) {
+            sendJson(response, 200, { ok: true, symbol, side, horizon, suggestion: { verdict: 'NONE', available: false, noOptions: true, reason: symbol + ' has no listed options we can read, so there is no contract to suggest. The target ladder below is the plan for the shares.' }, shares });
+            return;
+          }
+          if (chain.status === 429) { sendJson(response, 429, { ok: false, error: 'busy', detail: 'The options feed is busy. Retrying in a few seconds.', retryAfterSec: chain.retryAfterSec || 15, shares }); return; }
+          sendJson(response, chain.status || 503, { ok: false, error: chain.code, detail: detail || 'Options data is unavailable right now.', shares });
+          return;
+        }
         const rows = require('./academy-alert-options').normalizeChain(chain.data);
-        sendJson(response, 200, { ok: true, symbol, side, horizon, suggestion: academyScreener.optionFor({ symbol, side, horizon, rows, bars: academyScreener.barsFor(symbol) }) });
+        const suggestion = academyScreener.optionFor({ symbol, side, horizon, rows, price, bars: daily, targets: ladder ? { t1: ladder.targets[0].price, t2: ladder.targets[1].price } : null });
+        sendJson(response, 200, { ok: true, symbol, side, horizon, suggestion, shares, source: { cached: !!chain.cached, stale: !!chain.stale, ageSec: chain.ageSec || 0 } });
       } catch (error) {
         logger('error', 'academy_screener_option_failed', { symbol, error });
         sendJson(response, 503, { ok: false, error: 'option_suggestion_unavailable' });

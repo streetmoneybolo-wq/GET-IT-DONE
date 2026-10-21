@@ -50,19 +50,33 @@ function createAcademyDataBridge({ baseUrl = '', secret = '', fetchImpl = fetch,
   const inflight = new Map();
   const failed = new Map();
   const FAILURE_MEMORY_MS = 15_000;
+  /* a good answer is kept (an options chain a minute, the slower kinds longer) so a second reader, a hover that warms a click, or a
+   * site that is rate limiting does not cost a new call; when the site fails, the last good answer is served as stale for up to
+   * fifteen minutes and says how old it is. The site sets the pace (it answers 429 when it is hit too hard): fewer calls is the fix. */
+  const FRESH_MS = { options: 60_000, earnings: 600_000, capital: 300_000, calendar: 600_000 };
+  const STALE_MS = 15 * 60_000;
+  const good = new Map();
+  const MAX_GOOD = 60;
 
-  function get(kind, symbol, params = {}) {
+  function get(kind, symbol, params = {}, _opts = null) {
     let key;
     try {
       key = kind + ':' + cleanSymbol(symbol) + ':' + ((kind === 'options' || kind === 'calendar') ? cleanExpiration(params.expiration) : '');
     } catch (_) { return fetchOnce(kind, symbol, params); }
+    const hit = good.get(key), fresh = FRESH_MS[kind] || 60_000;
+    if (hit && now() - hit.at < fresh) return Promise.resolve({ ok: true, status: 200, data: hit.data, cached: true, ageSec: Math.round((now() - hit.at) / 1000) });
     const bad = failed.get(key);
-    if (bad && now() - bad.at < FAILURE_MEMORY_MS) return Promise.resolve(bad.result);
+    const staleOf = () => (hit && now() - hit.at < STALE_MS ? { ok: true, status: 200, data: hit.data, cached: true, stale: true, ageSec: Math.round((now() - hit.at) / 1000) } : null);
+    if (bad && now() - bad.at < FAILURE_MEMORY_MS) return Promise.resolve(staleOf() || bad.result);
     if (inflight.has(key)) return inflight.get(key);
     const run = fetchOnce(kind, symbol, params).then((result) => {
-      if (result.ok) failed.delete(key); else if (result.code === 'academy_data_unavailable') {
+      if (result.ok) {
+        failed.delete(key);
+        good.set(key, { at: now(), data: result.data }); if (good.size > MAX_GOOD) good.delete(good.keys().next().value);
+      } else if (result.code === 'academy_data_unavailable') {
         failed.set(key, { at: now(), result });
         if (failed.size > 200) failed.delete(failed.keys().next().value);
+        return staleOf() || result;
       }
       return result;
     }).finally(() => inflight.delete(key));

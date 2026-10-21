@@ -60,7 +60,8 @@ const HORIZON = {
   longterm: { dteMin: 90, dteMax: 300, dteIdeal: 160, delta: 0.70, deltaLo: 0.52, deltaHi: 0.86 }
 };
 
-/** input: { alert, price, atrPct, plan, algoView, flow, rows (normalized chain), now } */
+const num2 = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+/** input: { alert, price, atrPct, plan, algoView, flow, rows (normalized chain), now, target2 (optional second target) } */
 function considerOptions(input) {
   const { alert, price, plan, algoView, flow, rows, now = Date.now() } = input;
   const channel = alert.channel === 'longterm' ? 'longterm' : 'swings';
@@ -81,6 +82,8 @@ function considerOptions(input) {
   else why.push(plan && plan.action === 'RAISE_TARGET' ? 'The plan is raising the target, so momentum favours the upside' : plan && plan.action === 'PARTIAL' ? 'The plan is taking partial profits, so any new call is a smaller, riskier add' : 'The alert is a long idea and the plan is still on');
 
   const target = side === 'call' ? Math.max(plan && plan.target ? plan.target : alert.target, alert.target) : price - 2 * atrPct * price;
+  /* two passes: the strict liquidity rules first; when nothing passes (a thin chain), the loosened rules, and the answer says so */
+  const build = (loose) => {
   const cands = [];
   for (const r of rows) {
     const dte = dteOf(r.expiry, now);
@@ -90,17 +93,19 @@ function considerOptions(input) {
     const m = mid(s);
     if (m == null || m < 0.05) continue;
     const spread = (s.ask - s.bid) / m;
-    if (m < 1 ? s.ask - s.bid > 0.1 : spread > 0.12) continue;
-    if (!((s.oi || 0) >= 50 || (s.volume || 0) >= 25)) continue;
+    if (m < 1 ? s.ask - s.bid > (loose ? 0.2 : 0.1) : spread > (loose ? 0.25 : 0.12)) continue;
+    if (!((s.oi || 0) >= (loose ? 10 : 50) || (s.volume || 0) >= (loose ? 5 : 25))) continue;
     const T = dte / 365, iv = s.iv != null ? (s.iv > 3 ? s.iv / 100 : s.iv) : null;
     let delta = s.delta != null ? Math.abs(s.delta) : null;
     if (delta == null && iv) { const p = calc.price(side, price, r.strike, T, RATE, 0, iv); delta = p ? Math.abs(p.delta) : null; }
     if (delta == null) continue;
-    if (delta < H.deltaLo || delta > H.deltaHi) continue;
+    if (delta < H.deltaLo - (loose ? 0.1 : 0) || delta > H.deltaHi + (loose ? 0.1 : 0)) continue;
     const breakeven = side === 'call' ? r.strike + m : r.strike - m;
     const needPct = side === 'call' ? breakeven / price - 1 : 1 - breakeven / price;
     const atTarget = side === 'call' ? Math.max(0, target - r.strike) : Math.max(0, r.strike - target);
     const returnAtTarget = (atTarget - m) / m;
+    const target2 = num2(input.target2);
+    const returnAtTarget2 = target2 > 0 ? ((side === 'call' ? Math.max(0, target2 - r.strike) : Math.max(0, r.strike - target2)) - m) / m : null;
     let prob = null, theta = s.theta;
     if (iv) { const p = calc.price(side, price, r.strike, T, RATE, 0, iv); if (p) { prob = p.probITM; if (theta == null) theta = p.theta; } }
     const thetaPct = theta != null ? Math.abs(theta) / m : null;
@@ -108,12 +113,17 @@ function considerOptions(input) {
     let score = 100 - Math.abs(delta - H.delta) * 120 - spread * 220 - Math.abs(dte - H.dteIdeal) * (channel === 'longterm' ? 0.12 : 0.6) + Math.log10((s.oi || 0) + 1) * 4;
     if (needPct > targetMove) score -= 25; // it cannot pay unless price goes past the alert's own target
     if (thetaPct != null && thetaPct > 0.05) score -= 8;
-    cands.push({ type: side.toUpperCase(), expiry: r.expiry, dte, strike: r.strike, bid: s.bid, ask: s.ask, mid: Math.round(m * 100) / 100, spreadPct: spread, iv, delta, oi: s.oi || 0, volume: s.volume || 0, breakeven: Math.round(breakeven * 100) / 100, needPct, returnAtTarget, probITM: prob, thetaPct, costPerContract: Math.round(m * 100), score });
+    cands.push({ type: side.toUpperCase(), expiry: r.expiry, dte, strike: r.strike, bid: s.bid, ask: s.ask, mid: Math.round(m * 100) / 100, spreadPct: spread, iv, delta, oi: s.oi || 0, volume: s.volume || 0, breakeven: Math.round(breakeven * 100) / 100, needPct, returnAtTarget, returnAtTarget2, probITM: prob, thetaPct, costPerContract: Math.round(m * 100), score });
   }
+  return cands;
+  };
+  let relaxed = false, cands = build(false);
+  if (!cands.length) { cands = build(true); relaxed = cands.length > 0; }
   if (!cands.length) return out('NONE', { reason: `No ${side} contract in the ${H.dteMin}-${H.dteMax} day window is liquid enough (tight spread, real open interest) at the right strike for this alert.`, side: side.toUpperCase() });
   cands.sort((a, b) => b.score - a.score);
   const best = cands[0];
   const flags = [];
+  if (relaxed) flags.push('Thin option chain: nothing met the usual liquidity rules, so these are the best of what trades. Expect wider spreads and use limit orders');
   if (best.iv != null && best.iv > 1.2) flags.push(`Implied volatility is ${(best.iv * 100).toFixed(0)}%: the premium is expensive and can shrink even if price moves your way`);
   if (best.thetaPct != null && best.thetaPct > 0.04) flags.push(`Time decay is about ${(best.thetaPct * 100).toFixed(1)}% of the premium a day`);
   if (best.needPct > Math.abs(target / price - 1)) flags.push('It only pays if price goes beyond the alert\'s own target');
@@ -125,7 +135,7 @@ function considerOptions(input) {
   const label = `${new Date(`${best.expiry}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} ${money(best.strike)} ${side}`;
   const summary = `${label} (${best.dte} days) costs about ${money(best.costPerContract)} a contract. It breaks even at ${money(best.breakeven)} (${side === 'call' ? '+' : '-'}${(best.needPct * 100).toFixed(1)}%)`
     + (best.returnAtTarget > 0 ? ` and would be worth about ${Math.round(best.returnAtTarget * 100)}% more than you paid at ${money(target)}, ignoring time value.` : ` and would still lose money at ${money(target)}.`);
-  return out(side.toUpperCase(), { side: side.toUpperCase(), strength: worth ? 'Worth a look' : 'Marginal', reason: why.join('. '), summary, contract: best, alternatives: cands.slice(1, 3), flags, target: Math.round(target * 100) / 100, considered: cands.length });
+  return out(side.toUpperCase(), { side: side.toUpperCase(), strength: worth ? 'Worth a look' : 'Marginal', reason: why.join('. '), summary, contract: best, alternatives: cands.slice(1, 3), flags, target: Math.round(target * 100) / 100, considered: cands.length, relaxed });
 }
 
 module.exports = { normalizeChain, considerOptions, dteOf, HORIZON };

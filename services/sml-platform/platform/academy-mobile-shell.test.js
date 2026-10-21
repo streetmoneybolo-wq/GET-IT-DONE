@@ -160,3 +160,9 @@ test('the interval picked in the Indicator Engine drives the chart, and a chart 
   const ui = fs.readFileSync(path.join(__dirname, 'academy-screener-ui.js'), 'utf8');
   for (const bit of ['function syncChart(tf)', "'.intervals button[data-tf=\"'", 'syncChart(S.tf)', 'syncChart(h.tf)', "window.addEventListener('sml-academy-market'", 'S.data.timeframes.includes(tf)']) assert.ok(ui.includes(bit), bit);
 });
+
+test('screener CALL / PUT reads fast and reliably: live token with renewal, hover warm-up, one retry when busy, share plan when there are no options', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-screener-ui.js'), 'utf8');
+  for (const bit of ["const token = () => String(window.smlAcademySessionToken || S.session || '')", "res.status === 401 && typeof window.smlAcademyReauth === 'function'", "'&warm=1'", "document.addEventListener('pointerover'", 'The options feed is busy: retrying in', 'PLAN FOR THE SHARES', 'at T1', 'at T2', 'optCache']) assert.ok(ui.includes(bit), bit);
+  assert.ok(!ui.includes("if (!S.session) { S.busy"), 'the token is no longer frozen at page load');
+});
