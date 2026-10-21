@@ -5401,7 +5401,12 @@ async function main() {
   const academyEntitlements = createEntitlements({
     appId: config.academyAppId, botToken: config.academyBotToken, skuIds: config.academyDiscordSkus, logger: log
   });
-  if (academyEntitlements.configured) log('info', 'academy_entitlements_ready', { skus: academyEntitlements.skus().length });
+  if (academyEntitlements.configured) {
+    log('info', 'academy_entitlements_ready', { skus: academyEntitlements.skus().length });
+    /* prove the token actually works before a buyer finds out it does not */
+    void academyEntitlements.preflight().then((r) => log(r.ok ? 'info' : 'error', 'academy_entitlements_preflight', r))
+      .catch((error) => log('error', 'academy_entitlements_preflight', { ok: false, reason: String((error && error.message) || error) }));
+  }
   const academyAccessRoles = withFreeUsers(academyPasses ? withPasses(academyAccessBase, academyPasses) : academyAccessBase, freeUsers, createIdentityAccess({}));
   /* last in the chain: only a member refused for the Academy role is looked up against Discord's entitlements */
   const academyAccess = academyEntitlements.configured ? withEntitlements(academyAccessRoles, academyEntitlements) : academyAccessRoles;

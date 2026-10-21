@@ -143,7 +143,23 @@ function createEntitlements({
     if (userId) cache.delete(userId);
   }
 
-  return Object.freeze({ configured, skus: () => skus, levels: () => levels, hasActive, levelFor, forget });
+  /* Does Discord accept this bot token for this application's entitlements?
+     `configured` only proves the three values are present and the right shape; a token for the wrong
+     app, or a stale one, looks identical until a real buyer is refused. This asks Discord once at
+     boot with a harmless lookup (the app's own id as the user) and reports what came back, so a bad
+     token is visible in the logs before anyone pays rather than after. */
+  async function preflight() {
+    if (!configured) return { ok: false, reason: 'not_configured' };
+    try {
+      await load(app);
+      return { ok: true, skus: skus.length };
+    } catch (error) {
+      const status = Number(error && error.status) || 0;
+      return { ok: false, status, reason: status === 401 ? 'token_rejected' : (status === 403 ? 'token_forbidden' : 'lookup_failed') };
+    }
+  }
+
+  return Object.freeze({ configured, skus: () => skus, levels: () => levels, hasActive, levelFor, forget, preflight });
 }
 
 /* Mirrors withPasses in academy-passes.js: a member with no Academy role who has bought through

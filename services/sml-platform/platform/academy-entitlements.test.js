@@ -165,3 +165,20 @@ test('withEntitlements gives a trader buyer a trader session, an analyst buyer a
   const asAnalyst = createEntitlements({ ...both, fetchImpl: async () => ok([entitlement({ sku_id: OTHER_SKU })]) });
   assert.deepEqual(await withEntitlements(refused, asAnalyst).verify('Bearer x'), { ok: true, userId: USER, tier: 'academy' });
 });
+
+test('preflight says whether Discord accepts the bot token', async () => {
+  const good = build(async () => ok([]));
+  assert.deepEqual(await good.preflight(), { ok: true, skus: 1 }, 'a 200 proves the token works for this app');
+
+  const bad = build(async () => fail(401));
+  assert.deepEqual(await bad.preflight(), { ok: false, status: 401, reason: 'token_rejected' });
+
+  const forbidden = build(async () => fail(403));
+  assert.deepEqual(await forbidden.preflight(), { ok: false, status: 403, reason: 'token_forbidden' });
+
+  const down = build(async () => fail(503));
+  assert.equal((await down.preflight()).reason, 'lookup_failed');
+
+  const off = createEntitlements({ appId: APP, botToken: TOKEN, skuIds: [] });
+  assert.deepEqual(await off.preflight(), { ok: false, reason: 'not_configured' });
+});
