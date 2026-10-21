@@ -9,7 +9,7 @@
   if (!stage || !baseCanvas || typeof window.smlAcademyChartState !== 'function') { if (tries < 100) setTimeout(() => boot(tries + 1), 150); return; } // the chart stage is built by a script that loads after this one
   window.__smlChartPro = true;
 
-  const PAD = { l: 12, r: 64, t: 18, b: 24 };
+  const PAD = { l: 10, r: 64, t: 14, b: 22 };
   const DEFAULT_N = 105, MIN_N = 8;
   /* How far the view may zoom, in pixels per candle: never wider than MAX_PX (one giant candle) and never thinner than MIN_PX
      (sub-pixel candles). The bar counts follow from the plot width, so a phone and a desktop both get sensible limits. */
@@ -17,6 +17,17 @@
   const nBounds = (N, w) => { const pw = Math.max(50, (w || 0) - PAD.l - PAD.r); const lo = Math.min(N, Math.max(MIN_N, Math.ceil(pw / MAX_PX))); const hi = Math.max(lo, Math.min(N, Math.floor(pw / MIN_PX))); return [lo, hi]; };
   const defaultN = () => (stage.clientWidth && stage.clientWidth < 560 ? 48 : DEFAULT_N); // fewer, fatter candles on a phone
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  /* Smart range: tools that draw price levels (targets, stops, walls, alerts) register them here, and the auto scale widens to show the ones within reach of
+     the candles (never more than one extra visible range beyond an edge), so a target is on screen instead of off the top. Far-away levels never squash the candles. */
+  const LEVELS = new Map();
+  window.smlChartLevels = { register: (name, fn) => { if (typeof fn === 'function') LEVELS.set(String(name), fn); }, unregister: (name) => LEVELS.delete(String(name)), list: () => [...LEVELS.keys()] };
+  function reachRange(lo, hi, prices) {
+    const span = hi - lo; if (!(span > 0)) return { lo, hi };
+    let nlo = lo, nhi = hi;
+    for (const p of prices) { if (!Number.isFinite(p)) continue; if (p > hi && p - hi <= span) nhi = Math.max(nhi, p); else if (p < lo && lo - p <= span) nlo = Math.min(nlo, p); }
+    return { lo: nlo, hi: nhi };
+  }
+  const levelPrices = (sym) => { const out = []; for (const fn of LEVELS.values()) { try { const r = fn(sym); if (Array.isArray(r)) for (const x of r) out.push(+(x && typeof x === 'object' ? x.price : x)); } catch (_) { /* a broken layer never breaks the chart */ } } return out; };
   /* Drawing resolution for every chart layer. A phone screen packs 3 device pixels into each CSS pixel; four stacked full-size layers at that density is what makes dragging heavy,
      so cap it (1.5x on phones, 2x elsewhere). Coordinates stay in CSS pixels, so nothing moves; text and thin lines are only slightly softer. */
   window.smlChartDpr = () => Math.min(window.devicePixelRatio || 1, stage.clientWidth && stage.clientWidth < 560 ? 1.5 : 2);
@@ -92,20 +103,21 @@
     if (V.end != null) V.end = end;
     const start = end - n;
     const last = bars[N - 1];
-    const ck = [N, last && last.t, last && last.c, last && last.h, last && last.l, n, end, w, h, V.manual ? V.manual.lo + ':' + V.manual.hi : 'a', V.volPane !== false ? 'v' : 'n'].join('|');
+    const ck = [N, last && last.t, last && last.c, last && last.h, last && last.l, n, end, w, h, V.manual ? V.manual.lo + ':' + V.manual.hi : 'a', V.volPane !== false ? 'v' : 'n', V.smart === false ? 'x' : (LEVELS.size ? levelPrices(symNow()).join(',') : '')].join('|');
     if (cache && ck === cacheKey) return cache;
     const view = bars.slice(Math.max(0, start), Math.min(N, end));
     let lo = Infinity, hi = -Infinity;
     for (const b of view) { if (+b.l < lo) lo = +b.l; if (+b.h > hi) hi = +b.h; }
     if (!fin(lo) || !fin(hi)) { lo = 0; hi = 1; }
     if (hi === lo) { hi += 1; lo -= 1; }
-    const autoLo = lo, autoHi = hi, mg = (hi - lo) * 0.06;
+    if (V.smart !== false && !V.manual && LEVELS.size) { const r = reachRange(lo, hi, levelPrices(symNow())); lo = r.lo; hi = r.hi; }
+    const autoLo = lo, autoHi = hi, mg = (hi - lo) * 0.045;
     lo -= mg; hi += mg;
     // The volume bars share this canvas and take the bottom VOL_FRAC of the plot. Candles are kept
     // clear of them by extending the price range downward; overlays (EMAs, VWAP, walls, zones)
     // must instead clip to priceH so a price-derived line that sits below the visible candles is
     // cut off at the pane edge rather than drawn straight through the volume bars.
-    const VOL_FRAC = 0.13;
+    const VOL_FRAC = 0.115;
     if (!V.manual && V.volPane !== false) lo -= (hi - lo) * VOL_FRAC;
     if (V.manual) { lo = V.manual.lo; hi = V.manual.hi; }
     /* the price axis is only as wide as its widest label: 603.12 needs about 44px, 1,234.56 about 62px (it was a fixed 64px of dead space) */
@@ -386,7 +398,10 @@
     else if (e.key === '+' || e.key === '=') zoomX(0.8, null, m);
     else if (e.key === '-' || e.key === '_') zoomX(1.25, null, m);
     else if (e.key === 'Home') setView(null, m.slots);
-    else if (e.key === 'End') goLatest();
+    else if (e.key === 'End' || e.key === 'l' || e.key === 'L') goLatest();
+    else if (e.key === 'a' || e.key === 'A') { V.manual = null; emit(); }
+    else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) resetView();
+    else if (e.key === 's' || e.key === 'S') { V.smart = V.smart === false; V.manual = null; emit(); }
     else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
     else if (e.key === 'Escape') { V.draft = null; V.tool = 'cursor'; D = null; syncPalette(); emit(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') undoLast();
@@ -678,7 +693,7 @@
     const draw = mk('academy-pro-draw', 'Draw', 'Drawing tools: trend line, ray, lines, box, fib, measure, note'), pat = mk('academy-pro-patterns', 'Patterns', 'Scan the candles on this interval for every chart and candlestick pattern'), auto = mk('academy-pro-auto', 'Auto scale', 'Return the price scale to automatic'), live = mk('academy-pro-latest', 'Latest', 'Jump to the newest candle (End)'), fit = mk('academy-pro-reset', 'Reset view', 'Reset zoom and scale');
     const rangeBtn = document.getElementById('academy-select-range'); if (rangeBtn) { rangeBtn.textContent = 'Interval stats'; rangeBtn.classList.remove('on'); rangeBtn.onclick = () => { V.tool = V.tool === 'range' ? 'cursor' : 'range'; V.draft = null; syncPalette(); emit(); }; }
     const hint = row.querySelector('span'); if (hint) hint.textContent = 'Drag to scan · drag the price axis to scale · wheel to zoom';
-    row.insertBefore(fit, hint || null); row.insertBefore(live, fit); row.insertBefore(auto, live); if (window.SmlPatterns && window.SmlPatterns.detect) row.insertBefore(pat, auto); row.insertBefore(draw, row.contains(pat) ? pat : auto);
+    row.insertBefore(fit, hint || null); row.insertBefore(live, fit); row.insertBefore(auto, live); auto.title = 'Fit the price scale to the candles and any target, stop or wall within reach (A). S turns the smart reach off; L jumps to the latest candle; R resets the view.'; if (window.SmlPatterns && window.SmlPatterns.detect) row.insertBefore(pat, auto); row.insertBefore(draw, row.contains(pat) ? pat : auto);
     draw.onclick = () => { palette.classList.toggle('open'); syncPalette(); };
     pat.onclick = () => { V.patterns = !V.patterns; pat.classList.toggle('on', V.patterns); panel.classList.toggle('open', V.patterns); patternsDirty = true; try { localStorage.setItem('sml-chart-patterns', V.patterns ? '1' : '0'); } catch (_) { /* ignore */ } const m = model(); if (m && V.patterns) runPatterns(m); emit(); };
     auto.onclick = () => { V.manual = null; emit(); }; live.onclick = goLatest; fit.onclick = resetView;
@@ -691,6 +706,6 @@
   new ResizeObserver(() => emit()).observe(stage);
   window.addEventListener('resize', emit);
   setInterval(() => { if (!document.hidden && !D) emitLight(); }, 1000); // the bar-close countdown under the last price
-  window.smlChartPro = { liveTick, view: V, model, resetView, goLatest, setView, drawings: () => drawings.slice(), setTool: (t) => { V.tool = t; syncPalette(); emit(); }, patterns: () => (V.patterns ? found : null), patternPills: () => pills.slice() };
+  window.smlChartPro = { reachRange, liveTick, view: V, model, resetView, goLatest, setView, drawings: () => drawings.slice(), setTool: (t) => { V.tool = t; syncPalette(); emit(); }, patterns: () => (V.patterns ? found : null), patternPills: () => pills.slice() };
   emit();
 })(0);

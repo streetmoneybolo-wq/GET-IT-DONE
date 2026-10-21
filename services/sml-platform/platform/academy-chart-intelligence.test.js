@@ -42,3 +42,15 @@ test('chart intelligence client is executable and keeps external fields fail-clo
   assert.match(html, /changeRate3min/);
   assert.match(html, /academy-indicator-overlay/);
 });
+
+test('smart range: levels within one visible range of the candles widen the scale, far ones never do', () => {
+  const fs = require('fs'), path = require('path'), vm = require('node:vm');
+  const src = fs.readFileSync(path.join(__dirname, 'academy-chart-pro.js'), 'utf8');
+  assert.match(src, /window\.smlChartLevels = \{ register/); assert.match(src, /V\.smart !== false && !V\.manual && LEVELS\.size/);
+  const body = src.slice(src.indexOf('function reachRange'), src.indexOf('const levelPrices'));
+  const fn = vm.runInNewContext('(' + body.replace(/^function reachRange/, 'function') + ')', {});
+  const J = (v) => JSON.parse(JSON.stringify(v));
+  assert.deepEqual(J(fn(100, 110, [114, 95, 135, 60, NaN])), { lo: 95, hi: 114 });
+  assert.deepEqual(J(fn(100, 100, [105])), { lo: 100, hi: 100 });
+  const tgt = fs.readFileSync(path.join(__dirname, 'academy-targets-ui.js'), 'utf8'); assert.match(tgt, /smlChartLevels\.register\('targets'/);
+});

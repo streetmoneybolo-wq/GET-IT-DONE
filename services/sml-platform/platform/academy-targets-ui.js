@@ -52,7 +52,7 @@
       if (!res.ok || !j || !j.ok) { S.data = null; S.err = j && j.error === 'academy_access_required' ? 'Price targets are an Academy member tool.' : (j && j.detail) || ('Could not build targets right now' + (j && j.error ? ' (' + j.error.replace(/_/g, ' ') + ')' : '') + '.'); return; }
       S.data = j; S.err = ''; S.at = Date.now();
     } catch (_) { S.err = 'No connection.'; }
-    finally { S.busy = false; paint(); draw(); }
+    finally { S.busy = false; paint(); draw(); try { if (window.smlChartPro) window.smlChartPro.setView(); } catch (_) { /* chart not ready */ } }
   }
 
   function paint() {
@@ -116,5 +116,10 @@
   window.addEventListener('sml-chart-view', () => { try { draw(); } catch (_) { /* chart not ready */ } });
   window.addEventListener('sml-academy-market', () => { const key = symbolNow() + '|' + prefs.dir + '|' + prefs.horizon; if (key !== S.key && S.on) { S.data = null; paint(); draw(); setTimeout(fetchRead, 300); } });
   setInterval(() => { if (S.on && !document.hidden && Date.now() - S.at > 59_000) fetchRead(); }, 5_000);
+  /* the chart's smart range shows the targets and the stop while this tool is on */
+  (function reg(n) {
+    if (window.smlChartLevels) { window.smlChartLevels.register('targets', (sym) => (S.on && prefs.draw !== false && S.data && S.data.symbol === sym && Array.isArray(S.data.targets) ? S.data.targets.map((t) => t.price).concat(S.data.stop ? [S.data.stop.price] : []) : [])); return; }
+    if (n < 60) setTimeout(() => reg(n + 1), 500);
+  })(0);
   window.smlTargets = { open: () => { if (!S.on) btn.click(); }, state: () => S.data };
 })(0);
