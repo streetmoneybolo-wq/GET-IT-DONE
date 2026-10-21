@@ -57,8 +57,8 @@ test('oversized lists are cut', () => {
   assert.equal(out.panels.length, 20);
   assert.equal(Object.keys(out.modules).length, 40);
 });
-test('the Discord chat joins the market row on desktop, and the row stays horizontal down to tablet width', () => {
+test('the market modules are wide short strips on desktop, with MORE for the full Market Direction read', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, 'academy-layout-engine.js'), 'utf8');
-  assert.match(src, /#academy-below > \.academy-chat/); assert.match(src, /auto-fit,minmax\(min\(100%,230px\),1fr\)/);
-  assert.doesNotMatch(src, /@media\(max-width:1100px\)\{\.academy-market-trio/);
+  assert.match(src, /sml-dir-more/); assert.match(src, /#academy-direction:not\(\.sml-open\) \.smd-v2/); assert.match(src, /\.auv-foot\{display:none\}/); assert.match(src, /\.avx-terms,\.avx-scale,\.avx-foot\{display:none\}/);
+  assert.doesNotMatch(src, /academy-below > \.academy-chat/);
 });

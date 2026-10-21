@@ -19,30 +19,48 @@
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const phone = () => window.matchMedia('(max-width:720px)').matches;
   const css = document.createElement('style');
-  css.textContent = '.academy-market-trio{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:8px;margin:0 0 8px;align-items:stretch}@media(max-width:720px){.academy-market-trio{grid-template-columns:1fr;gap:6px}}.academy-market-trio>section,.academy-market-trio>.academy-chat{margin:0!important;min-width:0;max-width:100%;box-sizing:border-box}.academy-market-trio>.academy-chat .academy-chat-log{height:92px!important;min-height:0!important}'
+  css.textContent = '.academy-market-trio{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;margin:0 0 8px}.academy-market-trio>section{margin:0!important;min-width:0;max-width:100%;box-sizing:border-box}'
     + '@media(max-width:720px){.academy-market-trio>section>div{padding:7px 9px!important}}'
     + '.academy-depth.sml-empty{flex:0 0 auto!important;min-height:0!important;padding-top:8px!important;margin-top:8px!important}.academy-depth.sml-empty .academy-depth-empty{padding:0 0 2px;font-size:.62rem}'
     + '.academy-side-fill{flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:thin;margin-top:8px;border-top:1px solid #1b3540;padding-top:8px}.academy-side-fill h3{font-size:.63rem;margin:0 0 5px;color:#86a2b0;display:flex;justify-content:space-between;align-items:center}.academy-side-fill h3 small{color:#5f7684;font-weight:600;letter-spacing:0;text-transform:none}'
     + '.academy-side-fill .sf-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;padding:3px 0;border-bottom:1px solid rgba(42,66,78,.45);font:700 .6rem ui-monospace,monospace;cursor:pointer;align-items:baseline}.academy-side-fill .sf-row:hover{background:rgba(82,230,173,.06)}.academy-side-fill .sf-row b{color:#eef4f7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.academy-side-fill .sf-row span{color:#c7d5dc}.academy-side-fill .sf-row i{font-style:normal;min-width:52px;text-align:right}.academy-side-fill .up{color:#52e6ad}.academy-side-fill .dn{color:#ff778b}.academy-side-fill .sf-empty{color:#7f98a6;font-size:.62rem}'
     + '.academy-intelligence.sml-compact .academy-indicator-status{display:none}.academy-intelligence.sml-compact .academy-intel-head{flex-wrap:wrap;align-items:center}.academy-intelligence.sml-compact .academy-active-indicators{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center;margin:0;padding:0 4px;border:0;min-height:0}.academy-intelligence.sml-compact .academy-intel-legend{border:1px solid #294554;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;color:#8fa5b1;font:800 .6rem ui-monospace,monospace;cursor:help;flex:none}'
     + '.sml-fold-head{display:none}@media(max-width:720px){.opt-calc.sml-foldable{position:relative}.sml-fold-head{display:flex;width:100%;align-items:center;justify-content:space-between;gap:8px;border:1px solid #1b3540;border-radius:8px;background:#0b141c;color:#8ee8c1;font:900 .66rem ui-monospace,monospace;letter-spacing:.06em;padding:9px 11px;cursor:pointer;margin:0}.sml-fold-head small{color:#7f98a6;font:700 .58rem ui-monospace,monospace;letter-spacing:0}.opt-calc.sml-folded>:not(.sml-fold-head){display:none!important}.opt-calc.sml-folded{padding:0!important;border:0!important;background:transparent!important;min-height:0!important}}'
-    + '.academy-chat.sml-empty .academy-chat-log{height:120px!important;min-height:0!important}@media(max-width:720px){.academy-chat.sml-empty .academy-chat-log{height:96px!important}}';
+    + '.academy-chat.sml-empty .academy-chat-log{height:120px!important;min-height:0!important}@media(max-width:720px){.academy-chat.sml-empty .academy-chat-log{height:96px!important}}'
+    /* desktop: MARKET DIRECTION, UNUSUAL VOLUME and SML VIX are wide, short strips (title and numbers on one line); MORE opens Market Direction's full read */
+    + '@media(min-width:721px){'
+    + '#academy-direction{position:relative}#academy-direction .smd-head{padding:5px 118px 5px 12px;border-bottom:0}#academy-direction .smd-title{white-space:nowrap}'
+    + '#academy-direction:not(.sml-open) .smd-body{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:0 12px 6px}#academy-direction:not(.sml-open) .smd-col{padding:0;border:0}#academy-direction:not(.sml-open) .smd-col:first-child{flex:1 1 auto;display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;min-width:0}#academy-direction:not(.sml-open) .smd-col:nth-child(2){display:none}'
+    + '#academy-direction:not(.sml-open) .smd-read{flex:none}#academy-direction:not(.sml-open) .smd-label{font-size:16px}#academy-direction:not(.sml-open) .smd-gauge{flex:0 0 190px;margin:0 4px}#academy-direction:not(.sml-open) .smd-scale,#academy-direction:not(.sml-open) .smd-h,#academy-direction:not(.sml-open) .smd-row small,#academy-direction:not(.sml-open) .smd-v2,#academy-direction:not(.sml-open) .smd-foot{display:none}'
+    + '#academy-direction:not(.sml-open) .smd-row{display:inline-flex;align-items:center;gap:5px;padding:2px 7px 2px 3px;border:1px solid #13262f;border-radius:6px;background:#0c161d}#academy-direction:not(.sml-open) .smd-row>div{display:block}#academy-direction:not(.sml-open) .smd-row b{font-size:10.5px;white-space:nowrap}'
+    + '#academy-direction .sml-dir-more{position:absolute;top:5px;right:46px;z-index:2;border:1px solid #284654;border-radius:7px;background:#0d1a22;color:#9fb6c1;padding:3px 9px;font:800 10px ui-monospace,monospace;letter-spacing:.06em;cursor:pointer}#academy-direction .sml-dir-more:hover{border-color:#00c47d;color:#7ef0bd}'
+    + 'html body .auv>div{display:flex;align-items:center;min-width:0}html body .auv-head{flex:none;border-bottom:0;padding:5px 8px 5px 12px;flex-wrap:nowrap;white-space:nowrap}html body .auv-head small{margin-left:8px}html body .auv-list{flex:1 1 auto;min-width:0;display:flex;gap:6px;padding:5px 44px 5px 4px;overflow-x:auto;scrollbar-width:thin}html body .auv-row{flex:0 0 auto;min-width:138px;padding:3px 8px}html body .auv-foot{display:none}html body .auv-empty{padding:5px 44px 5px 4px}'
+    + 'html body .avx>div{display:flex;align-items:center;min-width:0}html body .avx-head{flex:none;border-bottom:0;padding:5px 8px 5px 12px;flex-wrap:nowrap;white-space:nowrap}html body .avx-head small{margin-left:8px}html body .avx-body{flex:1 1 auto;min-width:0;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:center;padding:4px 44px 4px 4px}html body .avx-body>div:first-child{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px}html body .avx-level{font-size:24px}html body .avx-zone,html body .avx-chg{margin-top:0}html body .avx-terms,html body .avx-scale,html body .avx-foot{display:none}html body .avx canvas{height:52px}html body .avx-empty{padding:5px 44px 5px 4px}'
+    + '}';
   document.head.appendChild(css);
 
   /* 1. the market trio shares one row */
   function trio() {
     const ids = ['academy-direction', 'academy-unusual-volume', 'academy-sml-vix'];
     const els = ids.map((id) => document.getElementById(id)).filter(Boolean);
-    const chat = document.querySelector('#academy-below > .academy-chat');
     let wrap = document.querySelector('.academy-market-trio');
     if (!wrap) {
       if (els.length < 2) return;
       wrap = document.createElement('div'); wrap.className = 'academy-market-trio';
       els[0].parentElement.insertBefore(wrap, els[0]);
     }
-    /* on desktop the Discord chat joins the row as a short horizontal window; the phone layout keeps its own place for it */
     for (const el of els) if (el.parentElement !== wrap) wrap.appendChild(el);
-    if (chat && !phone() && chat.parentElement !== wrap) wrap.appendChild(chat);
+  }
+
+  /* 1b. Market Direction: the short strip by default, MORE opens the full read (remembered) */
+  function directionMore() {
+    const root = document.getElementById('academy-direction'); if (!root || root.querySelector('.sml-dir-more')) return;
+    let open = false; try { open = localStorage.getItem('sml-dir-open') === '1'; } catch (_) { /* default closed */ }
+    root.classList.toggle('sml-open', open);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'sml-dir-more';
+    const paint = () => { b.textContent = root.classList.contains('sml-open') ? 'LESS ▴' : 'MORE ▾'; b.title = 'Show or hide the full Market Direction read'; };
+    b.addEventListener('click', () => { root.classList.toggle('sml-open'); try { localStorage.setItem('sml-dir-open', root.classList.contains('sml-open') ? '1' : '0'); } catch (_) { /* ignore */ } paint(); });
+    paint(); root.appendChild(b);
   }
 
   /* 2. the side column: an empty Level 2 collapses and the column shows the live scanner's top rows */
@@ -117,7 +135,7 @@
   }
 
   let pending = 0;
-  function run() { pending = 0; try { trio(); trioState(); sideColumn(); indicatorStrip(); calculator(); chat(); } catch (_) { /* never break the page */ } }
+  function run() { pending = 0; try { trio(); directionMore(); trioState(); sideColumn(); indicatorStrip(); calculator(); chat(); } catch (_) { /* never break the page */ } }
   function schedule() { if (pending) return; pending = setTimeout(run, 250); }
   run();
   const mo = new MutationObserver(schedule);
