@@ -53,6 +53,8 @@ const { createPopoutService, validModule: validPopoutModule, validSymbol: validP
 const { cleanLayout: cleanAcademyLayout, cleanScope: cleanLayoutScope, layoutKey: academyLayoutKey } = require('./academy-layout');
 const { createCandleRecap } = require('./academy-candle-recap');
 const { createSessionRecap } = require('./academy-session-recap');
+const { createPersonaBots } = require('./academy-persona-bots');
+const { createEditions } = require('./academy-editions');
 const { createMarketDirectionV2 } = require('./academy-market-direction-v2');
 const { createStoryDesk, createLettersPublisher, createPolisher } = require('./academy-story-desk');
 const articleChart = require('./academy-article-chart');
@@ -764,6 +766,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const smartMoneyUi = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money-ui.js'), 'utf8');
     const sessionLevels = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-session-levels.js'), 'utf8'); } catch (_) { return ''; } })();
     const sessionLevelsUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-session-levels-ui.js'), 'utf8'); } catch (_) { return ''; } })();
+    const editionUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-edition-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const clickAlertUi = fs.readFileSync(pathModule.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
     const snapshotUi = fs.readFileSync(pathModule.join(__dirname, 'academy-snapshot-ui.js'), 'utf8');
     const tickerTalkUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-ticker-talk-ui.js'), 'utf8'); } catch (_) { return ''; } })();
@@ -816,7 +819,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script>' + (sessionLevels && sessionLevelsUi ? '<script>' + sessionLevels + '</script><script>' + sessionLevelsUi + '</script>' : '') + '<script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script><script>' + targetsUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script>' + (sessionLevels && sessionLevelsUi ? '<script>' + sessionLevels + '</script><script>' + sessionLevelsUi + '</script>' : '') + (editionUi ? '<script>' + editionUi + '</script>' : '') + '<script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script><script>' + targetsUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -2025,6 +2028,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getSqueezeList = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null, academyProfileWall = null,
+  sessionRecap = null, personaRegistry = null, academyEditions = null, analystDeskFor = async () => ({ ok: false, error: 'analyst_unavailable' }), storyPublisher = null,
   pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null, academySocialNotify = null, alertChartBilling = null, tradingRoom = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
@@ -3939,11 +3943,18 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
-      if (!OWNER_IDS.includes(String(session.userId))) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+      const isOwner = OWNER_IDS.includes(String(session.userId));
+      /* an Analyst whose stockmarketloop.com account is linked writes and files letters under their own byline; the desk's record, schedule and voice stay the owner's */
+      let analyst = null;
+      if (!isOwner) {
+        if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+        analyst = await analystDeskFor(session.userId, session.displayName).catch(() => ({ ok: false, error: 'analyst_check_failed' }));
+        if (!analyst.ok) { sendJson(response, 403, { ok: false, error: analyst.error === 'analyst_edition_required' || analyst.error === 'site_not_linked' ? analyst.error : 'owner_only', detail: analyst.error }); return; }
+      }
       const desk = getStoryDesk();
       if (!desk) { sendJson(response, 503, { ok: false, error: 'story_desk_off' }); return; }
       try {
-        if (request.method === 'GET') { sendJson(response, 200, { ok: true, ...(await desk.status()) }); return; }
+        if (request.method === 'GET') { sendJson(response, 200, isOwner ? { ok: true, ...(await desk.status()) } : { ok: true, analyst: true, byline: analyst.as.byline, authorPath: analyst.as.authorPath, day: '', count: 0, record: null }); return; }
         if (request.method === 'POST' && (path === '/academy-activity/story/write' || path === '/academy-activity/articles/write')) {
           const raw = await readRequestBody(request, 2_048).catch(() => null);
           let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
@@ -3951,10 +3962,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
              copy-and-paste package (HTML, CSS, head) without filing a letter */
           const subject = String(body.symbol || body.topic || '').trim().slice(0, 40);
           if (!subject) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
-          const out = await desk.write(subject, { publish: body.publish === true, file: body.file !== false });
+          const out = await desk.write(subject, analyst ? { publish: body.publish === true, file: body.file !== false, as: analyst.as } : { publish: body.publish === true, file: body.file !== false });
           sendJson(response, out.ok ? 200 : (out.error === 'invalid_symbol' ? 400 : 200), out);
           return;
         }
+        if (!isOwner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
         /* the owner picks which articles are read in full in their own voice: { slug, on } */
         if (request.method === 'POST' && path === '/academy-activity/articles/voice') {
           const raw = await readRequestBody(request, 1_024).catch(() => null);
@@ -3969,6 +3981,51 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Edition (academy-editions.js): Trader or Analyst, with the analyst checklist. Any signed-in member reads; choosing Analyst needs Academy access. */
+    if (path === '/academy-activity/edition') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const me = String(session.userId);
+      if (!academyEditions) { sendJson(response, 503, { ok: false, error: 'edition_unavailable' }); return; }
+      try {
+        if (request.method === 'POST') {
+          if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+          const raw = await readRequestBody(request, 512).catch(() => null);
+          let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
+          const set = await academyEditions.set(me, body.edition);
+          if (!set.ok) { sendJson(response, set.status || 400, { ok: false, error: set.code }); return; }
+        } else if (request.method !== 'GET') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return; }
+        const [seller, persona] = await Promise.all([
+          alertChartBilling ? alertChartBilling.sellerStatus(me).catch(() => null) : null,
+          personaRegistry ? personaRegistry.status(me).catch(() => null) : null
+        ]);
+        sendJson(response, 200, await academyEditions.summary(me, { seller, persona, letters: { configured: !!(storyPublisher && storyPublisher.signed && storyPublisher.signed()) }, owner: OWNER_IDS.includes(me), tier: session.tier }));
+      } catch (error) { logger('error', 'academy_edition_failed', { error }); sendJson(response, 503, { ok: false, error: 'edition_unavailable' }); }
+      return;
+    }
+    /* Persona bot (academy-persona-bots.js): the analyst's own Discord bot for their alerts. GET status (?guild=&channel= adds the posting check), POST { token }, DELETE. */
+    if (path === '/academy-activity/persona') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const me = String(session.userId);
+      if (!personaRegistry) { sendJson(response, 503, { ok: false, error: 'persona_unavailable' }); return; }
+      try {
+        if (request.method === 'GET') { const rq = new URL(request.url || '/', 'http://localhost').searchParams; sendJson(response, 200, { ok: true, ...(await personaRegistry.status(me, { guildId: rq.get('guild') || '', channelId: rq.get('channel') || '' })) }); return; }
+        if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+        if (request.method === 'POST') {
+          const raw = await readRequestBody(request, 1_024).catch(() => null);
+          let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
+          const r = await personaRegistry.set(me, body.token);
+          if (!r.ok) { sendJson(response, r.status || 400, { ok: false, error: r.code, detail: r.detail || '' }); return; }
+          sendJson(response, 200, { ok: true, bot: r.bot, inviteUrl: r.inviteUrl }); return;
+        }
+        if (request.method === 'DELETE') { const r = await personaRegistry.remove(me); sendJson(response, r.ok ? 200 : (r.status || 400), r.ok ? { ok: true } : { ok: false, error: r.code, detail: r.detail || '' }); return; }
+        sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
+      } catch (error) { logger('error', 'academy_persona_failed', { error }); sendJson(response, 503, { ok: false, error: 'persona_unavailable' }); }
+      return;
+    }
     /* Candle recap (academy-candle-recap.js): one higher-timeframe candle read in full. Any signed-in member. */
     if (request.method === 'GET' && path === '/academy-activity/candle-recap') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -3996,6 +4053,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const symbol = String(rq.get('symbol') || 'SPY').toUpperCase();
       if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
       const t = Number(rq.get('t')) > 0 ? Number(rq.get('t')) : Date.now();
+      if (!sessionRecap) { sendJson(response, 503, { ok: false, error: 'recap_unavailable' }); return; }
       try {
         const out = await sessionRecap.build({ symbol, t });
         if (rq.get('format') === 'svg') {
@@ -5708,11 +5766,14 @@ async function main() {
   });
   const siteTierDirectory = createDiscordDirectory({ tokens: alertTokens, logger: log });
   /* Session recap (academy-session-recap.js): the day written at the bell, morning / afternoon / into tomorrow, with its lettered chart.
-     Any signed-in member can read it on /academy-activity/session-recap; after the close it is posted once to SML_SESSION_RECAP_CHANNEL_ID. */
+     Any signed-in member can read it on /academy-activity/session-recap; after the close it is posted once to SML_SESSION_RECAP_CHANNEL_ID
+     by the owner's Grandmaster-Obi bot (SML_OBI_BOT_TOKEN, the bot that already carries the alerts), or by the shared alert bots when that
+     token is not set. The bot needs View Channel, Send Messages and Attach Files in the recap channel. */
+  const recapDirectory = process.env.SML_OBI_BOT_TOKEN ? createDiscordDirectory({ tokens: [{ label: 'obi', token: process.env.SML_OBI_BOT_TOKEN }], logger: log }) : siteTierDirectory;
   const sessionRecap = createSessionRecap({
     barsFor: candleBarsFor, gamma: academyGamma ? (s) => academyGamma.get(s) : null,
     calendar: (o) => require('./academy-market-calendar').upcoming(o), calendarExtra: process.env.SML_MACRO_EVENTS || null, dayInfo: marketDayInfo,
-    png: challengeCardPng, post: (channelId, body, files) => siteTierDirectory.post(channelId, body, files),
+    png: challengeCardPng, post: (channelId, body, files) => recapDirectory.post(channelId, body, files),
     store: createPgStateStore({ pool: database.pool, key: 'session-recap', defaultValue: () => ({ posted: {} }), logger: log }),
     channelId: String(process.env.SML_SESSION_RECAP_CHANNEL_ID || '').trim(), symbol: String(process.env.SML_SESSION_RECAP_SYMBOL || 'SPY').toUpperCase(), logger: log
   });
@@ -5769,9 +5830,38 @@ async function main() {
   if (academyProfilePages) void academyProfilePages.ensureSchema();
   const academyProfiles = process.env.ACADEMY_PROFILE_CARDS === 'off' ? null : createProfileService({ directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), bridge: loopKickBridge, logger: log });
   /* Click-to-Alert is off until SML_ACADEMY_CLICK_ALERT_ROLE_IDS names the role the separate subscription grants. ACADEMY_CLICK_ALERT=off disables it outright. */
-  /* A member's own bot (their name and picture): SML_OBI_BOT_TOKEN is the owner's second bot. It posts the owner's alerts where it is in the server. */
-  const personaBots = {};
-  if (process.env.SML_OBI_BOT_TOKEN) for (const id of OWNER_IDS) personaBots[id] = createDiscordDirectory({ tokens: [{ label: 'persona', token: process.env.SML_OBI_BOT_TOKEN }], logger: log });
+  /* A member's own bot (their name and picture) carries the alerts posted into their server: the owner's from SML_OBI_BOT_TOKEN, an
+     analyst's from the token they paste in the Academy (academy-persona-bots.js: checked with Discord, stored encrypted under
+     SML_PERSONA_ENCRYPTION_KEY, SML_EMAIL_ENCRYPTION_KEY as the fallback key). Without one the shared bots (SML Connect) post. */
+  const personaRegistry = createPersonaBots({
+    store: createPgStateStore({ pool: database.pool, key: 'persona-bots', defaultValue: () => ({ users: {} }), logger: log }),
+    encryptionKey: process.env.SML_PERSONA_ENCRYPTION_KEY || process.env.SML_EMAIL_ENCRYPTION_KEY || '',
+    createDirectory: ({ label, token }) => createDiscordDirectory({ tokens: [{ label, token }], logger: log }),
+    ownerIds: OWNER_IDS, ownerToken: process.env.SML_OBI_BOT_TOKEN || '', logger: log
+  });
+  const personaBots = personaRegistry.map;
+  void personaRegistry.load().then((r) => { if (r && r.ok && r.loaded) log('info', 'persona_bots_loaded', { loaded: r.loaded }); }).catch((error) => log('warn', 'persona_bots_load_failed', { error }));
+  /* Trader or Analyst edition, chosen by the member (academy-editions.js) */
+  const academyEditions = createEditions({ store: createPgStateStore({ pool: database.pool, key: 'academy-editions', defaultValue: () => ({ users: {} }), logger: log }), logger: log });
+  /* an analyst's own letters publisher: the same signed service call as the owner's, made as their linked site account */
+  const analystPublishers = new Map();
+  const analystPublisherFor = (wpUserId) => {
+    const id = Number(wpUserId) || 0; if (!id || !config.academyBridgeSecret) return null;
+    let pub = analystPublishers.get(id);
+    if (!pub) { pub = createLettersPublisher({ siteUrl: config.wordpressUrl, authorId: id, secret: config.academyBridgeSecret, serviceUserId: id, minIntervalMs: 1500, retryCount: 4, logger: log }); analystPublishers.set(id, pub); if (analystPublishers.size > 200) analystPublishers.delete(analystPublishers.keys().next().value); }
+    return pub;
+  };
+  /* the analyst's Article Desk: who they write as, or null when the edition, the site link or the letters publisher is missing */
+  const analystDeskFor = async (userId, displayName) => {
+    const me = String(userId || '');
+    if (await academyEditions.get(me) !== 'analyst') return { ok: false, error: 'analyst_edition_required' };
+    const wp = alertChartBilling ? await alertChartBilling.wpUserOf(me).catch(() => 0) : 0;
+    if (!wp) return { ok: false, error: 'site_not_linked' };
+    const publisher = analystPublisherFor(wp);
+    if (!publisher || !publisher.signed()) return { ok: false, error: 'letters_unconfigured' };
+    let ident = null; try { ident = await publisher.identity(); } catch (error) { return { ok: false, error: 'letters_identity_failed', detail: String(error && error.message || error) }; }
+    return { ok: true, as: { publisher, byline: String(displayName || (ident && ident.name) || 'Analyst').slice(0, 60), authorPath: '/n/' + (ident && ident.slug ? String(ident.slug) : String(wp)) + '/', userId: me }, wp, ident };
+  };
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
     getBars: getAcademyCandles, directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
     /* posting caps (Discord posts, per member per hour / per day, per channel per hour); unset = the service defaults, 0 = no cap */
@@ -6255,7 +6345,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling, tradingRoom,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, sessionRecap, personaRegistry, academyEditions, analystDeskFor, storyPublisher, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling, tradingRoom,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,

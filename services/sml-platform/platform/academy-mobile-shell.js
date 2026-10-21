@@ -38,7 +38,7 @@
     flow: [['quote', 'QUOTE · BOOK', ''], ['buysell', 'BUY/SELL', 'buysell-toggle'], ['dark', 'DARK POOL', 'darkpool-toggle'], ['short', 'SHORT SALE', 'shortsale-toggle'], ['sent', 'SENTIMENT', 'sentiment-toggle'], ['squeeze', 'SQUEEZE', 'squeeze-btn']],
     options: [['chain', 'CHAIN', ''], ['calc', 'CALCULATOR', ''], ['contract', 'CONTRACT', '']],
     algo: [['mem', 'MEM ALGO', 'mem-algo-toggle'], ['smc', 'SMC', 'smc-toggle'], ['sire', 'SIRE', 'sire-toggle'], ['market', 'MARKET', ''], ['earn', 'EARNINGS', 'earnings-toggle'], ['cat', 'CATALYSTS', 'catalysts-toggle'], ['paper', 'PAPER', 'paper-toggle'], ['chal', 'CHALLENGE', 'challenge-toggle']],
-    talk: [['comments', 'COMMENTS', 'talk-btn'], ['chat', 'CHAT', '']]
+    talk: [['comments', 'COMMENTS', 'talk-btn'], ['chat', 'CHAT', ''], ['edition', 'EDITION', 'edition-btn']]
   };
   const STOCK_TABS = [['chart', 'Chart'], ['flow', 'Flow'], ['options', 'Options'], ['algo', 'Algo'], ['talk', 'Comments']];
   const S = { tab: 'chart', stock: 'chart', sub: { flow: 'quote', options: 'chain', algo: 'mem', talk: 'comments' } };

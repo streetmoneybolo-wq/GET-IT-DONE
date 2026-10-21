@@ -233,9 +233,11 @@ function createStoryDesk({
   /* the piece: the dossier (every insight the Academy has on the name) and, when the piece is being filed, the GIF and the
      poster uploaded first so the social image is known; then the composer (academy-article-desk.js) writes the article with
      its modules, backlinks, stylesheet and head. compose() is pure, so the package is re-made with the final letter URL. */
-  async function produce(story, c, { file = true, topic = null, dossier: preDossier = null, fast = false } = {}) {
+  /* `as` writes the piece for an analyst instead of the owner: { publisher, byline, authorPath }; the letter is filed under their own site account */
+  async function produce(story, c, { file = true, topic = null, dossier: preDossier = null, fast = false, as = null } = {}) {
     const asOf = now();
-    const upload = file && publisher && publisher.configured();
+    const pub = as && as.publisher ? as.publisher : publisher, author = as && as.byline ? as.byline : byline, aPath = as && as.authorPath ? as.authorPath : authorPath, aUrl = siteUrl + aPath;
+    const upload = file && pub && pub.configured();
     const dossierP = preDossier ? Promise.resolve(preDossier) : desk2.buildDossier(c.symbol, insights, fast ? { budgetMs: 6_000 } : {}).catch((error) => { logger('warn', 'story_dossier_failed', { symbol: c.symbol, error: String(error && error.message || error) }); return {}; });
     const gifP = (async () => {
         // the GIF: the last 40 daily candles, then the path (trigger, confirmation, target)
@@ -244,11 +246,11 @@ function createStoryDesk({
         try {
           const gifOpts = { symbol: c.symbol, bars: c.daily.slice(-40), last: c.price, target: story.pt, stop: story.stop, levels: (c.gamma && c.gamma.callWall ? [{ label: 'Call wall', price: c.gamma.callWall.strike }] : []).concat(c.smc && c.smc.range ? [{ label: 'Range high', price: c.smc.range.hi }] : []), waypoints: story.path || [], count: 12, lean: story.lean, title: `$${c.symbol}: the path to $${story.pt}`, subtitle: `${engine.ANGLES[story.angle].label} scenario. Speculative, not advice.` };
           gifInfo = await gifs.gifAsync(gifOpts);
-          if (gifInfo && gifInfo.gif) media = await publisher.uploadMedia({ bytes: gifInfo.gif, filename: `${c.symbol.toLowerCase()}-path-to-${String(story.pt).replace('.', '-')}.gif`, contentType: 'image/gif', title: `$${c.symbol} path to $${story.pt}`, alt: `${c.symbol} price-action scenario: real candles, then the move to $${story.pt}`, caption: 'Speculative scenario built from the Academy data desk. Not advice.' });
+          if (gifInfo && gifInfo.gif) media = await pub.uploadMedia({ bytes: gifInfo.gif, filename: `${c.symbol.toLowerCase()}-path-to-${String(story.pt).replace('.', '-')}.gif`, contentType: 'image/gif', title: `$${c.symbol} path to $${story.pt}`, alt: `${c.symbol} price-action scenario: real candles, then the move to $${story.pt}`, caption: 'Speculative scenario built from the Academy data desk. Not advice.' });
           if (typeof gifs.poster === 'function') {
             // the still the search engines and social cards use: a 1200 pixel PNG of the finished scenario
             const poster = gifs.poster(gifOpts, 1200);
-            if (poster && poster.png) posterMedia = await publisher.uploadMedia({ bytes: poster.png, filename: `${c.symbol.toLowerCase()}-scenario-poster.png`, contentType: 'image/png', title: `$${c.symbol} scenario: the path to $${story.pt}`, alt: `${c.symbol} price-action scenario to $${story.pt}`, caption: 'Speculative scenario from the Academy data desk. Not advice.' });
+            if (poster && poster.png) posterMedia = await pub.uploadMedia({ bytes: poster.png, filename: `${c.symbol.toLowerCase()}-scenario-poster.png`, contentType: 'image/png', title: `$${c.symbol} scenario: the path to $${story.pt}`, alt: `${c.symbol} price-action scenario to $${story.pt}`, caption: 'Speculative scenario from the Academy data desk. Not advice.' });
           }
         } catch (error) { logger('warn', 'story_gif_failed', { symbol: c.symbol, error: String(error && error.message || error) }); }
         return { media, gifInfo, posterMedia };
@@ -263,10 +265,10 @@ function createStoryDesk({
     const { media, gifInfo, posterMedia } = gif;
     const coverUrl = posterMedia && posterMedia.url ? posterMedia.url : (media && media.url ? media.url : '');
     /* the prose: the model writes as the byline from the fact sheet (checked: no new numbers, no repeats, no padding); the house writer otherwise */
-    const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author: byline, publication, siteUrl, authorUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic, record: recordNow(), narrative, audioEndpoint });
+    const compose = (url) => desk2.composeArticle({ story, c, dossier, asOf, author, publication, siteUrl, authorUrl: aUrl, chartEndpoint, discordUrl, url, imageUrl: coverUrl, topic, record: recordNow(), narrative, audioEndpoint });
     const guess = compose('');
-    const pkg = file ? compose(`${siteUrl}${authorPath}${guess.slug}/`) : guess;
-    rememberAudio(pkg);
+    const pkg = file ? compose(`${siteUrl}${aPath}${guess.slug}/`) : guess;
+    if (!as) rememberAudio(pkg);
     /* the figures lead as the composer's one tight frame; the cover image is the scenario chart, so the body carries no second copy */
     const body = [...pkg.blocks, { id: 'd1', type: 'disclosure', position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' }];
     const blocks = body;
@@ -274,19 +276,20 @@ function createStoryDesk({
     return { draft: { ...pkg, html: pkg.bodyHtml, parts: pkg.parts, asOfIso: pkg.asOfIso }, pkg, compose, html: pkg.bodyHtml, letter, media, posterMedia, seo: pkg.seo, dossier, gifFrames: gifInfo ? gifInfo.frames : 0 };
   }
 
-  async function file(story, c, built) {
+  async function file(story, c, built, as = null) {
+    const pub = as && as.publisher ? as.publisher : publisher, aPath = as && as.authorPath ? as.authorPath : '/n/grandmasterobi/';
     const out = { symbol: c.symbol, angle: story.angle, title: built.draft.title, pt: story.pt, ptPct: story.ptPct, rank: story.rank, letterId: null, url: '', published: false, asByline: null, error: '' };
-    if (!publisher || !publisher.configured()) { out.error = 'letters_unconfigured'; return out; }
+    if (!pub || !pub.configured()) { out.error = 'letters_unconfigured'; return out; }
     try {
-      const me = await publisher.identity();
-      out.asByline = publisher.authorId ? me.id === publisher.authorId : null;
-      const created = await publisher.createLetter(built.letter);
+      const me = await pub.identity();
+      out.asByline = pub.authorId ? me.id === pub.authorId : null;
+      const created = await pub.createLetter(built.letter);
       out.letterId = created.id; out.rawKeys = created.raw && typeof created.raw === 'object' ? Object.keys(created.raw).slice(0, 12) : null;
       if (!created.id) { out.error = 'letter_id_missing'; logger('warn', 'story_letter_create_unknown_shape', { symbol: c.symbol, raw: JSON.stringify(created.raw).slice(0, 400) }); return out; }
-      await publisher.saveSeo(created.id, built.seo);
-      if (autopublish && out.asByline) { const pub = await publisher.publishLetter(created.id); out.published = true; if (pub && pub.url) out.url = pub.url; }
-      if (!out.url) { try { const got = typeof publisher.getLetter === 'function' ? await publisher.getLetter(created.id) : null; if (got && got.url) out.url = got.url; } catch (_) { /* the id is enough */ } }
-      if (!out.url) out.url = `${siteUrl}/n/grandmasterobi/${created.slug || built.draft.slug}/`;
+      await pub.saveSeo(created.id, built.seo);
+      if (autopublish && out.asByline && !as) { const published = await pub.publishLetter(created.id); out.published = true; if (published && published.url) out.url = published.url; }
+      if (!out.url) { try { const got = typeof pub.getLetter === 'function' ? await pub.getLetter(created.id) : null; if (got && got.url) out.url = got.url; } catch (_) { /* the id is enough */ } }
+      if (!out.url) out.url = `${siteUrl}${aPath}${created.slug || built.draft.slug}/`;
     } catch (error) { out.error = String(error && error.message || error); logger('warn', 'story_letter_failed', { symbol: c.symbol, error: out.error, body: error && error.body ? JSON.stringify(error.body).slice(0, 300) : '' }); }
     return out;
   }
@@ -382,7 +385,7 @@ function createStoryDesk({
     for (const symbol of list) { if (!memoryOk()) break; const hit = hot.get(symbol); if (hit && now() - hit.at < HOT_MS - 60_000) continue; try { await gather(symbol, { fast: false }); n += 1; } catch (error) { logger('warn', 'story_warm_failed', { symbol, error: String(error && error.message || error) }); } }
     return { warmed: n, hot: hot.size };
   }
-  async function write(input, { publish = false, file: doFile = true, scheduled = false, fast = !scheduled } = {}) {
+  async function write(input, { publish = false, file: doFile = true, scheduled = false, fast = !scheduled, as = null } = {}) {
     const t0 = now();
     await load();
     const subject = desk2.resolveSubject(input);
@@ -394,17 +397,21 @@ function createStoryDesk({
     /* a piece asked for by name is always written: a loud setup when there is one, the narrative (build-up, move, rumor) when there is not */
     const ranked = engine.rankStories([c], { force: true });
     if (!ranked.length) return { ok: false, error: 'no_angle', heat: c.heat, subject };
-    const built = await produce(ranked[0], c, { file: doFile, topic: subject.topic, dossier: g.dossier && Object.keys(g.dossier).length ? g.dossier : null, fast });
+    const built = await produce(ranked[0], c, { file: doFile, topic: subject.topic, dossier: g.dossier && Object.keys(g.dossier).length ? g.dossier : null, fast, as });
     const tBuilt = now();
     let filed = null;
     if (doFile) {
-      filed = await file(ranked[0], c, built);
-      if (publish && filed.letterId && publisher && !filed.published) { try { const pub = await publisher.publishLetter(filed.letterId); filed.published = true; if (pub && pub.url) filed.url = pub.url; } catch (error) { filed.error = String(error && error.message || error); } }
-      if (!filed.error) { state.written[c.symbol + ':' + ranked[0].angle] = now(); logOutcome(ranked[0], c, { filed: true, letterId: filed.letterId, url: filed.url }); }
-      note(`${scheduled ? 'scheduled ' : ''}${subject.label} ${ranked[0].angle} PT $${ranked[0].pt}: ${filed.error || (filed.published ? 'published' : 'draft')} ${filed.url || ''}`, { symbol: c.symbol, angle: ranked[0].angle, letterId: filed.letterId });
-      await save();
-      await tell([filed]);
-    } else { logOutcome(ranked[0], c, { filed: false }); await save(); }
+      filed = await file(ranked[0], c, built, as);
+      const pub = as && as.publisher ? as.publisher : publisher;
+      if (publish && filed.letterId && pub && !filed.published) { try { const published = await pub.publishLetter(filed.letterId); filed.published = true; if (published && published.url) filed.url = published.url; } catch (error) { filed.error = String(error && error.message || error); } }
+      if (as) { logger('info', 'story_analyst_filed', { symbol: c.symbol, angle: ranked[0].angle, userId: as.userId || '', letterId: filed.letterId, error: filed.error || '' }); }
+      else if (!filed.error) { state.written[c.symbol + ':' + ranked[0].angle] = now(); logOutcome(ranked[0], c, { filed: true, letterId: filed.letterId, url: filed.url }); }
+      if (!as) {
+        note(`${scheduled ? 'scheduled ' : ''}${subject.label} ${ranked[0].angle} PT $${ranked[0].pt}: ${filed.error || (filed.published ? 'published' : 'draft')} ${filed.url || ''}`, { symbol: c.symbol, angle: ranked[0].angle, letterId: filed.letterId });
+        await save();
+        await tell([filed]);
+      }
+    } else if (!as) { logOutcome(ranked[0], c, { filed: false }); await save(); }
     const article = packageFor(built, filed && filed.url ? filed.url : '');
     return { ok: true, timing: { gatherMs: tGather - t0, writeMs: tBuilt - tGather, totalMs: now() - t0, warm: !!g.cached, fast }, subject, story: { ...ranked[0], facts: ranked[0].facts }, dossier: Object.fromEntries(Object.entries(built.dossier || {}).map(([k, v]) => [k, !!(v && (Array.isArray(v) ? v.length : true))])),
       draft: { title: article.title, dek: article.dek, meta: article.seo.meta_desc, tags: article.tags, wordCount: article.wordCount, readMinutes: article.readMinutes, seo: article.seo, document: article.document, modules: article.modules, sections: article.sections, links: article.links },

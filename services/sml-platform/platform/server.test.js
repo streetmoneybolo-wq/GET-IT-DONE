@@ -2290,7 +2290,7 @@ test('Activity navigation: one grouped tool rail (CHART, FLOW, DESK, SHARE) with
   const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
   assert.match(html, /id = 'tool-rail'/, 'the rail exists');
   for (const label of ['CHART', 'FLOW', 'DESK', 'SHARE']) assert.match(html, new RegExp("label: '" + label + "'"));
-  for (const id of ['depth-walls', 'heat-toggle', 'smc-toggle', 'levels-toggle', 'intent-btn', 'buysell-toggle', 'darkpool-toggle', 'shortsale-toggle', 'sentiment-toggle', 'squeeze-btn', 'chain-toggle', 'mem-algo-toggle', 'sire-toggle', 'earnings-toggle', 'catalysts-toggle', 'paper-toggle', 'challenge-toggle', 'talk-btn', 'snap-toggle', 'click-alert-toggle']) assert.ok(html.includes("'" + id + "'"), id + ' is in a group');
+  for (const id of ['depth-walls', 'heat-toggle', 'smc-toggle', 'levels-toggle', 'edition-btn', 'intent-btn', 'buysell-toggle', 'darkpool-toggle', 'shortsale-toggle', 'sentiment-toggle', 'squeeze-btn', 'chain-toggle', 'mem-algo-toggle', 'sire-toggle', 'earnings-toggle', 'catalysts-toggle', 'paper-toggle', 'challenge-toggle', 'talk-btn', 'snap-toggle', 'click-alert-toggle']) assert.ok(html.includes("'" + id + "'"), id + ' is in a group');
   assert.match(html, /tool-guide-btn/); assert.match(html, /tool-quote-btn/); assert.match(html, /sml-quote-open main \.side\{display:flex!important/, 'the quote column opens as a phone sheet');
   assert.match(html, /narrowed to a phone width: the pills go back to floating/);
   assert.match(html, /#sml-settings-btn\{right:auto;left:10px;bottom:48px\}/, 'Settings no longer sits on the Loop Bucks pill on phones');
@@ -2596,4 +2596,40 @@ test('Trading Room routes: the owner sets the room up, visitors see locked doors
     assert.equal((await fetch(`${base}/academy-activity/room/ban`, J('owner', { member: B }))).status, 200);
     assert.equal((await fetch(`${base}/academy-activity/room/post`, J('member', { owner: A, channel: 'general', body: 'still here' }))).status, 403);
   });
+});
+
+test('Editions and persona bots: a member picks Trader or Analyst, the analyst checklist reads the site link and the bot, and an Analyst with a linked site account writes letters under their own byline', async () => {
+  const { createEditions } = require('./academy-editions');
+  const memStore = () => { let v = null; return { read: async () => v, write: async (n) => { v = JSON.parse(JSON.stringify(n)); } }; };
+  const academyEditions = createEditions({ store: memStore() });
+  const persona = { status: async (id) => ({ configured: true, available: id === '100000000000000001', own: 'member', bot: { id: '999000000000000999', username: 'Obi Alerts' }, guilds: [], inviteUrl: '' }), set: async (id, token) => (token === 'good' ? { ok: true, bot: { id: '999000000000000999', username: 'Obi Alerts' }, inviteUrl: 'https://discord.com/oauth2/authorize?client_id=999000000000000999' } : { ok: false, status: 400, code: 'invalid_token', detail: 'nope' }), remove: async () => ({ ok: true }) };
+  const academyOAuth = { verifySession: (auth) => (auth === 'Bearer member' ? { ok: true, tier: 'academy', userId: '100000000000000001', displayName: 'Casey Trades' } : auth === 'Bearer free' ? { ok: true, tier: 'free', userId: '100000000000000002' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const alertChartBilling = { sellerStatus: async () => ({ ok: true, configured: true, linked: true, connectUrl: '', consented: false, stripe: { connected: false, ready: false }, ready: false }), wpUserOf: async () => 4242 };
+  const calls = [];
+  const desk = { write: async (subject, opts) => { calls.push({ subject, opts }); return { ok: true, subject: { symbol: 'NVDA' } }; } };
+  const analystDeskFor = async (userId, displayName) => (await academyEditions.get(userId) === 'analyst' ? { ok: true, as: { publisher: { signed: () => true }, byline: displayName, authorPath: '/n/casey/', userId } } : { ok: false, error: 'analyst_edition_required' });
+  await withServer({ academyOAuth, academyEditions, personaRegistry: persona, alertChartBilling, analystDeskFor, storyPublisher: { signed: () => true }, getStoryDesk: () => desk }, async (base) => {
+    const h = { authorization: 'Bearer member' }, j = { ...h, 'content-type': 'application/json' };
+    let r = await fetch(`${base}/academy-activity/edition`, { headers: h }); assert.equal(r.status, 200); let b = await r.json();
+    assert.equal(b.edition, 'trader'); assert.equal(b.analyst.linked, true); assert.equal(b.analyst.features.article, false, 'a Trader has no Article Desk');
+    assert.equal((await fetch(`${base}/academy-activity/articles`, { headers: h })).status, 403, 'a Trader is refused');
+    assert.equal((await fetch(`${base}/academy-activity/edition`, { method: 'POST', headers: { authorization: 'Bearer free', 'content-type': 'application/json' }, body: '{"edition":"analyst"}' })).status, 403, 'free needs access');
+    r = await fetch(`${base}/academy-activity/edition`, { method: 'POST', headers: j, body: '{"edition":"analyst"}' }); assert.equal(r.status, 200); b = await r.json();
+    assert.equal(b.edition, 'analyst'); assert.equal(b.analyst.features.article, true); assert.equal(b.analyst.bot.bot.username, 'Obi Alerts');
+    assert.ok(b.analyst.steps.find((s) => s.key === 'site').done); assert.ok(!b.analyst.steps.find((s) => s.key === 'seller').done);
+    assert.equal((await fetch(`${base}/academy-activity/edition`, { method: 'POST', headers: j, body: '{"edition":"wizard"}' })).status, 400);
+    r = await fetch(`${base}/academy-activity/articles`, { headers: h }); assert.equal(r.status, 200); b = await r.json(); assert.equal(b.analyst, true); assert.equal(b.byline, 'Casey Trades');
+    r = await fetch(`${base}/academy-activity/articles/write`, { method: 'POST', headers: j, body: JSON.stringify({ symbol: 'NVDA', file: true, publish: true }) }); assert.equal(r.status, 200);
+    assert.equal(calls[0].subject, 'NVDA'); assert.equal(calls[0].opts.as.byline, 'Casey Trades'); assert.equal(calls[0].opts.as.authorPath, '/n/casey/'); assert.equal(calls[0].opts.publish, true);
+    assert.equal((await fetch(`${base}/academy-activity/articles/voice`, { method: 'POST', headers: j, body: '{"slug":"x"}' })).status, 403, 'the voice stays the owner\'s');
+    r = await fetch(`${base}/academy-activity/persona`, { headers: h }); assert.equal(r.status, 200); assert.equal((await r.json()).bot.username, 'Obi Alerts');
+    r = await fetch(`${base}/academy-activity/persona`, { method: 'POST', headers: j, body: '{"token":"good"}' }); assert.equal(r.status, 200); assert.match((await r.json()).inviteUrl, /client_id=999000000000000999/);
+    r = await fetch(`${base}/academy-activity/persona`, { method: 'POST', headers: j, body: '{"token":"bad"}' }); assert.equal(r.status, 400); assert.equal((await r.json()).error, 'invalid_token');
+    assert.equal((await fetch(`${base}/academy-activity/persona`, { method: 'POST', headers: { authorization: 'Bearer free', 'content-type': 'application/json' }, body: '{"token":"good"}' })).status, 403);
+    assert.equal((await fetch(`${base}/academy-activity/persona`, { method: 'DELETE', headers: h })).status, 200);
+    assert.equal((await fetch(`${base}/academy-activity/edition`)).status, 401);
+  });
+  await withServer({ academyOAuth }, async (base) => { assert.equal((await fetch(`${base}/academy-activity/edition`, { headers: { authorization: 'Bearer member' } })).status, 503, 'without the service the route says so'); });
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  assert.match(html, /id = 'edition-btn'/); assert.match(html, /body\.sml-edition-trader #click-alert-toggle,body\.sml-edition-trader #article-btn\{display:none!important\}/, 'the Trader edition hides the publishing tools');
 });
