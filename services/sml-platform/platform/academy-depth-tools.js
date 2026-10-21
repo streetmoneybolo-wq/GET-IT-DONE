@@ -87,7 +87,14 @@
     side(book.bids || [], 'bid'); side(book.asks || [], 'ask');
     return out.sort((a, b) => b.size - a.size).slice(0, 4);
   }
+
+  /* the chart's smart range keeps these levels on screen when they are within reach of the candles (academy-chart-pro.js) */
+  let wallSig = '';
+  const levelsNow = (s) => (S.walls && S.live && S.live.symbol === s && S.live.book ? walls(S.live.book).map((w) => w.price) : []);
+  (function reg(n) { if (window.smlChartLevels) { window.smlChartLevels.register('walls', levelsNow); return; } if (n < 60) setTimeout(() => reg(n + 1), 500); })(0);
+  const levelsChanged = () => { const sg = levelsNow(sym()).join(','); if (sg !== wallSig) { wallSig = sg; try { if (window.smlChartPro) window.smlChartPro.setView(); } catch (_) { /* chart not ready */ } } };
   function draw() {
+    levelsChanged();
     if (chartCanvas.parentElement && layer.parentElement !== chartCanvas.parentElement) chartCanvas.parentElement.appendChild(layer);
     const w = chartCanvas.clientWidth, h = chartCanvas.clientHeight, dpr = window.smlChartDpr ? window.smlChartDpr() : (window.devicePixelRatio || 1);
     layer.style.left = chartCanvas.offsetLeft + 'px'; layer.style.top = chartCanvas.offsetTop + 'px'; layer.style.width = w + 'px'; layer.style.height = h + 'px';

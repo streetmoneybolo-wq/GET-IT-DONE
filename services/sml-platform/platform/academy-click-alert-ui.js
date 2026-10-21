@@ -118,7 +118,14 @@
   const explainErr = (r) => r.detail || WHY[r.error] || 'That did not work (' + esc(r.error || r.status) + ').';
 
   /* ---------- the chart marks: entry and target lines ---------- */
+
+  /* the chart's smart range keeps these levels on screen when they are within reach of the candles (academy-chart-pro.js) */
+  let alertSig = '';
+  const levelsNow = (s) => (S.on && S.target != null && S.symbol === s ? [S.entry, S.target, S.data && S.data.stop].filter((v) => Number.isFinite(Number(v)) && v !== null).map(Number) : []);
+  (function reg(n) { if (window.smlChartLevels) { window.smlChartLevels.register('click-alert', levelsNow); return; } if (n < 60) setTimeout(() => reg(n + 1), 500); })(0);
+  const levelsChanged = () => { const sg = levelsNow(S.symbol).join(','); if (sg !== alertSig) { alertSig = sg; try { if (window.smlChartPro) window.smlChartPro.setView(); } catch (_) { /* chart not ready */ } } };
   function draw() {
+    levelsChanged();
     if (canvas.parentElement && layer.parentElement !== canvas.parentElement) canvas.parentElement.appendChild(layer);
     const w = canvas.clientWidth, h = canvas.clientHeight, dpr = window.smlChartDpr ? window.smlChartDpr() : (window.devicePixelRatio || 1);
     layer.style.left = canvas.offsetLeft + 'px'; layer.style.top = canvas.offsetTop + 'px'; layer.style.width = w + 'px'; layer.style.height = h + 'px';

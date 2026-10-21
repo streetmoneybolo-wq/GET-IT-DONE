@@ -54,3 +54,10 @@ test('smart range: levels within one visible range of the candles widen the scal
   assert.deepEqual(J(fn(100, 100, [105])), { lo: 100, hi: 100 });
   const tgt = fs.readFileSync(path.join(__dirname, 'academy-targets-ui.js'), 'utf8'); assert.match(tgt, /smlChartLevels\.register\('targets'/);
 });
+
+test('smart range: order-book walls and the click-to-alert entry, target and stop are registered as levels', () => {
+  const fs = require('fs'), path = require('path');
+  const d = fs.readFileSync(path.join(__dirname, 'academy-depth-tools.js'), 'utf8'), c = fs.readFileSync(path.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
+  assert.match(d, /smlChartLevels\.register\('walls'/); assert.match(d, /walls\(S\.live\.book\)\.map\(\(w\) => w\.price\)/); assert.match(d, /levelsChanged\(\);\s*if \(chartCanvas\.parentElement/);
+  assert.match(c, /smlChartLevels\.register\('click-alert'/); assert.match(c, /S\.entry, S\.target, S\.data && S\.data\.stop/); assert.match(c, /levelsChanged\(\);\s*if \(canvas\.parentElement/);
+});
