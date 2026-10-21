@@ -145,7 +145,7 @@ const { createAskDesk } = require('./academy-ask-desk');
 const { createAskLog } = require('./academy-ask-log');
 const { createTickerTalk } = require('./academy-ticker-talk');
 const { createAcademyTrial } = require('./academy-trial');
-const { createAcademyBake } = require('./academy-bake');
+const { createAcademyBake, bakeTourLines } = require('./academy-bake');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 const ACADEMY_INTRO_PATH = pathModule.join(__dirname, 'assets', 'making-easy-money-academy-intro.mp4');
 const ACADEMY_BANNER_PATH = pathModule.join(__dirname, 'assets', 'mem-academy-banner.gif');
@@ -6098,6 +6098,10 @@ async function main() {
       const bake = createAcademyBake({ lessons: SEED_LESSONS, designer: academySlideDesigner, voice: academyVoice, store: academyMedia, logger: log });
       const which = { design: config.academyBake !== 'voice', voice: config.academyBake !== 'design' };
       setTimeout(() => { bake.run(which).catch((error) => log('error', 'academy_bake_failed', { error })); }, 15_000).unref();
+    }
+    /* the tour and first-use tool lines, recorded once (about fifty short clips); later starts only confirm them. SML_ACADEMY_TOUR_BAKE=off skips it */
+    if (process.env.SML_ACADEMY_TOUR_BAKE !== 'off' && academyVoice && academyVoice.configured && academyMedia) {
+      setTimeout(() => { bakeTourLines({ voice: academyVoice, store: academyMedia, logger: log }).catch((error) => log('error', 'academy_tour_bake_failed', { error })); }, 30_000).unref();
     }
     if (academyOrderFlow) {
       const pruneTimer = setInterval(() => { orderFlowStore.prune(90).catch(() => {}); }, 24 * 3_600_000);
