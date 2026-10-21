@@ -116,7 +116,7 @@
       + '<div class="ex-f"><button type="button" class="ex-quiet" data-a="off">Turn off tool tips</button><span class="ex-sp"></span><button type="button" class="ex-go" data-a="close">Got it</button></div>';
     document.body.appendChild(card);
     card.addEventListener('click', onCardClick);
-    ring(req.el && visible(req.el) ? req.el : null);
+    ring(req.el && visible(req.el) && (!window.smlExposed || window.smlExposed(req.el)) ? req.el : null);
     armClose(45000);
     const v = voice();
     if (t.voiced && v) {
@@ -129,7 +129,7 @@
   function voxPaint(state) { const b = card && card.querySelector('.ex-vox'); if (!b) return; b.dataset.s = state; b.textContent = state === 'playing' ? '🔊' : state === 'blocked' ? '▶' : '🔇'; }
   function onCardClick(e) {
     const b = e.target.closest && e.target.closest('button'); if (!b) return;
-    if (b.dataset.next) { const el = byId(b.dataset.next); close(); if (el) { try { el.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (_) { /* ignore */ } ring(el); setTimeout(() => { if (ringEl === el) unring(); }, 6000); } return; }
+    if (b.dataset.next) { const el = byId(b.dataset.next); close(); if (el) { try { el.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (_) { /* ignore */ } ring(!window.smlExposed || window.smlExposed(el) ? el : null); setTimeout(() => { if (ringEl === el) unring(); }, 6000); } return; }
     const a = b.dataset.a;
     if (a === 'close') close();
     else if (a === 'off') { setEnabled(false); close('off'); }

@@ -118,10 +118,29 @@
       let el = st.s ? find(st.s) : null;
       if (st.s && !el) { if (i < steps.length - 1) { i += 1; render(); } else finish('done'); return; }
       if (el) { const r0 = el.getBoundingClientRect(); const fixed = getComputedStyle(el).position === 'fixed' || !!el.closest('#ms-nav,#ms-sub,#ms-top'); if (!fixed && (r0.top < 60 || r0.bottom > innerHeight - 80)) el.scrollIntoView({ block: 'center', behavior: 'instant' }); }
-      requestAnimationFrame(() => { place(st, el); });
+      requestAnimationFrame(() => { if (el) el = uncover(el); place(st, el); });
     };
     setTimeout(draw, st.pre ? 380 : 30);
   }
+  /* a spotlight must sit on the thing it names: when another module is stacked over the control (a panel the member left open), that panel is hidden for
+   * the length of the step and restored after; if something still covers it the step falls back to a plain card with no hole, never a hole over the wrong thing */
+  const hidden = [];
+  function unhide() { while (hidden.length) { const [n, v] = hidden.pop(); n.style.visibility = v; } }
+  function blockerOf(el) {
+    const r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return null;
+    const x = Math.min(innerWidth - 1, Math.max(0, r.left + r.width / 2)), y = Math.min(innerHeight - 1, Math.max(0, r.top + r.height / 2));
+    const prev = root ? root.style.visibility : ''; if (root) root.style.visibility = 'hidden';
+    const h = document.elementFromPoint(x, y); if (root) root.style.visibility = prev;
+    if (!h || el.contains(h) || h.contains(el)) return null;
+    let b = h; while (b.parentElement && b.parentElement !== document.body && !b.parentElement.contains(el)) b = b.parentElement;
+    return b === document.body || b === document.documentElement ? null : b;
+  }
+  function uncover(el) {
+    unhide();
+    for (let k = 0; k < 3; k += 1) { const b = blockerOf(el); if (!b) return el; hidden.push([b, b.style.visibility]); b.style.visibility = 'hidden'; }
+    return blockerOf(el) ? null : el;
+  }
+  window.smlExposed = (el) => !!el && !blockerOf(el);
   function place(st, el) {
     if (!root) return;
     const n = i + 1, tot = steps.length;
@@ -190,7 +209,7 @@
     render();
   }
   function finish(how) {
-    running = false; mark(how); voice.stop();
+    running = false; mark(how); voice.stop(); unhide();
     document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', onResize);
     if (root) { root.remove(); root = null; }
     if (PHONE()) tab('chart');
