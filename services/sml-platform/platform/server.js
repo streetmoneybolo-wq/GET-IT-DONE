@@ -3869,7 +3869,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     /* Article Desk (academy-story-desk.js; routes /academy-activity/articles and the older /story): owner only. GET = status; POST /write { symbol, publish } = one piece on demand. */
-    if (path === '/academy-activity/story' || path === '/academy-activity/story/write' || path === '/academy-activity/articles' || path === '/academy-activity/articles/write') {
+    if (path === '/academy-activity/story' || path === '/academy-activity/story/write' || path === '/academy-activity/articles' || path === '/academy-activity/articles/write' || path === '/academy-activity/articles/voice') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
@@ -3887,6 +3887,15 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (!subject) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
           const out = await desk.write(subject, { publish: body.publish === true, file: body.file !== false });
           sendJson(response, out.ok ? 200 : (out.error === 'invalid_symbol' ? 400 : 200), out);
+          return;
+        }
+        /* the owner picks which articles are read in full in their own voice: { slug, on } */
+        if (request.method === 'POST' && path === '/academy-activity/articles/voice') {
+          const raw = await readRequestBody(request, 1_024).catch(() => null);
+          let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
+          const out = await desk.setFullVoice(String(body.slug || '').slice(0, 120), body.on !== false);
+          if (!out) { sendJson(response, 404, { ok: false, error: 'no_such_article_audio' }); return; }
+          sendJson(response, 200, { ok: true, ...out });
           return;
         }
         sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
@@ -4145,10 +4154,14 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const q = new URL(request.url || '/', 'http://localhost').searchParams;
       const entry = desk && typeof desk.audioFor === 'function' ? await desk.audioFor(String(q.get('slug') || '').slice(0, 120), String(q.get('v') || '').slice(0, 24)) : null;
       if (!entry) { sendJson(response, 404, { ok: false, error: 'no_such_article_audio' }); return; }
+      /* intro (the opening, a few hundred characters) is always available; the whole piece in the owner's voice only for articles the owner picked */
+      const wantFull = q.get('mode') === 'full';
+      if (wantFull && !entry.full) { sendJson(response, 403, { ok: false, error: 'full_voice_not_enabled' }); return; }
+      const voiceParts = wantFull ? entry.parts : (Array.isArray(entry.intro) && entry.intro.length ? entry.intro : entry.parts.slice(0, 1));
       const forwarded = String(request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown').split(',')[0].trim();
       const listener = `article:${crypto.createHash('sha256').update(`${forwarded}\0${String(request.headers['user-agent'] || '').slice(0, 160)}`).digest('hex').slice(0, 24)}`;
       try {
-        const result = await academyVoice.getPartsAudio({ parts: entry.parts, userId: listener });
+        const result = await academyVoice.getPartsAudio({ parts: voiceParts, userId: listener });
         const total = result.audio.length, range = /^bytes=(\d*)-(\d*)$/.exec(String(request.headers.range || ''));
         const headers = { 'content-type': 'audio/mpeg', 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff', 'access-control-allow-origin': '*', 'x-academy-voice-reused': `${result.reused}/${result.total}` };
         let start = 0, end = total - 1, status = 200;
@@ -4165,6 +4178,21 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         logger(error && error.cached ? 'warn' : 'error', 'academy_article_audio_failed', { error, slug: String(q.get('slug') || '').slice(0, 80), cached: !!(error && error.cached) });
         sendJson(response, limited ? 429 : 503, { ok: false, error: limited ? 'rate_limited' : 'voice_temporarily_unavailable' });
       }
+      return;
+    }
+
+    /* The listen page: the opening in the owner's voice (stored once), then the rest read by the listener's own browser voice (free); or the whole piece in the owner's voice when the owner turned that on for the article. */
+    if (request.method === 'GET' && path === '/academy-activity/article-listen') {
+      const desk = getStoryDesk();
+      const slug = String(new URL(request.url || '/', 'http://localhost').searchParams.get('slug') || '').slice(0, 120);
+      const entry = desk && typeof desk.audioFor === 'function' ? await desk.audioFor(slug) : null;
+      if (!entry) { sendJson(response, 404, { ok: false, error: 'no_such_article_audio' }); return; }
+      const base = '/academy-activity/article-audio?slug=' + encodeURIComponent(slug);
+      const data = { intro: base + '&v=' + entry.introHash + '&mode=intro', full: entry.full ? base + '&v=' + entry.hash + '&mode=full' : '', rest: entry.full ? '' : String(entry.rest || ''), title: String(entry.intro && entry.intro[0] || '').split(/(?<=[.?!])\s/)[0].slice(0, 160) };
+      const json = JSON.stringify(data).replace(/</g, '\\u003c');
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Listen to this article</title><style>body{margin:0;background:#0b1119;color:#e8eff4;font:500 16px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;padding:20px}main{max-width:520px;width:100%;text-align:center}h1{font-size:18px;margin:0 0 6px;color:#9fb4c2;font-weight:700;letter-spacing:.08em;text-transform:uppercase}p.t{font-size:22px;line-height:1.3;margin:0 0 22px;font-weight:800}button{border:0;border-radius:999px;background:#00c47d;color:#04140d;font:800 16px system-ui;padding:14px 28px;cursor:pointer}button.s{background:#16232f;color:#cfe0ea;margin-left:8px}small{display:block;margin-top:16px;color:#8da3b2}#st{margin-top:14px;color:#9fb4c2;min-height:1.4em}</style></head><body><main><h1>Listen</h1><p class="t" id="t"></p><div><button id="go" type="button">Play</button><button id="no" class="s" type="button" hidden>Stop</button></div><div id="st" role="status"></div><small>The opening is read in the Making Easy Money voice.<span id="free"></span> Educational analysis, not financial advice.</small></main><script>(function(){var D=${json},go=document.getElementById('go'),no=document.getElementById('no'),st=document.getElementById('st'),stop=false,au=null;document.getElementById('t').textContent=D.title;if(D.rest)document.getElementById('free').textContent=' The rest is read by your device\\u2019s own voice.';function say(t){st.textContent=t}function chunks(t){var o=[],c='';t.split(/(?<=[.!?])\\s+/).forEach(function(s){if(c&&(c+' '+s).length>180){o.push(c);c=s}else c=c?c+' '+s:s});if(c)o.push(c);return o}function speak(text,done){if(!('speechSynthesis'in window)||!text){done();return}var parts=chunks(text),i=0,v=(speechSynthesis.getVoices()||[]).filter(function(x){return/^en/i.test(x.lang)})[0];(function next(){if(stop||i>=parts.length){done();return}var u=new SpeechSynthesisUtterance(parts[i++]);if(v)u.voice=v;u.lang='en-US';u.rate=1;u.onend=next;u.onerror=next;try{speechSynthesis.speak(u)}catch(e){done()}})()}function fin(){go.disabled=false;go.textContent='Play again';no.hidden=true;say('Finished.')}go.onclick=function(){stop=false;go.disabled=true;no.hidden=false;say('Playing\\u2026');au=new Audio(D.full||D.intro);au.onended=function(){if(D.full){fin();return}speak(D.rest,fin)};au.onerror=function(){say('The voice is not available right now.');if(D.rest)speak(D.rest,fin);else fin()};au.play().catch(function(){say('Tap Play again to allow audio.');go.disabled=false;no.hidden=true})};no.onclick=function(){stop=true;try{if(au)au.pause()}catch(e){}try{speechSynthesis.cancel()}catch(e){}fin();say('Stopped.')}})();</script></body></html>`;
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'" });
+      response.end(html);
       return;
     }
 

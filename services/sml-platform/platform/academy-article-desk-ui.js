@@ -28,7 +28,7 @@
   document.head.appendChild(css);
   var btn = document.createElement('button'); btn.type = 'button'; btn.id = 'article-btn'; btn.textContent = 'ARTICLE'; btn.title = 'Article Desk: write a market news piece on a ticker or a topic from the Academy data, with its live chart, modules, HTML, CSS and SEO head (owner)'; toolbar.appendChild(btn);
   var panel = document.createElement('section'); panel.id = 'article-panel'; panel.setAttribute('aria-label', 'Article Desk');
-  panel.innerHTML = '<header><b>ARTICLE DESK</b><input type="text" data-subject="1" placeholder="Ticker or topic (NVDA, oil, the fed)" maxlength="40"><button type="button" class="go" data-write="1">WRITE</button><button type="button" data-file="1" title="Write it and post it straight to your Loop Letters under the byline">WRITE + POST</button><button type="button" class="x" data-close="1" aria-label="Close">&times;</button></header>'
+  panel.innerHTML = '<header><b>ARTICLE DESK</b><input type="text" data-subject="1" placeholder="Ticker or topic (NVDA, oil, the fed)" maxlength="40"><button type="button" class="go" data-write="1">WRITE</button><button type="button" data-file="1" title="Write it and post it straight to your Loop Letters under the byline">WRITE + POST</button><button type="button" data-voice="1" hidden title="Record this whole article in your own voice (paid once, on first play). Everyone else hears the opening in your voice and a free voice for the rest.">FULL VOICE</button><button type="button" class="x" data-close="1" aria-label="Close">&times;</button></header>'
     + '<div class="st"></div><div class="meta"></div>'
     + '<div class="tabs"><button type="button" data-tab="preview" class="on">PREVIEW</button><button type="button" data-tab="html">HTML</button><button type="button" data-tab="css">CSS</button><button type="button" data-tab="head">SEO HEAD</button><button type="button" data-tab="page">FULL PAGE</button></div>'
     + '<div class="body"><div class="pane on" data-pane="preview"></div>'
@@ -50,8 +50,27 @@
   function closePanel() { S.open = false; panel.classList.remove('open'); btn.classList.remove('on'); }
 
   function packageOf(r) { return r && r.article ? r.article : null; }
+  /* the full-voice button: the article's whole script in the owner's voice (recorded on first play, then stored); off by default, so an article costs only its opening */
+  function paintVoice(r) {
+    var b = panel.querySelector('[data-voice]'); if (!b) return;
+    var au = r && r.article && r.article.audio, slug = r && r.article && r.article.slug;
+    b.hidden = !(au && au.chars && slug); if (b.hidden) return;
+    b.dataset.slug = slug; b.dataset.on = '0'; b.classList.remove('on');
+    b.textContent = 'FULL VOICE \u00b7 ' + au.chars + ' chars';
+  }
+  async function toggleVoice(b) {
+    var on = b.dataset.on !== '1';
+    b.disabled = true;
+    var j = await api('/voice', { slug: b.dataset.slug, on: on });
+    b.disabled = false;
+    if (!j.ok) { status('Could not change the voice: ' + (j.error === 'no_such_article_audio' ? 'this article was not kept by the desk (write it again)' : (j.error || 'failed')) + '.'); return; }
+    b.dataset.on = on ? '1' : '0'; b.classList.toggle('on', on);
+    b.textContent = (on ? 'FULL VOICE ON' : 'FULL VOICE') + ' \u00b7 ' + j.chars + ' chars';
+    status(on ? 'Full voice is on for this article: the first listener to press play records all ' + j.chars + ' characters in your voice, then it is stored. Until then, and for everyone, the opening (' + j.introChars + ' characters) is your voice.' : 'Full voice is off: listeners hear the opening in your voice and the rest in a free voice.');
+  }
   function paint(r) {
     S.result = r;
+    paintVoice(r);
     var a = packageOf(r);
     if (!a) { el.meta.innerHTML = ''; return; }
     var filed = r.filed || null;
@@ -109,6 +128,7 @@
     if (t.dataset.close) closePanel();
     else if (t.dataset.write) write(false);
     else if (t.dataset.file) write(true);
+    else if (t.dataset.voice) toggleVoice(t);
     else if (t.dataset.tab) setTab(t.dataset.tab);
     else if (t.dataset.copy) copy(t.dataset.copy, t);
     else if (t.dataset.dl) download(t.dataset.dl);

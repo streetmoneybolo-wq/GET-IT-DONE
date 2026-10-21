@@ -5,7 +5,7 @@
  * cut into short parts and each part is stored by its own text (academy-voice.js partAudio), so a part spoken before, for any article or lesson, is never paid for
  * twice: the standard closing line, a repeated heading, a repeated sentence. Tickers are spelled out letter by letter so the voice does not say them as words. */
 
-const MAX_CHARS = 2400, PART_CHARS = 420;
+const MAX_CHARS = 2400, PART_CHARS = 420, INTRO_CHARS = 520;
 const CLOSER = 'This is an educational analysis, not financial advice.';
 
 const plain = (s) => String(s == null ? '' : s).replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
@@ -29,22 +29,31 @@ function packed(text) {
   return out.flatMap((p) => (p.length > PART_CHARS * 1.5 ? p.match(new RegExp('.{1,' + PART_CHARS + '}(?:\\s|$)', 'g')).map((x) => x.trim()) : [p]));
 }
 
-/** n: the narrative { title, dek, lede[], sections[{heading, paragraphs[]}], bottom }. Returns { parts, hash, chars }. */
+/** n: the narrative { title, dek, lede[], sections[{heading, paragraphs[]}], bottom }.
+ *  Returns { parts, hash, chars, intro, introHash, rest }:
+ *    intro  the opening (headline, standfirst, the first lede paragraph, up to INTRO_CHARS): the only part spoken in the owner's voice unless the owner turns the full voice on
+ *    rest   everything else as plain speakable text, read by the listener's own browser voice (free) on the listen page
+ *    parts  the whole script as voice parts (intro, the rest, the standard closing line): recorded in the owner's voice only for articles the owner picks */
 function audioScript(n) {
-  if (!n) return { parts: [], hash: '', chars: 0 };
+  const empty = { parts: [], hash: '', chars: 0, intro: [], introHash: '', rest: '' };
+  if (!n) return empty;
   const pieces = [];
   const add = (t) => { const s = plain(t); if (s) pieces.push(/[.!?]$/.test(s) ? s : s + '.'); };
   add(n.title); add(n.dek);
   for (const p of (n.lede || [])) add(p);
-  for (const s of (n.sections || [])) { add(s.heading); if (s.paragraphs && s.paragraphs[0]) add(s.paragraphs[0]); }
+  for (const sec of (n.sections || [])) { add(sec.heading); if (sec.paragraphs && sec.paragraphs[0]) add(sec.paragraphs[0]); }
   add(n.bottom);
-  /* packed into parts of up to PART_CHARS so the voice keeps its rhythm across sentences and the number of calls stays small; capped at MAX_CHARS */
+  const hashOf = (list) => require('node:crypto').createHash('sha256').update(list.join('\n')).digest('hex').slice(0, 12);
+  /* the intro: whole pieces from the top while they fit, so it ends on a sentence */
+  let introText = '', used = 0;
+  for (const piece of pieces) { const sp = speakable(piece); if (introText && (introText + ' ' + sp).length > INTRO_CHARS) break; introText = introText ? introText + ' ' + sp : sp; used += 1; if (introText.length >= INTRO_CHARS * 0.8) break; }
+  const restText = pieces.slice(used).map(speakable).join(' ');
+  const intro = packed(introText);
   let all = pieces.join(' ');
   if (all.length > MAX_CHARS) { all = all.slice(0, MAX_CHARS); all = all.slice(0, Math.max(all.lastIndexOf('. '), all.lastIndexOf('? '), all.lastIndexOf('! ')) + 1) || all; }
-  const parts = packed(all); const chars = parts.reduce((n, x) => n + x.length, 0);
+  const parts = packed(all); const chars = parts.reduce((n2, x) => n2 + x.length, 0);
   parts.push(CLOSER);
-  const hash = require('node:crypto').createHash('sha256').update(parts.join('\n')).digest('hex').slice(0, 12);
-  return { parts, hash, chars: chars + CLOSER.length };
+  return { parts, hash: hashOf(parts), chars: chars + CLOSER.length, intro, introHash: hashOf(intro), rest: (restText ? restText + ' ' : '') + CLOSER };
 }
 
-module.exports = { audioScript, speakable, packed, CLOSER, MAX_CHARS, PART_CHARS };
+module.exports = { audioScript, speakable, packed, CLOSER, MAX_CHARS, PART_CHARS, INTRO_CHARS };

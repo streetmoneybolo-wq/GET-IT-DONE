@@ -273,7 +273,9 @@ test('a piece written by the desk can be voiced later: its listen script is kept
   assert.ok(url.includes('/article-audio?slug='), 'the article links its audio');
   const slug = new URL(url).searchParams.get('slug'), hash = new URL(url).searchParams.get('v');
   const e = await h.desk.audioFor(slug, hash);
-  assert.ok(e && e.parts.length >= 2 && e.hash === hash);
+  assert.ok(e && e.parts.length >= 2 && e.introHash === hash && e.intro.length >= 1 && e.full === false);
+  assert.deepEqual(await h.desk.setFullVoice(slug, true), { slug, full: true, chars: e.parts.reduce((n, p) => n + p.length, 0), introChars: e.intro.reduce((n, p) => n + p.length, 0) });
+  assert.equal((await h.desk.audioFor(slug)).full, true); assert.equal(await h.desk.setFullVoice('not-written', true), null);
   assert.equal(await h.desk.audioFor(slug, 'deadbeef0000'), null, 'a wrong hash is not served');
   assert.equal(await h.desk.audioFor('__proto__'), null); assert.equal(await h.desk.audioFor('constructor'), null); assert.equal(await h.desk.audioFor('not-written'), null);
   const saved = h.saved(); assert.ok(saved && saved.audio && saved.audio[slug], 'kept with the desk state');
