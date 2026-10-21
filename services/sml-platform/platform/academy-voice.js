@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { episodeFor, splitNarration } = require('./academy/discipline-content');
 const { lessonParts } = require('./academy/lesson-parts');
+const { lineFor } = require('./academy/tour-content');
 
 const DEFAULT_MODEL = 'eleven_multilingual_v2';
 const MAX_CACHE_ITEMS = 1024;
@@ -214,6 +215,29 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     return { audio: await inflight.get(digest), cached: false, partCount: parts.length };
   }
 
+  /** One line of the guided tour or a first-use tool card, by id: only text written in academy/tour-content.js can be voiced, and each is paid for once (durable store). */
+  async function getTourAudio({ kind, id, userId, internal = false }) {
+    if (!configured && !stored) {
+      const error = new Error('academy voice is not configured');
+      error.code = 'integration_unconfigured';
+      throw error;
+    }
+    const text = lineFor(kind, id);
+    if (!text) throw new TypeError('invalid tour audio line');
+    if (internal !== true) consume(String(userId || 'unknown'));
+    const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0tour\0${text}`).digest('hex');
+    if (cache.has(digest)) return { audio: cache.get(digest), cached: true };
+    const baked = await fromStore(digest);
+    if (baked) return { audio: baked, cached: true };
+    if (!configured) {
+      const error = new Error('academy voice is not configured');
+      error.code = 'integration_unconfigured';
+      throw error;
+    }
+    if (!inflight.has(digest)) inflight.set(digest, generateText(text, digest).then(async (audio) => { await remember(digest, audio, text, 'tour'); return audio; }).finally(() => inflight.delete(digest)));
+    return { audio: await inflight.get(digest), cached: false };
+  }
+
   async function getDisciplineEpisodeAudio({ episodeId, userId }) {
     const episode = episodeFor(episodeId);
     if (!episode) throw new TypeError('invalid discipline episode');
@@ -234,7 +258,7 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     return { audio, cached: allCached, partCount };
   }
 
-  return { configured, stored, getLessonAudio, getDisciplineAudio, getDisciplineEpisodeAudio };
+  return { configured, stored, getLessonAudio, getTourAudio, getDisciplineAudio, getDisciplineEpisodeAudio };
 }
 
 module.exports = { createAcademyVoice, narrationFor, mp3DurationMs, stripId3 };

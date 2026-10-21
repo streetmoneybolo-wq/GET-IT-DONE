@@ -918,7 +918,8 @@ const ACADEMY_MOBILE_SHELL = (() => {
 // First-time walkthrough (spotlight tour, desktop and phone; skippable, shown once per device).
 const ACADEMY_TOUR = (() => {
   try {
-    return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-tour.js'), 'utf8') + '</script>';
+    const catalog = JSON.stringify(require('./academy/tour-content').catalogForPage()).replace(/</g, '\\u003c');
+    return '<script>window.__smlTourCatalog=' + catalog + ';</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-tour.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-auto-tour.js'), 'utf8') + '</script>';
   } catch (_) { return ''; }
 })();
 // Desktop quote column as a tabbed tool window (QUOTE, BUY/SELL, DARK POOL, SHORT SALE, SENTIMENT, SMC, MEM ALGO).
@@ -4093,6 +4094,34 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         sendJson(response, invalid ? 400 : (limited ? 429 : 503), {
           ok: false, error: invalid ? 'invalid_lesson' : (limited ? 'rate_limited' : 'voice_temporarily_unavailable')
         });
+      }
+      return;
+    }
+
+    /* The guided tour and the first-use tool cards, in the Academy's voice: ids only, the text lives in academy/tour-content.js */
+    if (request.method === 'GET' && path === '/academy-activity/tour-speech') {
+      if (!academyVoice || !(academyVoice.configured || academyVoice.stored)) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const authorization = String(request.headers.authorization || '').trim();
+      let tourUserId;
+      if (authorization) {
+        const session = academyOAuth && academyOAuth.verifySession(authorization);
+        if (!session || !session.ok) { sendJson(response, session?.status || 401, { ok: false, error: session?.code || 'authorization_required' }); return; }
+        tourUserId = session.userId;
+      } else {
+        const forwarded = String(request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+        const userAgent = String(request.headers['user-agent'] || '').slice(0, 160);
+        tourUserId = `anonymous:${crypto.createHash('sha256').update(`${forwarded}\0${userAgent}`).digest('hex').slice(0, 24)}`;
+      }
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      try {
+        const result = await academyVoice.getTourAudio({ kind: params.get('kind'), id: params.get('id'), userId: tourUserId });
+        response.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': result.audio.length, 'cache-control': 'private, max-age=604800', 'x-content-type-options': 'nosniff', 'x-academy-voice-cache': result.cached ? 'hit' : 'miss' });
+        response.end(result.audio);
+      } catch (error) {
+        const invalid = error instanceof TypeError;
+        const limited = error && (error.code === 'rate_limited' || error.code === 'provider_rate_limited');
+        logger(invalid || (error && error.cached) ? 'warn' : 'error', 'academy_tour_voice_failed', { error, userId: tourUserId, kind: params.get('kind'), id: params.get('id'), cached: !!(error && error.cached) });
+        sendJson(response, invalid ? 400 : (limited ? 429 : 503), { ok: false, error: invalid ? 'invalid_tour_line' : (limited ? 'rate_limited' : 'voice_temporarily_unavailable') });
       }
       return;
     }

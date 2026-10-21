@@ -14,35 +14,77 @@
   const mark = (v) => { try { localStorage.setItem(KEY, v); } catch (_) { /* storage can be blocked: the tour then offers itself each visit, never twice in one */ } };
 
   const DESK = [
-    { t: 'Welcome to the Academy', b: 'A live trading lab: real-time charts, order flow, dark pool prints, short-sale data, options and a signal engine, all in one place and all explained as you go. This takes about a minute.', adv: true },
-    { s: 'input#symbol', t: 'Pick any stock', b: 'Type a ticker and press Enter or Load. The whole page follows the stock you pick: the chart, the quote column and every tool.' },
-    { s: '.intervals, .toolbar .intervals', t: 'Choose the timeframe', b: '1 minute for day trades up to 1 year for the big picture. The chart keeps your zoom when you switch.' },
-    { s: '.academy-chart-stage', t: 'The live chart', b: 'Drag to scan the past. Scroll to zoom. Drag the price axis on the right to stretch the scale. Hover for the exact open, high, low and close.', pad: 4 },
-    { s: '#tool-rail .tg[data-group=chart]', t: 'CHART tools', b: 'Draw what the big players are doing right on the candles: WALLS (big resting orders), COST (where holders are underwater), HEAT (order-book heat map), SMC (smart-money zones) and INTENT (the likely aim of the flow).' },
-    { s: '#smc-toggle', t: 'SMC: tap a zone, get the read', b: 'Switch SMC on, then click any zone on the chart. A full breakdown opens beside the chart (never over it): what the zone is, the evidence for it and a plain conclusion.' },
-    { s: '#tool-rail .tg[data-group=flow]', t: 'FLOW: who is buying and selling', b: 'BUY/SELL pressure, DARK POOL block prints, SHORT SALE data and SENTIMENT. This is the money behind the move, not just the price.' },
-    { s: '#tool-rail .tg[data-group=desk]', t: 'DESK panels', b: 'CHAIN opens the options chain. MEM ALGO shows five trade plans with entries, stops and targets. SIRE ranks movers, EARNINGS and CATALYSTS show what is coming.' },
-    { s: 'main .side', t: 'Quote and book', b: 'Live price, the bid and ask, depth and the top of the scanner. Click a scanner row to load that stock on the chart.' },
-    { s: '#academy-scanner-host', t: 'The live market scanner', b: 'Scan US stocks, ETFs, options and premarket movers. Sort by change or volume and click any row.' },
-    { s: '#lesson-toggle', t: 'Lessons', b: 'Short narrated lessons that teach each concept on a live chart, from how a candle works to reading order flow.' },
-    { s: '#academy-alerts-fab', t: 'Alerts desk', b: 'Trade alerts from your servers and traders you follow, scored and tracked. Open it to see entries, targets and how they played out.' },
-    { t: 'You are ready', b: 'Everything here is educational: it shows what the market did and what the data says, never a promise. Reopen this tour any time from the TOUR button.', last: true }
+    { id: 'welcome', t: 'Welcome to the Academy', b: 'A live trading lab: real-time charts, order flow, dark pool prints, short-sale data, options and a signal engine, all in one place and all explained as you go. This takes about a minute.', adv: true },
+    { id: 'symbol', s: 'input#symbol', t: 'Pick any stock', b: 'Type a ticker and press Enter or Load. The whole page follows the stock you pick: the chart, the quote column and every tool.' },
+    { id: 'timeframe', s: '.intervals, .toolbar .intervals', t: 'Choose the timeframe', b: '1 minute for day trades up to 1 year for the big picture. The chart keeps your zoom when you switch.' },
+    { id: 'chart', s: '.academy-chart-stage', t: 'The live chart', b: 'Drag to scan the past. Scroll to zoom. Drag the price axis on the right to stretch the scale. Hover for the exact open, high, low and close.', pad: 4 },
+    { id: 'group-chart', s: '#tool-rail .tg[data-group=chart]', t: 'CHART tools', b: 'Draw what the big players are doing right on the candles: WALLS (big resting orders), COST (where holders are underwater), HEAT (order-book heat map), SMC (smart-money zones) and INTENT (the likely aim of the flow).' },
+    { id: 'smc', s: '#smc-toggle', t: 'SMC: tap a zone, get the read', b: 'Switch SMC on, then click any zone on the chart. A full breakdown opens beside the chart (never over it): what the zone is, the evidence for it and a plain conclusion.' },
+    { id: 'group-flow', s: '#tool-rail .tg[data-group=flow]', t: 'FLOW: who is buying and selling', b: 'BUY/SELL pressure, DARK POOL block prints, SHORT SALE data and SENTIMENT. This is the money behind the move, not just the price.' },
+    { id: 'group-desk', s: '#tool-rail .tg[data-group=desk]', t: 'DESK panels', b: 'CHAIN opens the options chain. MEM ALGO shows five trade plans with entries, stops and targets. SIRE ranks movers, EARNINGS and CATALYSTS show what is coming.' },
+    { id: 'side', s: 'main .side', t: 'Quote and book', b: 'Live price, the bid and ask, depth and the top of the scanner. Click a scanner row to load that stock on the chart.' },
+    { id: 'scanner', s: '#academy-scanner-host', t: 'The live market scanner', b: 'Scan US stocks, ETFs, options and premarket movers. Sort by change or volume and click any row.' },
+    { id: 'lessons', s: '#lesson-toggle', t: 'Lessons', b: 'Short narrated lessons that teach each concept on a live chart, from how a candle works to reading order flow.' },
+    { id: 'alerts', s: '#academy-alerts-fab', t: 'Alerts desk', b: 'Trade alerts from your servers and traders you follow, scored and tracked. Open it to see entries, targets and how they played out.' },
+    { id: 'ready', t: 'You are ready', b: 'Everything here is educational: it shows what the market did and what the data says, never a promise. Reopen this tour any time from the TOUR button.', last: true }
   ];
   const PHONE_STEPS = [
-    { t: 'Welcome to the Academy', b: 'A live trading lab in your pocket: real-time charts, order flow, dark pool prints, options and a signal engine. A one-minute tour.', adv: true },
-    { s: '.academy-chart-stage', t: 'Your chart', b: 'Drag to scan, pinch to zoom, drag the price axis to stretch it. This stays on top while you read everything else.', pre: () => tab('chart'), pad: 4 },
-    { s: 'input#symbol', t: 'Pick any stock', b: 'Type a ticker and press Go. The chart and every tab follow it, and the Academy remembers it for next time.' },
-    { s: '.chart>.intervals', t: 'Timeframe', b: '1 minute to 1 year, right under the chart.' },
-    { s: '#ms-sub', t: 'Chart tools', b: 'WALLS, COST, HEAT, SMC and INTENT draw what the big players are doing straight on the candles. Tap one to switch it on.', pre: () => tab('chart') },
-    { s: '#ms-top', t: 'Stock tabs', b: 'Chart, Flow, Options, Algo and Comments. Each tab keeps its related tools together, and the chart stays visible above them.' },
-    { s: '#ms-top button[data-tab=flow]', t: 'Flow', b: 'Buy and sell pressure, dark pool prints, short-sale data and sentiment for this stock.', pre: () => tab('flow') },
-    { s: '#ms-top button[data-tab=algo]', t: 'Algo and SMC', b: 'MEM ALGO trade plans and the smart-money map. Tap a zone on the chart and its full breakdown opens right under it.', pre: () => tab('algo') },
-    { s: '#ms-top button[data-tab=talk]', t: 'Comments', b: 'What other traders are saying about this stock.', pre: () => tab('talk') },
-    { s: '#ms-nav button[data-tab=quotes]', t: 'Quotes and chat', b: 'The live market scanner on top and the Academy chat below. Tap a row to put that stock on the chart.', pre: () => tab('chart') },
-    { s: '#ms-nav', t: 'Alerts and lessons', b: 'ALERTS opens the alerts desk. LESSONS teaches each concept on a live chart.' },
-    { s: '#ms-nav button[data-more]', t: 'More', b: 'Settings, your profile, appearance and this tour, any time.' },
-    { t: 'You are ready', b: 'Everything here is educational: it shows what the market did and what the data says, never a promise. Replay this from More.', last: true }
+    { id: 'p-welcome', t: 'Welcome to the Academy', b: 'A live trading lab in your pocket: real-time charts, order flow, dark pool prints, options and a signal engine. A one-minute tour.', adv: true },
+    { id: 'p-chart', s: '.academy-chart-stage', t: 'Your chart', b: 'Drag to scan, pinch to zoom, drag the price axis to stretch it. This stays on top while you read everything else.', pre: () => tab('chart'), pad: 4 },
+    { id: 'p-symbol', s: 'input#symbol', t: 'Pick any stock', b: 'Type a ticker and press Go. The chart and every tab follow it, and the Academy remembers it for next time.' },
+    { id: 'p-timeframe', s: '.chart>.intervals', t: 'Timeframe', b: '1 minute to 1 year, right under the chart.' },
+    { id: 'p-tools', s: '#ms-sub', t: 'Chart tools', b: 'WALLS, COST, HEAT, SMC and INTENT draw what the big players are doing straight on the candles. Tap one to switch it on.', pre: () => tab('chart') },
+    { id: 'p-tabs', s: '#ms-top', t: 'Stock tabs', b: 'Chart, Flow, Options, Algo and Comments. Each tab keeps its related tools together, and the chart stays visible above them.' },
+    { id: 'p-flow', s: '#ms-top button[data-tab=flow]', t: 'Flow', b: 'Buy and sell pressure, dark pool prints, short-sale data and sentiment for this stock.', pre: () => tab('flow') },
+    { id: 'p-algo', s: '#ms-top button[data-tab=algo]', t: 'Algo and SMC', b: 'MEM ALGO trade plans and the smart-money map. Tap a zone on the chart and its full breakdown opens right under it.', pre: () => tab('algo') },
+    { id: 'p-talk', s: '#ms-top button[data-tab=talk]', t: 'Comments', b: 'What other traders are saying about this stock.', pre: () => tab('talk') },
+    { id: 'p-quotes', s: '#ms-nav button[data-tab=quotes]', t: 'Quotes and chat', b: 'The live market scanner on top and the Academy chat below. Tap a row to put that stock on the chart.', pre: () => tab('chart') },
+    { id: 'p-nav', s: '#ms-nav', t: 'Alerts and lessons', b: 'ALERTS opens the alerts desk. LESSONS teaches each concept on a live chart.' },
+    { id: 'p-more', s: '#ms-nav button[data-more]', t: 'More', b: 'Settings, your profile, appearance and this tour, any time.' },
+    { id: 'p-ready', t: 'You are ready', b: 'Everything here is educational: it shows what the market did and what the data says, never a promise. Replay this from More.', last: true }
   ];
+
+
+  /* The guided tour speaks in the Academy's own voice (the same ElevenLabs voice as the lessons). Only ids go to the server; the
+   * text it voices lives in academy/tour-content.js. Audio is fetched once per line and kept for the page's life, the next step
+   * is fetched while this one plays, and every failure (no voice configured, rate limit, autoplay refused) leaves a silent tour. */
+  const VKEY = 'sml-academy-tour-voice';
+  const voice = (() => {
+    let audio = null, token = 0, downUntil = 0;
+    const blobs = new Map();
+    const muted = () => { try { return localStorage.getItem(VKEY) === 'off'; } catch (_) { return false; } };
+    const setMuted = (m) => { try { localStorage.setItem(VKEY, m ? 'off' : 'on'); } catch (_) { /* ignore */ } if (m) stop(); };
+    const stop = () => { token += 1; if (audio) { try { audio.pause(); } catch (_) { /* ignore */ } audio = null; } };
+    const blobFor = (kind, id) => {
+      const key = kind + ':' + id;
+      if (!blobs.has(key)) {
+        const t = String(window.smlAcademySessionToken || '');
+        const p = fetch('/academy-activity/tour-speech?kind=' + encodeURIComponent(kind) + '&id=' + encodeURIComponent(id), { headers: t ? { authorization: 'Bearer ' + t } : {}, cache: 'force-cache' })
+          .then((r) => { if (!r.ok) { if (r.status === 503) downUntil = Date.now() + 300000; throw new Error('voice'); } return r.blob(); })
+          .catch((e) => { blobs.delete(key); throw e; });
+        blobs.set(key, p);
+        while (blobs.size > 24) blobs.delete(blobs.keys().next().value);
+      }
+      return blobs.get(key);
+    };
+    const preload = (kind, id) => { if (!muted() && Date.now() > downUntil && id) blobFor(kind, id).catch(() => {}); };
+    /* resolves 'playing' | 'blocked' (autoplay refused: a tap will start it) | 'off' (muted or no voice); opts.onend fires when the line finishes */
+    async function play(kind, id, opts) {
+      opts = opts || {};
+      stop();
+      if (!opts.force && muted()) return 'off';
+      if (Date.now() < downUntil) return 'off';
+      const mine = token;
+      let blob; try { blob = await blobFor(kind, id); } catch (_) { return 'off'; }
+      if (mine !== token) return 'off';
+      const url = URL.createObjectURL(blob), a = new Audio(url);
+      audio = a;
+      a.onended = () => { URL.revokeObjectURL(url); if (audio === a) audio = null; if (opts.onend) opts.onend(); };
+      try { await a.play(); return 'playing'; } catch (_) { return 'blocked'; }
+    }
+    return { play, stop, preload, muted, setMuted, available: () => Date.now() >= downUntil };
+  })();
+  window.smlTourVoice = voice;
 
   const tab = (id) => { try { if (window.smlMobileShell) window.smlMobileShell.tab(id); } catch (_) { /* ignore */ } };
   const css = '#sml-tour{position:fixed;inset:0;z-index:2147483640;font:500 14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:#e6eef2}'
@@ -56,7 +98,7 @@
     + '#sml-tour ul{margin:0 0 12px;padding-left:18px;color:#c4d4dc}#sml-tour li{margin:3px 0}'
     + '#sml-tour .tr-row{display:flex;align-items:center;gap:8px}#sml-tour .tr-sp{flex:1}'
     + '#sml-tour button{border:1px solid #2b5362;border-radius:9px;background:#10222d;color:#dcebf2;padding:9px 13px;font:800 .78rem system-ui,sans-serif;cursor:pointer}'
-    + '#sml-tour button.tr-go{background:#00c47d;border-color:#00c47d;color:#04140d}#sml-tour button.tr-skip{border-color:transparent;background:none;color:#8fa6b3;padding:9px 4px}'
+    + '#sml-tour button.tr-vox{padding:9px 10px;min-width:40px}#sml-tour button.tr-go{background:#00c47d;border-color:#00c47d;color:#04140d}#sml-tour button.tr-skip{border-color:transparent;background:none;color:#8fa6b3;padding:9px 4px}'
     + '#sml-tour .tr-dots{display:flex;gap:4px;margin:0 0 10px}#sml-tour .tr-dots i{width:16px;height:3px;border-radius:2px;background:#1c3340}#sml-tour .tr-dots i.on{background:#00c47d}'
     + '#tour-btn{flex:none;padding:4px 8px;border:1px solid #2b5362;border-radius:7px;background:#0d1a24;color:#9ed3e6;font:800 .6rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer}'
     + '@media(prefers-reduced-motion:reduce){#sml-tour .tr-hole{animation:none;transition:none}}';
@@ -69,6 +111,7 @@
   function render() {
     if (!root) return;
     const st = steps[i];
+    voice.stop();
     if (st.pre) { try { st.pre(); } catch (_) { /* ignore */ } }
     const draw = () => {
       if (!root) return;
@@ -86,7 +129,7 @@
       + '<div class="tr-card" role="dialog" aria-label="Academy tour"><div class="tr-k">STEP ' + n + ' OF ' + tot + '</div><div class="tr-dots">' + steps.map((_, k) => '<i class="' + (k <= i ? 'on' : '') + '"></i>').join('') + '</div>'
       + '<h3>' + esc(st.t) + '</h3><p>' + esc(st.b) + '</p>'
       + (st.adv ? '<ul><li>Live charts with the smart-money map</li><li>Order flow, dark pool and short-sale data</li><li>Options chain and five-mode trade plans</li><li>Lessons, alerts and a paper-trading account</li></ul>' : '')
-      + '<div class="tr-row">' + (i > 0 ? '<button type="button" data-a="back">Back</button>' : '<button type="button" class="tr-skip" data-a="skip">Skip tour</button>') + '<span class="tr-sp"></span>' + (i > 0 && !st.last ? '<button type="button" class="tr-skip" data-a="skip">Skip</button>' : '') + '<button type="button" class="tr-go" data-a="' + (st.last ? 'done' : 'next') + '">' + (st.last ? 'Start exploring' : i === 0 ? 'Start the tour' : 'Next') + '</button></div></div>';
+      + '<div class="tr-row">' + (i > 0 ? '<button type="button" data-a="back">Back</button>' : '<button type="button" class="tr-skip" data-a="skip">Skip tour</button>') + '<span class="tr-sp"></span>' + (st.id && window.__smlTourCatalog ? '<button type="button" class="tr-vox" data-a="vox" aria-label="Voice on or off" title="Hear this step in the Academy voice"></button>' : '') + (i > 0 && !st.last ? '<button type="button" class="tr-skip" data-a="skip">Skip</button>' : '') + '<button type="button" class="tr-go" data-a="' + (st.last ? 'done' : 'next') + '">' + (st.last ? 'Start exploring' : i === 0 ? 'Start the tour' : 'Next') + '</button></div></div>';
     const card = root.querySelector('.tr-card'), hole = root.querySelector('.tr-hole');
     if (el && hole) {
       const r = el.getBoundingClientRect(), pad = st.pad == null ? 6 : st.pad;
@@ -101,6 +144,23 @@
       Object.assign(card.style, { left: Math.max(8, (innerWidth - card.offsetWidth) / 2) + 'px', top: Math.max(8, (innerHeight - card.offsetHeight) / 2) + 'px' });
     }
     const go = card.querySelector('.tr-go'); if (go) go.focus({ preventScroll: true });
+    speak(st);
+  }
+  /* narrate the step in the Academy voice; the speaker button mutes it (remembered), or taps to start a line the browser would not autoplay */
+  function voxPaint(state) { const b = root && root.querySelector('.tr-vox'); if (!b) return; b.dataset.s = state; b.textContent = state === 'playing' ? '\uD83D\uDD0A' : state === 'blocked' ? '\u25B6 Hear it' : '\uD83D\uDD07'; }
+  function speak(st) {
+    if (!st.id) return;
+    const at = i;
+    voxPaint(voice.muted() || !voice.available() ? 'off' : 'playing');
+    voice.play('step', st.id).then((state) => { if (running && i === at) voxPaint(state === 'off' && !voice.muted() ? 'off' : state); });
+    const nx = steps[i + 1]; if (nx && nx.id) voice.preload('step', nx.id);
+  }
+  function onVox() {
+    const st = steps[i]; if (!st || !st.id) return;
+    const b = root.querySelector('.tr-vox'), state = b && b.dataset.s;
+    if (state === 'playing') { voice.setMuted(true); voxPaint('off'); return; }
+    voice.setMuted(false); voxPaint('playing');
+    voice.play('step', st.id, { force: true }).then((r) => { if (running && steps[i] === st) voxPaint(r); });
   }
   function onClick(e) {
     const b = e.target.closest && e.target.closest('button[data-a]'); if (!b) { e.stopPropagation(); return; }
@@ -108,6 +168,7 @@
     const a = b.dataset.a;
     if (a === 'next') { if (i < steps.length - 1) { i += 1; render(); } else finish('done'); }
     else if (a === 'back') { if (i > 0) { i -= 1; render(); } }
+    else if (a === 'vox') onVox();
     else if (a === 'skip') finish('skipped');
     else finish('done');
   }
@@ -121,6 +182,7 @@
   function start(force) {
     if (running) return;
     if (!force && seen()) return;
+    if (force && window.smlAutoTour) window.smlAutoTour.reset();
     steps = PHONE() ? PHONE_STEPS : DESK;
     i = 0; running = true;
     root = document.createElement('div'); root.id = 'sml-tour'; root.addEventListener('click', onClick, true); document.body.appendChild(root);
@@ -128,7 +190,7 @@
     render();
   }
   function finish(how) {
-    running = false; mark(how);
+    running = false; mark(how); voice.stop();
     document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', onResize);
     if (root) { root.remove(); root = null; }
     if (PHONE()) tab('chart');
@@ -150,7 +212,7 @@
     if (ready) { setTimeout(() => { if (!seen() && !running) start(false); }, 900); return; }
     if (tries < 120) setTimeout(() => arm(tries + 1), 700);
   }
-  window.smlTour = { start, seen, reset: () => { try { localStorage.removeItem(KEY); } catch (_) { /* ignore */ } } };
+  window.smlTour = { start, seen, running: () => running, reset: () => { try { localStorage.removeItem(KEY); } catch (_) { /* ignore */ } } };
   if (new URLSearchParams(location.search).has('popout')) return;
   setTimeout(() => arm(0), 1500);
 })();
