@@ -179,6 +179,57 @@
     if (!btn || !session || btn.disabled || sym === shownSymbol) return;
     shownSymbol = sym; btn.click();
   }
+  /* a contract suggested by the screener (academy-screener-ui.js) arrives as sml-open-contract { symbol, side, expiry, strike }: put the chart and the chain on
+     that ticker, pick the expiration, widen the strike range if the strike is outside it, select the contract's own row (which loads it into the calculator
+     above), and say so. Each step waits for the chain's own async render, and gives up with a plain message rather than leaving the member guessing. */
+  const pickCss = document.createElement('style');
+  pickCss.textContent = '#options-grid tr.sml-picked td{background:rgba(122,92,255,.22)!important;box-shadow:inset 0 1px 0 #9a7fe0,inset 0 -1px 0 #9a7fe0}#options-grid tr.sml-picked td.strike{background:#7a5cff!important;color:#fff}'
+    + '#options-pick-hint{margin:8px 0 2px;padding:7px 11px;border:1px solid #6a4fa0;border-radius:8px;background:rgba(23,17,42,.95);color:#d9c9ff;font:700 .68rem system-ui,sans-serif}#options-pick-hint.warn{border-color:#6b2234;background:#2a1118;color:#ffb3c0}';
+  document.head.appendChild(pickCss);
+  const pickHint = (text, warn) => {
+    let h = $('options-pick-hint');
+    if (!h) { h = document.createElement('div'); h.id = 'options-pick-hint'; h.setAttribute('role', 'status'); const head = chain.querySelector('.options-head'); if (head) head.after(h); else chain.prepend(h); }
+    h.textContent = text; h.classList.toggle('warn', !!warn); h.hidden = false;
+    clearTimeout(pickHint.t); pickHint.t = setTimeout(() => { h.hidden = true; }, 14000);
+  };
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function until(test, ms = 12000) { const end = Date.now() + ms; for (;;) { const v = test(); if (v) return v; if (Date.now() > end) return null; await wait(150); } }
+  const rowFor = (strike) => { if (!grid) return null; for (const tr of grid.querySelectorAll('tr')) { if (tr.cells && tr.cells.length >= 21 && Math.abs(num(tr.cells[10].textContent) - strike) < 0.0051) return tr; } return null; };
+  const chainReady = (sym) => grid && grid.querySelector('tr td') && (chainSymbol === sym || (!chainSymbol && cleanSym(($('symbol') || {}).value) === sym));
+  let picking = 0;
+  async function openContract(d) {
+    const sym = cleanSym(d && d.symbol), side = d && d.side === 'put' ? 'put' : 'call', strike = Number(d && d.strike), expiry = String(d && d.expiry || '');
+    if (!sym || !Number.isFinite(strike) || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) return;
+    const mine = ++picking, label = sym + ' ' + expiry + ' ' + strike.toFixed(2) + ' ' + side;
+    const stale = () => mine !== picking;
+    const ms = window.smlMobileShell; if (ms && ms.tab && window.matchMedia('(max-width:720px)').matches) { try { ms.tab('options'); } catch (_) { /* ignore */ } }
+    try { chain.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (_) { /* ignore */ }
+    pickHint('Opening the ' + label + ' in the chain…');
+    /* 1. the ticker: the chart and the chain follow it */
+    if (symbolNow() !== sym) { pendingSymbol = sym; if (window.smlAcademyNavigateMarket) window.smlAcademyNavigateMarket(sym); else { const i = $('symbol'); if (i) i.value = sym; } }
+    if (chainSymbol !== sym) { pendingSymbol = sym; shownSymbol = ''; const b = $('load-options'); if (b && session && !b.disabled) b.click(); }
+    if (!await until(() => stale() || chainReady(sym), 15000)) { if (!stale()) pickHint('The ' + sym + ' chain did not load in time. Press Load Options Chain and tap the contract again.', true); return; }
+    if (stale()) return;
+    /* 2. the expiration */
+    const exp = $('options-expiry');
+    const opt = exp && [...exp.options].find((o) => o.value === expiry || String(o.textContent).includes(expiry));
+    if (!opt) { pickHint('The ' + expiry + ' expiration is not in the chain right now (it may have expired or the feed has not listed it). Pick one from the Expiration list.', true); return; }
+    if (exp.value !== opt.value) { exp.value = opt.value; exp.dispatchEvent(new Event('change', { bubbles: true })); await wait(250); await until(() => stale() || (!exp.disabled && grid.querySelector('tr td')), 8000); }
+    if (stale()) return;
+    /* 3. the strike: widen the range when it falls outside the strikes shown */
+    let tr = await until(() => stale() || rowFor(strike), 1500);
+    if (!tr && !stale()) { const rg = $('options-range'); const all = rg && [...rg.options].find((o) => /all/i.test(o.value + o.textContent)); if (all) { rg.value = all.value; rg.dispatchEvent(new Event('change', { bubbles: true })); tr = await until(() => stale() || rowFor(strike), 6000); } }
+    if (stale()) return;
+    if (!tr) { pickHint('The ' + strike.toFixed(2) + ' strike is not in the ' + expiry + ' chain right now. The suggestion may be a little old: tap the contract again after the chain refreshes.', true); return; }
+    /* 4. select it: the click loads it into the calculator and fills the contract card */
+    grid.querySelectorAll('tr.sml-picked').forEach((x) => x.classList.remove('sml-picked'));
+    tr.classList.add('sml-picked');
+    const cell = tr.cells[side === 'call' ? 9 : 11]; if (cell) cell.click();
+    try { tr.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) { /* ignore */ }
+    pickHint('Loaded the ' + label + ' from the screener. Its price, breakeven and scenarios are in the calculator; double-click it for its own chart.');
+    window.dispatchEvent(new CustomEvent('sml-contract-opened', { detail: { symbol: sym, side, expiry, strike } }));
+  }
+  window.addEventListener('sml-open-contract', (e) => { openContract(e.detail).catch(() => pickHint('Could not open that contract. Tap it again in a moment.', true)); });
   setInterval(() => { if (window.smlChartGesture) return; autoLoad(); seedFromLive(); if (!document.activeElement || !card.contains(document.activeElement)) render(); }, 1500);
   seedFromLive(); render();
 })(0);
