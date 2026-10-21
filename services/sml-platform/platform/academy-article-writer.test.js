@@ -86,3 +86,46 @@ test('the model gets room to finish, a rejected draft is retried with its reason
   const rej = logs.find((x) => x[0] === 'article_writer_rejected');
   assert.equal(rej[1].stop, 'max_tokens'); assert.ok(rej[1].chars > 0);
 });
+
+/* ---------- the fast path: the house piece is the body, the model writes only the front, and a clock decides ---------- */
+const frontReply = (front) => async (url, opts) => ({ ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: JSON.stringify(front) }], stop_reason: 'end_turn' }), _body: JSON.parse(opts.body) });
+const goodFront = (s) => ({ title: `${s.S}: dealers have to buy and $13.00 is where it shows`, dek: 'Hedging flows have a deadline here, and the strike is already known.', lede: [`I think ${s.S} runs. The target is $13.00 and I am wrong below $11.68.`, 'The options book is doing the work, not the chart. Dealers hedge, and hedging is not optional.'] });
+
+test('fast write: the model rewrites only the front, in one small call, and the body stays the house body', async () => {
+  const s = sheet(); const calls = [];
+  const w = W.createArticleWriter({ ai: { apiKey: 'k' }, fetchImpl: async (u, o) => { calls.push(JSON.parse(o.body)); return frontReply(goodFront(s))(u, o); } });
+  const out = await w.write(s, { fast: true });
+  assert.equal(calls.length, 1); assert.ok(calls[0].max_tokens <= 800, 'a small reply, not a whole piece'); assert.match(calls[0].model, /haiku/);
+  assert.equal(out.source, 'house+model'); assert.equal(out.title, goodFront(s).title);
+  const house = W.housePiece(s, 0);
+  assert.equal(out.sections.length, house.sections.length); assert.ok(out.sections.every((x) => x.paragraphs.length));
+  assert.deepEqual(out.checked.reasons, ['fast_front']);
+});
+
+test('fast write: a front with a number the sheet does not carry, a dash, or a wrong shape falls back to the house front', async () => {
+  const s = sheet();
+  for (const bad of [{ ...goodFront(s), lede: [`${s.S} will hit $19.99 by Friday and I am sure.`, 'Second paragraph about the setup in plain words.'] }, { ...goodFront(s), dek: 'A dek — with a dash in it.' }, { title: 'only a title' }]) {
+    const w = W.createArticleWriter({ ai: { apiKey: 'k' }, fetchImpl: frontReply(bad) });
+    const out = await w.write(s, { fast: true });
+    assert.notEqual(out.source, 'house+model'); assert.equal(out.source, 'house'); assert.equal(out.sections.length, 3);
+    assert.ok(out.checked.reasons[0] === 'house_front');
+  }
+});
+
+test('fast write: a model that never answers loses to the clock, and the piece is still whole and quick', async () => {
+  const s = sheet();
+  const hang = (u, o) => new Promise((_, reject) => { o.signal.addEventListener('abort', () => reject(new Error('The operation was aborted due to timeout'))); });
+  const w = W.createArticleWriter({ ai: { apiKey: 'k' }, fetchImpl: hang });
+  const t0 = Date.now(); const out = await w.write(s, { fast: true, deadlineMs: 150 });
+  assert.ok(Date.now() - t0 < 1500, 'returned near the deadline, not after a minute');
+  assert.equal(out.source, 'house'); assert.equal(W.validate({ ...out }, s, { minWords: 0 }).ok, true);
+});
+
+test('fast write: with the model off it is the house writer at once, and the default (slow) path is unchanged', async () => {
+  const s = sheet(); let n = 0;
+  const off = W.createArticleWriter({ ai: null, fetchImpl: async () => { n += 1; } });
+  const t0 = Date.now(); const out = await off.write(s, { fast: true }); assert.ok(Date.now() - t0 < 200); assert.equal(n, 0); assert.equal(out.source, 'house');
+  let full = null;
+  const w = W.createArticleWriter({ ai: { apiKey: 'k' }, fetchImpl: async (u, o) => { full = JSON.parse(o.body); return { ok: false, status: 500, json: async () => ({}) }; } });
+  await w.write(s, { attempts: 1 }); assert.equal(full.max_tokens, 6000, 'a scheduled piece still asks for the whole thing');
+});
