@@ -81,6 +81,22 @@ const TOOLS = {
     use: ['Follow the plan ideas and take them by hand.', 'Log every trade and why you took it.', 'Compare your results with the plan.'],
     edge: 'A clear goal and a visible scoreboard keep you disciplined and teach you position sizing.', watch: 'It is simulated. Real fills and emotions differ.', pairs: ['paper-toggle', 'mem-algo-toggle'],
     say: 'Challenge is the one thousand to one hundred thousand dollar paper portfolio challenge. Take the plan ideas by hand, log why you took each one, and compare yourself to the plan. Your edge is discipline and learning position sizing. It is simulated, so real fills and emotions will feel different.' },
+  'alert-scenarios': { name: 'SCENARIO CHARTS', group: 'SHARE', what: 'Two pictures drawn with every Click to Alert: the base case from entry to target, and what to watch if the idea fails.',
+    use: ['Build an alert with ALERT, or click a contract in the options chain.', 'Look at both pictures before you send.', 'Leave Attach the two scenario charts ticked so followers see the plan.'],
+    edge: 'You see how the trade could play out, and exactly where it is wrong, before any money or any follower is involved.', watch: 'A scenario is a plan, not a forecast. Price is free to ignore it.', pairs: ['click-alert-toggle', 'options-alert'], playbook: 'alerts',
+    say: 'Every Click to Alert draws two scenario charts on the stock\'s own chart. The first is the base case, from your entry to your target. The second is what to watch, where the idea fails and where the stop sits. Look at both before you send, and leave them attached so your followers see the plan. A scenario is a plan, not a forecast.' },
+  'options-alert': { name: 'OPTIONS ALERT', group: 'SHARE', what: 'An alert on one options contract, built from a single click in the chain.',
+    use: ['Open the options chain.', 'Click the contract you like.', 'Press Alert this contract, read the target and the reasoning, then send.'],
+    edge: 'The contract\'s target, stop and reasoning are worked out for you, so an options alert is as easy as a stock alert.', watch: 'Options can lose most of their value fast. Size the position so the whole premium is a loss you can take.', pairs: ['chain-toggle', 'alert-scenarios'], playbook: 'alerts',
+    say: 'Options alerts are as easy as stock alerts. Open the chain, click the contract you like, and press Alert this contract. The target and the stop are worked out for you with the reasoning written out, and the same two scenario charts are drawn. You can also switch any alert between stock and options. Size it so the whole premium is a loss you can take.' },
+  'pt-smashed': { name: 'PT SMASHED', group: 'SHARE', what: 'The update posted when an alert hits its first target: hold for more, bank part, or close.',
+    use: ['Post an alert with a first target.', 'When price reaches it, read the update on the alert.', 'Follow the plan it gives for the rest of the position.'],
+    edge: 'You are told what to do after the win, which is where most gains are given back.', watch: 'It reads the chart at that moment. A new high target is a plan, not a promise.', pairs: ['click-alert-toggle', 'academy-alerts-fab'], playbook: 'alerts',
+    say: 'When an alert reaches its first target, a P T smashed update is posted. It reads the chart right then and tells you whether to hold for a higher target, bank part of the position, or close. Your edge is knowing what to do after the win, which is where most gains are given back.' },
+  'catalyst-radar': { name: 'SURPRISE RADAR', group: 'DESK', what: 'Moving names scored on the footprints that often come before unannounced news, including biotech approvals.',
+    use: ['Open CATALYSTS, then the RADAR tab.', 'Look at names with several signs at once.', 'Click a row for the evidence, then plan with a hedge.'],
+    edge: 'You hear about a stock the market is acting on before the headline lands.', watch: 'The radar cannot know the news. It only sees the market acting as if there is some.', pairs: ['catalysts-toggle', 'fda-scanner'], playbook: 'fda',
+    say: 'The surprise radar scores moving stocks on the footprints that often come before unannounced news. Open catalysts, then radar, look for names showing several signs at once, and click a row for the evidence. It cannot know the news, it only sees the market acting as if there is some, so hedge what you hold.' },
   'talk-btn': { name: 'TALK', group: 'SHARE', what: 'Ticker Talk, the comment section for this ticker.',
     use: ['Read what other members are saying.', 'Post your own read with the reason behind it.', 'Come back after the move to see who was right and why.'],
     edge: 'Explaining your idea in words sharpens it, and other views show what you missed.', watch: 'Comments are opinions. Verify before you act.', pairs: ['sentiment-toggle', 'snap-toggle'],
@@ -91,8 +107,8 @@ const TOOLS = {
     say: 'Snap takes a picture of the chart and posts it to your Discord channel. Set the chart up the way you want, then press Snap. Hold Shift while clicking to choose a channel. Your edge is a fast way to share a setup and keep a record. It goes to Discord, so check what is on screen first.' },
   'click-alert-toggle': { name: 'ALERT', group: 'SHARE', what: 'Click-to-alert: click a price on the chart to set a target, then post the alert to Discord.',
     use: ['Turn it on and click the price you care about.', 'Confirm the alert.', 'You will be told when price gets there.'],
-    edge: 'You stop staring at the screen. The market comes to you when your level hits.', watch: 'Alerts tell you price arrived. They do not tell you what to do.', pairs: ['snap-toggle', 'targets-toggle'],
-    say: 'Alert lets you click a price on the chart to set a target, then post the alert to Discord. Turn it on, click the price you care about, and confirm. Your edge is not staring at the screen, because the market comes to you. An alert tells you price arrived, not what to do.' },
+    edge: 'You stop staring at the screen. The market comes to you when your level hits.', watch: 'Alerts tell you price arrived. They do not tell you what to do.', pairs: ['snap-toggle', 'targets-toggle'], playbook: 'alerts',
+    say: 'Alert lets you click a price on the chart to set a target, then post the alert to Discord. It works for stocks, and for options: click a contract in the chain and the target is worked out for you. Before you send, it draws two scenario charts of how the trade could play out, and a pre alert check warns you if the idea is late. When the first target hits, you get a P T smashed update. Your edge is a clear plan anyone can check, and not staring at the screen.' },
   'article-btn': { name: 'ARTICLE', group: 'SHARE', what: 'The Article Desk, which writes a market news piece from Academy data with a live chart.',
     use: ['Pick a ticker or a topic.', 'Review the draft it writes.', 'Publish it to the Loop Letters.'],
     edge: 'It turns your data into a finished piece in minutes.', watch: 'Always read the draft before it goes out.', pairs: ['talk-btn'],
@@ -150,7 +166,7 @@ Object.assign(TOOLS, {
   'fda-scanner': { name: 'FDA SCANNER', group: 'DESK', what: 'Upcoming FDA decision dates with an approval estimate, an impact score and the move options already expect.',
     use: ['Open CATALYSTS, then the FDA tab.', 'Sort your eye by days until the date and the impact score.', 'Click a row for the filing, the short interest and the plays.'],
     edge: 'You see biotech events weeks ahead and can plan a defined-risk structure instead of gambling on the day.', watch: 'Approval odds are base rates, and the FDA can delay or surprise either way.', pairs: ['catalysts-toggle', 'chain-toggle'], playbook: 'fda',
-    say: 'The F D A scanner lists upcoming decision dates with an approval estimate, an impact score, and the move options already expect. Click a row for the filing, the short interest, and ideas for the event. Your edge is seeing biotech events weeks ahead and planning defined risk. The approval odds are base rates, and the F D A can delay or surprise either way.' },
+    say: 'The F D A scanner has two lists. Scheduled decisions have an exact date, an approval estimate, an impact score, and the move options already expect. Could land any day holds names whose date passed with no news, so an approval or rejection can arrive with no warning. Click a row for the filing and ideas. Odds are base rates, and the F D A can surprise either way.' },
   'hedge-income': { name: 'HEDGE AND INCOME', group: 'DESK', what: 'Options structures around a position: protection, income, or a defined-risk directional play, each with its payoff.',
     use: ['Enter your shares, entry, target and stop, then press Update.', 'Read the pill: hedges first or income first.', 'Compare the cards by cost, protected level, yield and payoff sketch.'],
     edge: 'You see what protection costs and what income pays before you act, and every card shows its worst case.', watch: 'Selling options carries obligations. Nothing here places a trade.', pairs: ['mem-algo-toggle', 'chain-toggle'], playbook: 'hedge',
@@ -207,13 +223,17 @@ function lineFor(kind, id) {
   return typeof text === 'string' && text && SIGNOFF_OK.test(text) ? text : null;
 }
 
+/** Tools only the owner account may see or hear. The page hides them, and the speech route refuses them for anyone else. */
+const OWNER_ONLY = new Set(['challenge-toggle', 'squeeze-btn']);
+const isOwnerOnly = (kind, id) => kind === 'tool' && OWNER_ONLY.has(id);
+
 /** What the page needs: the tool cards without the spoken text (it fetches audio by id), and the step ids that have a voice. */
 function catalogForPage() {
   const tools = {};
-  for (const [id, t] of Object.entries(TOOLS)) tools[id] = { name: t.name, group: t.group, what: t.what, use: t.use, edge: t.edge, watch: t.watch, pairs: t.pairs, playbook: t.playbook || '' };
+  for (const [id, t] of Object.entries(TOOLS)) tools[id] = { name: t.name, group: t.group, what: t.what, use: t.use, edge: t.edge, watch: t.watch, pairs: t.pairs, playbook: t.playbook || '', ownerOnly: OWNER_ONLY.has(id) };
   const playbooks = {};
   for (const [name, pb] of Object.entries(PLAYBOOKS)) playbooks[name] = { title: pb.title, mins: pb.mins, blurb: pb.blurb, steps: pb.steps.map((s) => ({ id: stepKey(name, s.k), k: s.k, t: s.t, b: s.b })) };
   return { tools, playbooks, steps: Object.keys(STEPS) };
 }
 
-module.exports = { TOOLS, STEPS, lines, lineFor, catalogForPage };
+module.exports = { TOOLS, STEPS, lines, lineFor, catalogForPage, OWNER_ONLY, isOwnerOnly };

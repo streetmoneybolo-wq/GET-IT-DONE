@@ -45,6 +45,21 @@ function extractPdufa(text) {
   return [...byDate.values()];
 }
 
+/* a decision window the text states without a day: "PDUFA ... first quarter of 2027", "mid-2027", "March 2027" -> {start,end,label} */
+function windowFrom(text) {
+  const t = stripHtml(text);
+  const re = new RegExp(`(?:PDUFA|target action date|action date|regulatory decision|FDA decision)[^.]{0,140}?(?:(first|second|third|fourth) quarter of (\\d{4})|\\bQ([1-4])\\s+(\\d{4})|(early|mid|late)[- ](\\d{4})|(first|second) half of (\\d{4})|(${MONTHS})\\s+(\\d{4}))`, 'i');
+  const m = re.exec(t); if (!m) return null;
+  const Q = { first: 0, second: 1, third: 2, fourth: 3 };
+  let y, a, b, label;
+  if (m[1]) { y = +m[2]; a = Q[m[1].toLowerCase()] * 3; b = a + 2; label = `${m[1]} quarter of ${y}`; }
+  else if (m[3]) { y = +m[4]; a = (+m[3] - 1) * 3; b = a + 2; label = `Q${m[3]} ${y}`; }
+  else if (m[5]) { y = +m[6]; const k = m[5].toLowerCase(); [a, b] = k === 'early' ? [0, 3] : k === 'mid' ? [4, 7] : [8, 11]; label = `${k} ${y}`; }
+  else if (m[7]) { y = +m[8]; [a, b] = m[7].toLowerCase() === 'first' ? [0, 5] : [6, 11]; label = `${m[7]} half of ${y}`; }
+  else { y = +m[10]; a = b = MONTH_IDX[m[9].toLowerCase()]; label = `${m[9]} ${y}`; }
+  return { start: iso(Date.UTC(y, a, 1)), end: iso(Date.UTC(y, b + 1, 0)), label };
+}
+
 function flagsFrom(text) {
   const t = stripHtml(text).toLowerCase();
   const has = (re) => re.test(t);
@@ -154,23 +169,37 @@ function createFdaService({ fetchImpl = fetch, userAgent = DEFAULT_SEC_UA, candl
     return hits.sort((a, b) => String(b.fileDate).localeCompare(String(a.fileDate)));
   }
 
+  /* scheduled: an exact PDUFA date inside the window. anytime: the newest release for the name says a decision is pending but the
+   * date has passed with no news (the agency can act, or announce, any day) or only gives a window that includes today. */
   async function events(days) {
-    const t = now(), start = iso(t), end = iso(t + days * DAY);
+    const t = now(), today = iso(t), start = today, end = iso(t + days * DAY), overdueFrom = iso(t - 45 * DAY);
     const hits = await searchFilings();
-    const byKey = new Map();
+    const byKey = new Map(), anytime = new Map(), seenTicker = new Set();
     for (const h of hits.slice(0, maxDocs)) {
       let text = null; try { text = await sec(ARCHIVE(h.cik, h.adsh, h.doc), 'text'); } catch (error) { logger('warn', 'fda_doc_failed', { adsh: h.adsh, error: String(error && error.message || error) }); continue; }
-      const dates = extractPdufa(text).filter((d) => d.date >= start && d.date <= end);
-      if (!dates.length) continue;
+      const all = extractPdufa(text), dates = all.filter((d) => d.date >= start && d.date <= end);
       const flags = flagsFrom(text), headline = stripHtml(text).slice(0, 220);
+      const source = { form: '8-K', filed: h.fileDate, url: ARCHIVE(h.cik, h.adsh, h.doc) };
+      const newest = !seenTicker.has(h.ticker); seenTicker.add(h.ticker);
       for (const d of dates) {
         const key = h.ticker + '|' + d.date;
         const prev = byKey.get(key);
         if (prev && prev.source.filed >= h.fileDate) continue; // keep the newest release for the same decision
-        byKey.set(key, { symbol: h.ticker, company: h.company, cik: h.cik, date: d.date, daysAway: Math.round((Date.parse(d.date + 'T00:00:00Z') - t) / DAY), sentence: d.sentence, headline, flags, source: { form: '8-K', filed: h.fileDate, url: ARCHIVE(h.cik, h.adsh, h.doc) } });
+        byKey.set(key, { kind: 'scheduled', symbol: h.ticker, company: h.company, cik: h.cik, date: d.date, daysAway: Math.round((Date.parse(d.date + 'T00:00:00Z') - t) / DAY), sentence: d.sentence, headline, flags, source });
+      }
+      if (!newest || dates.length || anytime.has(h.ticker)) continue;
+      const late = all.filter((d) => d.date < today && d.date >= overdueFrom).sort((x, y) => y.date.localeCompare(x.date))[0];
+      if (late && !all.some((d) => d.date >= today)) {
+        anytime.set(h.ticker, { kind: 'anytime', symbol: h.ticker, company: h.company, cik: h.cik, date: iso(t + 7 * DAY), daysAway: null, window: { start: late.date, end: today, label: `target date ${late.date} passed with no announcement` }, why: 'overdue', sentence: late.sentence, headline, flags, source });
+        continue;
+      }
+      if (!all.length) {
+        const w = windowFrom(text);
+        if (w && w.end >= today && w.start <= end) anytime.set(h.ticker, { kind: 'anytime', symbol: h.ticker, company: h.company, cik: h.cik, date: w.end < end ? w.end : end, daysAway: null, window: w, why: 'window', sentence: headline, headline, flags, source });
       }
     }
-    return [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date));
+    const sched = [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date));
+    return [...sched, ...[...anytime.values()].filter((a) => !sched.some((s) => s.symbol === a.symbol))];
   }
 
   async function enrich(ev) {
@@ -200,8 +229,9 @@ function createFdaService({ fetchImpl = fetch, userAgent = DEFAULT_SEC_UA, candl
       let list; try { list = await events(d); } catch (error) { logger('warn', 'fda_search_failed', { error: String(error && error.message || error) }); return { ok: true, available: false, reason: 'edgar_unavailable', asOf: now() }; }
       const out = []; let i = 0;
       await Promise.all(Array.from({ length: Math.min(3, list.length) }, async () => { while (i < list.length) { const ev = list[i++]; out.push(await enrich(ev)); } }));
-      out.sort((a, b) => a.date.localeCompare(b.date));
-      return { ok: true, available: true, asOf: now(), window: { start: iso(now()), end: iso(now() + d * DAY), days: d }, events: out.slice(0, n), total: out.length,
+      out.sort((a, b) => (a.kind === b.kind ? (a.kind === 'scheduled' ? a.date.localeCompare(b.date) : b.score - a.score) : a.kind === 'scheduled' ? -1 : 1));
+      const sch = out.filter((e) => e.kind === 'scheduled'), any = out.filter((e) => e.kind === 'anytime');
+      return { ok: true, available: true, asOf: now(), window: { start: iso(now()), end: iso(now() + d * DAY), days: d }, events: [...sch.slice(0, n), ...any.slice(0, n)], total: sch.length, anytimeTotal: any.length,
         note: 'Dates and flags come from the companies\' own 8-K releases on EDGAR; a company that never filed its date is not here. Approval reads are base-rate estimates. Educational context, not a trade signal.' };
     });
   }
@@ -214,4 +244,4 @@ function createFdaService({ fetchImpl = fetch, userAgent = DEFAULT_SEC_UA, candl
   return { upcoming, detail };
 }
 
-module.exports = { createFdaService, extractPdufa, flagsFrom, approvalRead, impactRead, playsFor, stripHtml };
+module.exports = { createFdaService, extractPdufa, windowFrom, flagsFrom, approvalRead, impactRead, playsFor, stripHtml };

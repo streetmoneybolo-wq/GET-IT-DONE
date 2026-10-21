@@ -29,19 +29,24 @@
     + '#catalysts-panel .score{display:inline-block;min-width:34px;text-align:center;padding:2px 5px;border-radius:5px;font-weight:800}#catalysts-panel .score.a{background:#1f5a2a;color:#9ff0b0}#catalysts-panel .score.b{background:#4d4a12;color:#f3e27a}#catalysts-panel .score.c{background:#4a2a12;color:#f3b27a}#catalysts-panel .score.d{background:#4a1a1a;color:#ff9a9a}'
     + '#catalysts-panel .cheap{color:#52e6ad}#catalysts-panel .rich{color:#ff9a7a}#catalysts-panel .detail{padding:8px 10px 12px;background:#15110a;border-radius:8px;margin:6px 0 10px;font:600 .66rem system-ui,sans-serif;color:#efe6cf}'
     + '#catalysts-panel .play{border:1px solid #3a3118;border-radius:8px;padding:8px 10px;margin:8px 0;background:#0f0d07}#catalysts-panel .play b{color:#ffd66b}#catalysts-panel .play .legs{font:700 .64rem ui-monospace,monospace;color:#d9c48a;margin:4px 0}#catalysts-panel .play .hedge{color:#9ee6cb}#catalysts-panel .play .risk{color:#c9a68a}'
-    + '#catalysts-panel .tag{display:inline-block;padding:1px 6px;border-radius:4px;background:#2a2410;color:#d9c48a;font:800 .58rem ui-monospace,monospace;margin-right:4px}'
+    + '#catalysts-panel h3.sub{margin:12px 0 4px;font:800 .66rem ui-monospace,monospace;color:#ffd66b;letter-spacing:.08em}#catalysts-panel .tag{display:inline-block;padding:1px 6px;border-radius:4px;background:#2a2410;color:#d9c48a;font:800 .58rem ui-monospace,monospace;margin-right:4px}'
     + '#catalysts-panel .note{margin-top:10px;color:#a3936a;font-size:.62rem;line-height:1.4;font-weight:500}#catalysts-panel a.chart{color:#ffd66b;text-decoration:none;font-weight:800}';
   document.head.appendChild(style);
 
   const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'catalysts-toggle'; btn.className = 'catalysts-toggle'; btn.textContent = 'CATALYSTS'; btn.title = 'Earnings playbook, FDA decisions and the surprise-news radar'; toolbar.appendChild(btn);
   window.addEventListener('sml-academy-session', (event) => { S.session = String((event.detail && event.detail.sessionToken) || ''); S.data = { earnings: null, fda: null, radar: null }; S.err = {}; if (S.on) { void load(S.tab); paint(); } });
 
-  const ROUTES = { earnings: '/academy-activity/earnings-playbook?days=14&limit=12', fda: '/academy-activity/fda?days=45', radar: '/academy-activity/catalyst-radar' };
+  /* the token lives 15 minutes and the session event can fire before this script listens: always prefer the live one */
+  const live = () => { const t = String(window.smlAcademySessionToken || ''); if (t) S.session = t; return S.session; };
+  const ROUTES = { earnings: '/academy-activity/earnings-playbook?days=14&limit=12', fda: '/academy-activity/fda?days=75&limit=20', radar: '/academy-activity/catalyst-radar' };
   async function load(tab) {
+    live();
     if (!S.session || S.busy[tab]) return;
     S.busy[tab] = true; S.err[tab] = '';
     try {
-      const res = await fetch(ROUTES[tab], { headers: { authorization: 'Bearer ' + S.session }, cache: 'no-store' });
+      const go = (tok) => fetch(ROUTES[tab], { headers: { authorization: 'Bearer ' + tok }, cache: 'no-store' });
+      let res = await go(S.session);
+      if (res.status === 401 && typeof window.smlAcademyReauth === 'function') { const fresh = await Promise.resolve(window.smlAcademyReauth()).catch(() => ''); if (fresh) { S.session = String(fresh); res = await go(S.session); } }
       const payload = await res.json().catch(() => ({}));
       if (res.status === 404 || res.status === 503) { S.err[tab] = res.status === 404 ? 'This tab is not live yet.' : (payload.message || 'Not available right now. Try again in a minute.'); S.data[tab] = null; }
       else if (!res.ok || !payload.ok) throw new Error(payload.error || 'unavailable');
@@ -132,10 +137,14 @@
     if (!d) return '<p class="note">Reading the latest FDA filings on EDGAR… (first load can take a minute)</p>';
     if (!d.available || !d.events || !d.events.length) return '<p class="note">' + esc(d.reason === 'edgar_unavailable' ? 'EDGAR is not answering right now.' : 'No PDUFA dates found in the next ' + (d.window ? d.window.days : 60) + ' days.') + '</p>';
     const flag = (e) => [e.flags.priorityReview ? 'priority' : null, e.flags.breakthrough ? 'breakthrough' : null, e.flags.resubmission ? 'resubmission' : null, e.flags.supplemental ? 'supplemental' : null, e.flags.adcomPlanned ? 'AdCom' : null].filter(Boolean).map((f) => '<span class="tag">' + f + '</span>').join('');
-    const rows = d.events.map((e) => { const k = 'f:' + e.symbol + ':' + e.date; const open = st.open.has(k);
-      return '<tr class="row' + (open ? ' open' : '') + '" data-key="' + esc(k) + '"><td>' + chartLink(e.symbol) + '</td><td>' + esc(e.date) + '</td><td>' + e.daysAway + 'd</td><td>' + flag(e) + '</td><td><span class="score ' + grade(e.approval.pct) + '">' + e.approval.pct + '%</span></td><td><span class="score ' + grade(e.impact.score) + '">' + e.impact.score + '</span></td><td>' + (e.implied ? apct(e.implied.impliedPct) : '—') + '</td></tr>' + (open ? fdaDetail(e) : ''); }).join('');
-    return '<table><thead><tr><th>Ticker</th><th>PDUFA</th><th>In</th><th>Review</th><th>Approval</th><th>Impact</th><th>Priced move</th></tr></thead><tbody>' + rows + '</tbody></table>'
-      + '<p class="note">' + d.total + ' decision' + (d.total === 1 ? '' : 's') + ' found through ' + esc(d.window ? d.window.end : '') + '. Click a row for the reads, the plays and the hedge for each. ' + esc(d.note || '') + '</p>';
+    const row = (e) => { const k = 'f:' + e.symbol + ':' + e.date + ':' + e.kind; const open = st.open.has(k);
+      const when = e.kind === 'anytime' ? '<td colspan="2"><span class="tag">ANY DAY</span> ' + esc(e.window ? e.window.label : '') + '</td>' : '<td>' + esc(e.date) + '</td><td>' + e.daysAway + 'd</td>';
+      return '<tr class="row' + (open ? ' open' : '') + '" data-key="' + esc(k) + '"><td>' + chartLink(e.symbol) + '</td>' + when + '<td>' + flag(e) + '</td><td><span class="score ' + grade(e.approval.pct) + '">' + e.approval.pct + '%</span></td><td><span class="score ' + grade(e.impact.score) + '">' + e.impact.score + '</span></td><td>' + (e.implied ? apct(e.implied.impliedPct) : '—') + '</td></tr>' + (open ? fdaDetail(e) : ''); };
+    const head = '<thead><tr><th>Ticker</th><th colspan="2">Decision</th><th>Review</th><th>Approval</th><th>Impact</th><th>Priced move</th></tr></thead>';
+    const sched = d.events.filter((e) => e.kind !== 'anytime'), any = d.events.filter((e) => e.kind === 'anytime');
+    return (sched.length ? '<h3 class="sub">SCHEDULED DECISIONS</h3><table>' + head + '<tbody>' + sched.map(row).join('') + '</tbody></table>' : '<p class="note">No exact PDUFA dates are on file through ' + esc(d.window ? d.window.end : '') + '.</p>')
+      + (any.length ? '<h3 class="sub">COULD LAND ANY DAY</h3><p class="note">Pending applications whose date has passed without news, or whose company only gave a window. Approvals and rejections can be announced with no warning, often before the open or after the close.</p><table>' + head + '<tbody>' + any.map(row).join('') + '</tbody></table>' : '')
+      + '<p class="note">' + sched.length + ' scheduled, ' + any.length + ' on watch. Click a row for the reads, the plays and the hedge for each. ' + esc(d.note || '') + '</p>';
   };
 
   function paint() {
@@ -148,6 +157,7 @@
     if (title && !S.prevTitle) { S.prevTitle = title.textContent; title.textContent = 'CATALYSTS · EARNINGS · FDA · RADAR'; }
     const el = panel(); el.style.display = '';
     const tabs = '<div class="tabs">' + [['earnings', 'EARNINGS'], ['fda', 'FDA'], ['radar', 'RADAR']].map(([k, l]) => '<button type="button" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>';
+    live();
     if (!S.session) { el.innerHTML = '<h2>CATALYSTS</h2>' + tabs + '<p class="note">Unlock Academy Tools first so Discord can verify private Academy access.</p>'; return; }
     if (!S.data[S.tab] && !S.err[S.tab] && !S.busy[S.tab]) void load(S.tab);
     el.innerHTML = '<h2>CATALYSTS</h2>' + tabs + (S.tab === 'earnings' ? earningsHtml() : S.tab === 'fda' ? (window.smlCatalystsFda ? window.smlCatalystsFda(S) : placeholderHtml('fda')) : (window.smlCatalystsRadar ? window.smlCatalystsRadar(S) : placeholderHtml('radar')));

@@ -107,7 +107,7 @@
   async function check() {
     const t = token(); if (!t || S.checked === t) return; S.checked = t;
     const r = await api('?probe=1');
-    S.owner = Boolean(r.ok && r.owner);
+    S.owner = Boolean(r.ok && r.owner); if (S.owner) window.smlOwner = true;
     btn.classList.toggle('show', S.owner);
     if (!S.owner) setOpen(false);
   }

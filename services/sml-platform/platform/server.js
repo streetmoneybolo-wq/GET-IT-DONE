@@ -4122,6 +4122,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         tourUserId = `anonymous:${crypto.createHash('sha256').update(`${forwarded}\0${userAgent}`).digest('hex').slice(0, 24)}`;
       }
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      if (require('./academy/tour-content').isOwnerOnly(params.get('kind'), params.get('id')) && !OWNER_IDS.includes(String(tourUserId))) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
       try {
         const result = await academyVoice.getTourAudio({ kind: params.get('kind'), id: params.get('id'), userId: tourUserId });
         response.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': result.audio.length, 'cache-control': 'private, max-age=604800', 'x-content-type-options': 'nosniff', 'x-academy-voice-cache': result.cached ? 'hit' : 'miss' });

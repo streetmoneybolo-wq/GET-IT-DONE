@@ -39,7 +39,7 @@ test('the tour steps and the spoken script agree id for id', () => {
 
 test('every playbook step has words that fit a card and a unique key', () => {
   const { PLAYBOOKS } = require('./academy/tour-playbooks');
-  assert.deepEqual(Object.keys(PLAYBOOKS).sort(), ['cheap', 'fda', 'hedge', 'indicators', 'profile', 'social', 'spy', 'together']);
+  assert.deepEqual(Object.keys(PLAYBOOKS).sort(), ['alerts', 'cheap', 'fda', 'hedge', 'indicators', 'profile', 'social', 'spy', 'together']);
   for (const [n, p] of Object.entries(PLAYBOOKS)) {
     assert.ok(p.title && p.blurb && p.mins >= 2 && p.steps.length >= 6, n);
     assert.equal(new Set(p.steps.map((s) => s.k)).size, p.steps.length, n + ' keys');
@@ -114,4 +114,14 @@ test('the tour bake records every line once, skips what is stored, waits out rat
   const dead = await bakeTourLines({ voice: { configured: true, getTourAudio: async () => { const e = new Error('bad'); e.code = 'provider_unavailable'; throw e; } }, store, wait: async () => {} });
   assert.equal(dead.failed, 3); assert.equal(dead.stopped, 'provider_unavailable');
   assert.equal((await bakeTourLines({ voice: { configured: false }, store })).stopped, 'provider_unconfigured');
+});
+
+test('owner-only tools are flagged in the page catalog and refused by the speech route', () => {
+  const { catalogForPage, isOwnerOnly } = require('./academy/tour-content');
+  const cat = catalogForPage();
+  assert.equal(cat.tools['challenge-toggle'].ownerOnly, true); assert.equal(cat.tools['squeeze-btn'].ownerOnly, true); assert.equal(cat.tools['paper-toggle'].ownerOnly, false);
+  assert.equal(isOwnerOnly('tool', 'challenge-toggle'), true); assert.equal(isOwnerOnly('step', 'challenge-toggle'), false);
+  assert.match(read('server.js'), /isOwnerOnly\(params\.get\('kind'\), params\.get\('id'\)\)/);
+  const tour = read('academy-auto-tour.js'); assert.match(tour, /ownerOnly && !window\.smlOwner/);
+  const nav = read('academy-toolbar-nav.js'); assert.match(nav, /VOICE TIPS/); assert.match(nav, /data-tip/); assert.match(nav, /ownerOnly && !owner/);
 });

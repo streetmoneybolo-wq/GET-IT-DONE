@@ -55,6 +55,7 @@
     + '#tool-guide .body{overflow:auto;padding:6px 10px 10px}#tool-guide h4{margin:8px 0 4px;font:800 .58rem ui-monospace,monospace;letter-spacing:.1em;color:#5f7986}#tool-guide h4 span{color:#8fa6b3;font-weight:600;letter-spacing:0;margin-left:6px}'
     + '#tool-guide .t{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:start;padding:5px 6px;border-radius:7px;cursor:pointer}#tool-guide .t:hover{background:rgba(158,211,230,.07)}#tool-guide .t b{font:800 .62rem ui-monospace,monospace;color:#fff}#tool-guide .t b.on:after{content:" ●";color:#52e6ad}#tool-guide .t span{color:#9fb3be}'
     + '#tool-guide .foot{padding:8px 12px;border-top:1px solid #13262f;color:#6f8794;font-size:.58rem}'
+    + '#tool-guide .tips{cursor:default}#tool-guide .tips span{display:flex;flex-wrap:wrap;gap:4px 6px}#tool-guide .tips a{color:#9ed3e6;text-decoration:none;font:700 .64rem system-ui,sans-serif;padding:2px 7px;border-radius:999px;background:rgba(158,211,230,.09)}#tool-guide .tips a:hover{background:rgba(0,226,154,.18);color:#00e29a}'
     + '@media(max-width:720px){#tool-guide{top:auto;bottom:0;left:0;right:0;width:auto;max-height:72dvh;border-radius:14px 14px 0 0}#tool-guide .t{grid-template-columns:84px 1fr}}';
   document.head.appendChild(style);
 
@@ -72,8 +73,10 @@
     quoteBtn.addEventListener('click', () => setQuote(!document.body.classList.contains('sml-quote-open')));
     quoteClose.addEventListener('click', () => setQuote(false));
     guide.addEventListener('click', (e) => {
-      const t = e.target.closest ? e.target.closest('[data-close],[data-tool]') : null; if (!t) return;
+      const t = e.target.closest ? e.target.closest('[data-close],[data-tool],[data-tip],[data-walk]') : null; if (!t) return; e.preventDefault();
       if (t.dataset.close) { setGuide(false); return; }
+      if (t.dataset.walk) { setGuide(false); if (window.smlTour && window.smlTour.run) window.smlTour.run(t.dataset.walk === 'menu' ? undefined : t.dataset.walk); return; }
+      if (t.dataset.tip) { if (window.smlAutoTour && window.smlAutoTour.explain) { if (phone()) setGuide(false); window.smlAutoTour.explain(t.dataset.tip); } return; }
       const btn = document.getElementById(t.dataset.tool); if (btn) { btn.click(); setTimeout(paintGuide, 150); if (phone()) setGuide(false); }
     });
     document.addEventListener('click', (e) => { if (guide.classList.contains('open') && !guide.contains(e.target) && e.target !== guideBtn) setGuide(false); });
@@ -95,6 +98,18 @@
   }
   function setQuote(on) { document.body.classList.toggle('sml-quote-open', on); if (quoteBtn) quoteBtn.classList.toggle('on', on); }
   function setGuide(on) { guide.classList.toggle('open', on); const b = document.getElementById('tool-guide-btn'); if (b) b.classList.toggle('on', on); if (on) paintGuide(); }
+  /* every voiced tool tip, browsable and playable from here (academy/tour-content.js); owner-only tools stay out for everyone else */
+  function tipsHtml() {
+    const cat = window.__smlTourCatalog || {}, tools = cat.tools || {}, owner = !!window.smlOwner;
+    const ids = Object.keys(tools).filter((id) => !(tools[id].ownerOnly && !owner));
+    if (!ids.length) return '';
+    const byGroup = {}; ids.forEach((id) => { (byGroup[tools[id].group || 'TOOL'] = byGroup[tools[id].group || 'TOOL'] || []).push(id); });
+    const walks = Object.keys(cat.playbooks || {});
+    return '<h4>VOICE TIPS<span>tap to hear and read it</span></h4>'
+      + (walks.length ? '<div class="t" data-walk="menu"><b>WALKTHROUGHS</b><span>step-by-step guided lessons, ' + walks.length + ' of them</span></div>' : '')
+      + Object.keys(byGroup).map((g) => '<div class="t tips"><b>' + esc(g) + '</b><span>' + byGroup[g].map((id) => '<a href="#" role="button" data-tip="' + esc(id) + '">&#9654; ' + esc(tools[id].name) + '</a>').join(' ') + '</span></div>').join('')
+      + (walks.length ? '<h4>PLAYBOOKS<span>narrated, hands-on</span></h4><div class="t tips"><b>LEARN</b><span>' + walks.map((n) => '<a href="#" role="button" data-walk="' + esc(n) + '">&#9654; ' + esc(cat.playbooks[n].title) + '</a>').join(' ') + '</span></div>' : '');
+  }
   function paintGuide() {
     const groups = GROUPS.map((g) => {
       const items = g.ids.map((id) => document.getElementById(id)).filter((b) => b && getComputedStyle(b).display !== 'none');
@@ -102,7 +117,7 @@
       return '<h4>' + g.label + '<span>' + esc(g.hint) + '</span></h4>' + items.map((b) => '<div class="t" data-tool="' + esc(b.id) + '"><b class="' + (isOn(b) ? 'on' : '') + '">' + esc(b.textContent.trim().slice(0, 18)) + '</b><span>' + esc((b.title || b.getAttribute('aria-label') || '').split(/\.\s|\(/)[0].slice(0, 140) || 'Opens ' + b.textContent.trim()) + '</span></div>').join('');
     }).join('');
     guide.innerHTML = '<header><b>TOOL GUIDE</b><small>tap a tool to open it · ● is on</small><button type="button" class="x" data-close="1" aria-label="Close">×</button></header><div class="body">' + (groups || '<div class="t"><span>The tools are still loading.</span></div>') + '</div>'
-      + '<div class="foot">CHART tools draw on the candles · FLOW tools read who is buying and selling · DESK panels take the lower deck · SHARE posts and alerts. Pop any panel out with ⧉; Aa changes the look; ⚙ picks your buy buttons.</div>';
+      + tipsHtml() + '<div class="foot">CHART tools draw on the candles · FLOW tools read who is buying and selling · DESK panels take the lower deck · SHARE posts and alerts. Pop any panel out with ⧉; Aa changes the look; ⚙ picks your buy buttons.</div>';
   }
 
   /* reparent every known button into its group; a button that boots late is caught by the observer below */

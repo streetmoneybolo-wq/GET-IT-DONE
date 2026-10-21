@@ -34,7 +34,7 @@
   document.head.appendChild(style);
 
   const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'challenge-toggle'; btn.className = 'challenge-toggle'; btn.textContent = 'CHALLENGE'; btn.title = "Grandmaster-obi's $1,000 to $100,000 portfolio: MEM ALGO's ideas, taken by hand, paper-traded on real prices (simulated)"; btn.style.display = 'none'; toolbar.appendChild(btn);
-  const showForOwner = () => { btn.style.display = S.owner ? '' : 'none'; if (!S.owner && S.on) { S.on = false; save(); sync(); paint(); } };
+  const showForOwner = () => { window.smlOwner = window.smlOwner || S.owner; btn.style.display = S.owner ? '' : 'none'; if (!S.owner && S.on) { S.on = false; save(); sync(); paint(); } };
   window.addEventListener('sml-academy-session', (event) => { S.session = String((event.detail && event.detail.sessionToken) || ''); S.data = null; S.err = ''; if (S.on) { void load(); paint(); } startPoll(); });
 
   async function load() {

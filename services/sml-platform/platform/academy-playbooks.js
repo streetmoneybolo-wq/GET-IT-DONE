@@ -67,9 +67,22 @@
     limits: { s: '.academy-intelligence' },
     routine: { s: '.academy-intelligence' }
   });
+  add('alerts', {
+    intro: { s: '#click-alert-toggle' },
+    stock: { s: '#click-alert-toggle' },
+    precheck: { s: '#ca-panel, #click-alert-toggle' },
+    scenarios: { s: '#ca-panel, #click-alert-toggle' },
+    options: { s: '#options-dock, #options-chain, #click-alert-toggle' },
+    switch: { s: '#ca-panel, #click-alert-toggle' },
+    post: { s: '#ca-panel, #click-alert-toggle' },
+    smashed: { s: '#academy-alerts-fab, #click-alert-toggle' },
+    desk: { s: '#academy-alerts-fab' },
+    fda: { s: '#catalysts-toggle' }
+  });
   add('fda', {
     intro: { s: '#catalysts-toggle' },
     open: { s: '#catalysts-panel', pre: both(ensure('#catalysts-panel', '#catalysts-toggle'), () => { const t = $('#catalysts-panel [data-tab="fda"]'); if (t) t.click(); }) },
+    sections: { s: '#catalysts-panel h3.sub, #catalysts-panel table' },
     columns: { s: '#catalysts-panel table' },
     approval: { s: '#catalysts-panel table' },
     impact: { s: '#catalysts-panel table' },

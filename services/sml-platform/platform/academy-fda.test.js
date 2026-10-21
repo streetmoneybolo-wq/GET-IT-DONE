@@ -82,3 +82,34 @@ test('service: an EDGAR outage is reported, never thrown', async () => {
   const svc = fda.createFdaService({ fetchImpl: async () => { throw new Error('down'); }, now: () => NOW });
   const r = await svc.upcoming({}); assert.equal(r.ok, true); assert.equal(r.available, false); assert.equal(r.reason, 'edgar_unavailable');
 });
+
+test('windowFrom reads a decision window without a day', () => {
+  assert.deepEqual(fda.windowFrom('The FDA decision is expected in the first quarter of 2027.'), { start: '2027-01-01', end: '2027-03-31', label: 'first quarter of 2027' });
+  assert.equal(fda.windowFrom('PDUFA target action date in mid-2027').label, 'mid 2027');
+  assert.equal(fda.windowFrom('PDUFA date: March 2027').end, '2027-03-31');
+  assert.equal(fda.windowFrom('nothing about the agency here'), null);
+});
+
+test('service: names whose date passed with no news, or with only a window, are listed as ANY DAY', async () => {
+  const fetchImpl = async (url) => {
+    const json = (o) => ({ ok: true, json: async () => o, text: async () => '' }), text = (s) => ({ ok: true, text: async () => s, json: async () => ({}) });
+    if (url.startsWith('https://efts.sec.gov/')) return json({ hits: { hits: [
+      { _id: '0005-26-1:e.htm', _source: { ciks: ['5'], display_names: ['Late Bio  (LATE)  (CIK 0000000005)'], file_date: day(-40) } },
+      { _id: '0006-26-1:f.htm', _source: { ciks: ['6'], display_names: ['Window Rx  (WNDW)  (CIK 0000000006)'], file_date: day(-20) } }
+    ] } });
+    if (url.endsWith('/e.htm')) return text('Late Bio: NDA under review, PDUFA target action date of ' + long(day(-10)) + '.');
+    if (url.endsWith('/f.htm')) return text('Window Rx: BLA accepted; the PDUFA goal date is expected in the ' + ['first', 'second', 'third', 'fourth'][Math.floor(new Date(NOW).getUTCMonth() / 3)] + ' quarter of ' + new Date(NOW).getUTCFullYear() + '.');
+    return { ok: false, status: 404, json: async () => ({}), text: async () => '' };
+  };
+  const svc = fda.createFdaService({ fetchImpl, now: () => NOW });
+  const r = await svc.upcoming({ days: 60 });
+  const by = Object.fromEntries(r.events.map((e) => [e.symbol, e]));
+  assert.equal(by.LATE.kind, 'anytime'); assert.match(by.LATE.window.label, /passed with no announcement/);
+  assert.equal(by.WNDW.kind, 'anytime'); assert.match(by.WNDW.window.label, /quarter of/);
+  assert.equal(r.total, 0); assert.equal(r.anytimeTotal, 2);
+});
+
+test('catalysts panel: live token, 401 renewal, scheduled and any-day sections', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'academy-catalysts-panel.js'), 'utf8');
+  assert.match(src, /window\.smlAcademySessionToken/); assert.match(src, /smlAcademyReauth/); assert.match(src, /SCHEDULED DECISIONS/); assert.match(src, /COULD LAND ANY DAY/);
+});

@@ -87,6 +87,7 @@
   /* the card's content for a request {key, id, el}: a catalog entry, or one built from the button's own label and tooltip */
   function entryFor(req) {
     const t = TOOLS[req.id];
+    if (t && t.ownerOnly && !window.smlOwner) return null;
     if (t) return Object.assign({ voiced: true }, t);
     const el = req.el, label = (el && (el.getAttribute('aria-label') || el.textContent) || '').trim().replace(/\s+/g, ' ').slice(0, 28), tip = el && (el.getAttribute('title') || '').trim();
     if (!label || !tip) return null;
@@ -94,7 +95,7 @@
   }
 
   function chips(t) {
-    return (t.pairs || []).filter((id) => !seen.has(id) && TOOLS[id] && visible(byId(id))).slice(0, 2)
+    return (t.pairs || []).filter((id) => !seen.has(id) && TOOLS[id] && !(TOOLS[id].ownerOnly && !window.smlOwner) && visible(byId(id))).slice(0, 2)
       .map((id) => '<button type="button" data-next="' + esc(id) + '">' + esc(TOOLS[id].name) + '</button>').join('');
   }
 
@@ -203,6 +204,6 @@
     enabled, setEnabled, reset,
     seen: (id) => seen.has(id),
     /* replay any tool's card on demand (the tour calls this on a fresh start; also handy from the console) */
-    explain: (id) => { const req = { key: id, id, el: byId(id) }; if (!TOOLS[id]) return false; if (card) close(); show(req, true); return true; }
+    explain: (id) => { const req = { key: id, id, el: byId(id) }; if (!TOOLS[id] || (TOOLS[id].ownerOnly && !window.smlOwner)) return false; if (card) close(); show(req, true); return true; }
   };
 })();
