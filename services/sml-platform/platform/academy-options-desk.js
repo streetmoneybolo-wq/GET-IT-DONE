@@ -137,11 +137,10 @@
     const prev = bars.length > 1 ? bars[bars.length - 2].c : (last ? last.o : null);
     const lastPx = last ? last.c : (r.mid != null ? r.mid : null);
     const chg = last && prev != null && prev > 0 ? (last.c - prev) / prev : null;
-    const P = window.smlBuyPrefs, brokers = P ? P.brokers() : [], prefs = P ? P.get() : { mode: 'each', sell: true };
-    const tradeBtn = (b, side, big) => '<button type="button" data-go="' + b.key + '" data-side="' + side + '" class="' + side + (big ? ' big' : '') + '" style="color:' + b.color + ';background:' + b.bg + ';border-color:' + b.border + '" title="' + esc(side === 'buy' ? 'Buy to open on ' + b.name : 'Sell on ' + b.name) + '">' + (side === 'buy' ? 'BUY' : 'SELL') + (big ? ' ↗' : ' · ' + esc(b.name)) + '</button>';
-    let trade = '';
-    if (brokers.length === 1) trade = '<div class="om-row">' + tradeBtn(brokers[0], 'buy', true) + (prefs.sell ? tradeBtn(brokers[0], 'sell', true) : '') + '</div><small style="color:#7f97a4">on ' + esc(brokers[0].name) + '</small>';
-    else trade = '<h6>BUY</h6><div class="om-row">' + brokers.map((b) => tradeBtn(b, 'buy', false)).join('') + '</div>' + (prefs.sell ? '<h6>SELL</h6><div class="om-row">' + brokers.map((b) => tradeBtn(b, 'sell', false)).join('') + '</div>' : '');
+    /* one Buy and one Sell on the member's broker, with a small picker to change the broker (never a row of four) */
+    const P = window.smlBuyPrefs, brokers = P ? P.tradeBrokers() : [], prefs = P ? P.get() : { sell: true };
+    const tradeBtn = (b, side) => '<button type="button" data-go="' + b.key + '" data-side="' + side + '" class="' + side + ' big" style="color:' + b.color + ';background:' + b.bg + ';border-color:' + b.border + '" title="' + esc(side === 'buy' ? 'Buy to open on ' + b.name : 'Sell on ' + b.name) + '">' + (side === 'buy' ? 'BUY' : 'SELL') + ' · ' + esc(b.name) + '</button>';
+    const trade = brokers.length ? '<div class="om-row">' + tradeBtn(brokers[0], 'buy') + (prefs.sell ? tradeBtn(brokers[0], 'sell') : '') + '</div><small style="color:#7f97a4">on ' + (P && P.switcher ? P.switcher() : esc(brokers[0].name)) + '</small>' : '';
     card.innerHTML = '<header><b>CONTRACT CHART</b><span class="x" data-x="1" title="Close">×</span></header>'
       + '<div class="nm">' + esc(OC.describe(c)) + '<code>' + esc(OC.occSymbol(c)) + '</code></div>'
       + '<div class="px"><b>' + esc(money(lastPx)) + '</b>' + (chg != null ? '<i class="' + (chg >= 0 ? 'up' : 'down') + '">' + (chg >= 0 ? '+' : '') + (chg * 100).toFixed(1) + '%</i>' : '') + '<small>' + (last ? 'last trade · ' + esc(money(last.c * 100, 0)) + ' per contract' : r.mid != null ? 'mid from the chain' : '') + (M.stale ? ' · stale' : '') + '</small></div>'

@@ -29,14 +29,14 @@
   function say(text, ok) { const h = bar.querySelector('.hint'); if (h) { h.textContent = text; h.className = 'hint' + (ok ? ' ok' : ''); } }
   /* which brokers, and whether Sell shows beside Buy, follow Settings (window.smlBuyPrefs); without it every broker shows */
   const NAMES = { moomoo: 'moomoo', webull: 'Webull', robinhood: 'Robinhood', etoro: 'eToro' };
-  const chosen = () => { const P = window.smlBuyPrefs; return P ? P.brokers().map((b) => b.key) : ['moomoo', 'webull', 'robinhood', 'etoro']; };
+  const chosen = () => { const P = window.smlBuyPrefs; return P ? P.tradeBrokers().map((b) => b.key) : ['moomoo']; }; // one broker: the primary (a picker changes it), never a row of four
   const sellOn = () => { const P = window.smlBuyPrefs; return P ? P.get().sell : false; };
   function render() {
     const links = C ? OC.links(C) : [], keys = chosen(), one = keys.length === 1;
     const button = (k, side) => { const l = links.find((x) => x.key === k); return '<button type="button" data-b="' + k + '" data-side="' + side + '"' + (l ? '' : ' disabled') + (l ? ' title="' + esc(l.note) + '"' : '') + (side === 'sell' ? ' style="filter:saturate(.7) brightness(.92)"' : '') + '>' + (one ? (side === 'sell' ? 'SELL' : 'BUY') + ' on ' + esc(NAMES[k]) : (side === 'sell' ? 'Sell · ' : '') + esc(NAMES[k])) + ' ↗</button>'; };
     bar.innerHTML = '<h3>' + (sellOn() ? 'BUY OR SELL THIS CONTRACT ON YOUR BROKER' : 'BUY THIS CONTRACT ON YOUR BROKER') + '</h3>'
       + (C ? '<div class="ct"><b>' + esc(OC.describe(C)) + '</b><button type="button" class="copy" data-copy="1" title="Copy the contract symbol">Copy symbol</button></div><div class="ct"><code>' + esc(OC.occSymbol(C)) + '</code></div>' : '<div class="ct"><b style="color:#7f97a4;font-weight:600">Click a contract in the options chain. Double-click it for its own chart.</b></div>')
-      + '<div class="row">' + keys.map((k) => button(k, 'buy')).join('') + '</div>'
+      + '<div class="row">' + keys.map((k) => button(k, 'buy')).join('') + (window.smlBuyPrefs && window.smlBuyPrefs.switcher ? '<span class="bsw">on ' + window.smlBuyPrefs.switcher() + '</span>' : '') + '</div>'
       + (sellOn() ? '<div class="row" style="margin-top:5px">' + keys.map((k) => button(k, 'sell')).join('') + '</div>' : '')
       + '<p class="hint">' + (C ? 'Each button copies the contract symbol and opens the broker; paste the symbol into its search to land on this contract and place the order there. Nothing is traded from the Academy.' : 'Quote pages only. Any order is reviewed and placed by you in your own broker. Choose your brokers under ⚙ Settings.') + '</p>';
   }

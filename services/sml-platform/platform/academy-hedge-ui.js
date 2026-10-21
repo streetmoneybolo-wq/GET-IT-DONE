@@ -81,7 +81,7 @@
      Quote pages only: the order itself is placed by the member in the broker. */
   const legContract = (l) => (window.SmlOptionContract ? window.SmlOptionContract.contract({ symbol: S.sym || chartSymbol(), expiry: l.expiry, strike: l.strike, side: l.type }) : null);
   function legButtons(l, i, j) {
-    const P = window.smlBuyPrefs, brokers = P ? P.brokers() : [], side = l.action === 'sell' ? 'sell' : 'buy';
+    const P = window.smlBuyPrefs, brokers = P ? P.tradeBrokers() : [], side = l.action === 'sell' ? 'sell' : 'buy'; // one broker per leg
     const mini = window.__smlOptionsDesk ? '<button type="button" data-leg-chart="' + i + ':' + j + '" title="This contract’s own chart">Chart</button>' : '';
     const trade = brokers.map((b) => '<button type="button" data-leg-trade="' + i + ':' + j + '" data-b="' + esc(b.key) + '" data-side="' + side + '" style="color:' + b.color + ';background:' + b.bg + ';border-color:' + b.border + '" title="' + esc((side === 'sell' ? 'Sell on ' : 'Buy on ') + b.name) + '">' + (side === 'sell' ? 'Sell' : 'Buy') + (brokers.length === 1 ? ' on ' + esc(b.name) : ' · ' + esc(b.name)) + ' ↗</button>').join('');
     return mini || trade ? '<div class="ahg-act">' + mini + trade + '</div>' : '';

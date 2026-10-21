@@ -37,6 +37,11 @@ function brokersFor(prefs) {
   return (p.mode === 'one' ? [p.primary] : p.platforms).map(brokerOf).filter(Boolean);
 }
 
+/* The brokers a CONTRACT trade spot shows (the contract mini chart, the chain's buy/sell bar, the hedge ideas): always exactly one, the
+   primary, whatever the mode. Four Buy and four Sell buttons on one contract was clutter; the member switches the broker with the small
+   picker beside the buttons (or in Settings). Only the chart toolbar's "Buy SPY on ..." row may follow the "one per broker" mode. */
+function tradeBrokersFor(prefs) { const p = normalize(prefs); return [brokerOf(p.primary)].filter(Boolean); }
+
 /* Where a button sends the member. A stock opens the broker on that stock. A contract opens the broker as close as it allows
    (moomoo and Webull on the stock through the launcher, Robinhood on the stock's chain, eToro on the stock) and the caller copies
    the OCC symbol so pasting it into the broker's search lands on the contract. `side` only changes the words: the broker page is
@@ -55,4 +60,4 @@ function linkFor(key, { symbol, contract = null, side = 'buy' } = {}) {
   return { key, name: b.name, url, note: note + '. Place the ' + action + ' order there yourself' + (contract ? '; the contract symbol is copied for its search.' : '.'), symbol: sym, side, exact: false };
 }
 
-module.exports = { BROKERS, KEYS, DEFAULTS, STORAGE_KEY, LAUNCH, normalize, brokersFor, linkFor, brokerOf };
+module.exports = { BROKERS, KEYS, DEFAULTS, STORAGE_KEY, LAUNCH, normalize, brokersFor, tradeBrokersFor, linkFor, brokerOf };

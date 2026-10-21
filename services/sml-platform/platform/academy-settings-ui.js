@@ -20,6 +20,9 @@
     get: () => Object.assign({}, prefs, { platforms: prefs.platforms.slice() }),
     set(next) { prefs = P.normalize(Object.assign({}, prefs, next || {})); save(); applyToolbar(); window.dispatchEvent(new CustomEvent('sml-buy-prefs', { detail: window.smlBuyPrefs.get() })); },
     brokers: () => P.brokersFor(prefs),
+    /* a contract's Buy and Sell: one broker, the primary, never a row of four; `switcher()` is the small picker that changes it */
+    tradeBrokers: () => P.tradeBrokersFor(prefs),
+    switcher: () => '<select class="buy-switch" data-buy-switch="1" aria-label="Broker for Buy and Sell" title="Which broker Buy and Sell open">' + prefs.platforms.map((k) => { const b = P.brokerOf(k); return b ? '<option value="' + k + '"' + (k === prefs.primary ? ' selected' : '') + '>' + b.name + '</option>' : ''; }).join('') + '</select>',
     link: (key, opts) => P.linkFor(key, opts),
     /* open a broker for a stock or a contract; a contract's OCC symbol is copied first so the broker's search finds it */
     async go(key, opts) {
@@ -32,6 +35,7 @@
     copy
   };
 
+  document.addEventListener('change', (e) => { const sw = e.target && e.target.closest && e.target.closest('[data-buy-switch]'); if (sw && P.brokerOf(sw.value)) window.smlBuyPrefs.set({ primary: sw.value }); });
   /* the chart toolbar's "Buy SPY on …" buttons follow the choice: hidden brokers go, "one button" keeps the primary alone */
   function applyToolbar() {
     const show = new Set(P.brokersFor(prefs).map((b) => b.key));
@@ -41,7 +45,8 @@
   if (typeof MutationObserver === 'function') new MutationObserver(applyToolbar).observe(document.documentElement, { childList: true, subtree: true });
 
   const css = document.createElement('style');
-  css.textContent = '#sml-settings-btn{position:fixed;right:126px;bottom:10px;z-index:2147483200;border:1px solid #2a4a58;border-radius:999px;background:#0d1a24;color:#e6eef2;padding:7px 12px;font:800 .72rem system-ui;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.5)}'
+  css.textContent = '.buy-switch{margin-left:4px;padding:2px 4px;border:1px solid #2a4a58;border-radius:6px;background:#0d1a24;color:#cfe3ec;font:700 .62rem system-ui,sans-serif;cursor:pointer}.bsw{align-self:center;color:#7f97a4;font:700 .6rem system-ui,sans-serif;margin-left:6px}'
+    + '#sml-settings-btn{position:fixed;right:126px;bottom:10px;z-index:2147483200;border:1px solid #2a4a58;border-radius:999px;background:#0d1a24;color:#e6eef2;padding:7px 12px;font:800 .72rem system-ui;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.5)}'
     + '#sml-settings-panel{position:fixed;right:10px;bottom:52px;z-index:2147483201;width:min(340px,calc(100vw - 20px));max-height:calc(100dvh - 70px);overflow:auto;background:#0a1118;border:1px solid #2f6cf5;border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.65);color:#dbe6ec;font:600 .72rem/1.4 system-ui,sans-serif;padding:12px;display:none}'
     + '#sml-settings-panel h4{margin:0 0 8px;font:800 .8rem system-ui}#sml-settings-panel h6{margin:10px 0 5px;font:800 .58rem ui-monospace,monospace;letter-spacing:.08em;color:#9cc8ff}'
     + '#sml-settings-panel label{display:flex;gap:7px;align-items:center;padding:5px 0;cursor:pointer}#sml-settings-panel input{accent-color:#2f6cf5}'
