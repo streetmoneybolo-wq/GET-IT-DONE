@@ -108,6 +108,23 @@ const PLAYBOOKS = {
       { k: 'fda', t: 'Pair it with the FDA radar', b: 'For a biotech with a decision date, open CATALYSTS, then FDA. Scheduled decisions show the date and the priced move. The could land any day list shows names that can announce with no warning. Alert the level you care about, and keep size small enough that a gap does not hurt.' }
     ]
   },
+  room: {
+    title: 'Trading room: join one or run your own', mins: 4, blurb: 'How a trader\'s room works: free and paid channels, tiers, and how to set up and charge for your own.',
+    steps: [
+      { k: 'intro', t: 'A room behind every profile', b: 'A trading room is a small Discord server inside the Academy, easier to use. A trader\'s profile is the front door. Behind it are channels for alerts, chat, notes and announcements, some free and some paid, all set by the trader.' },
+      { k: 'door', t: 'The front door', b: 'On a profile, the trading room card shows the room name, how many members it has, how many channels are open or locked, and the lowest price. Join free follows the trader. Enter the room takes you inside. On your own profile it says Set up my room.' },
+      { k: 'enter', t: 'Inside the room', b: 'Three parts. The list of channels on the left, the channel you are reading in the middle, and on the right what the room is about and your membership. On a phone, the menu and info buttons at the top open the left and right parts.' },
+      { k: 'channels', t: 'Channels and their icons', b: 'A megaphone is announcements, a speech bubble is chat, a note is notes, and a chart is the trader\'s alerts. Members post only in chat. Announcements, notes and alerts are the trader\'s own, so the room stays clean.' },
+      { k: 'roles', t: 'Visitor, free member, paid member', b: 'A visitor sees the public channels. Following the trader makes you a free member, like the everyone role in a server, and opens the free channels. A paid tier opens the paid channels. The badge under the room name shows which you are.' },
+      { k: 'locked', t: 'Locked channels', b: 'A padlock means your membership does not open that channel yet. Open it and it says exactly what unlocks it: follow for free, or which paid tier. A higher tier always includes the channels of the tiers below it.' },
+      { k: 'setup', t: 'Setting up your own room', b: 'On your own room, Room settings sits at the bottom of the channel list. Only you see it. Everything about the room is set there: its name, the channels, who can see each one, the tiers and the prices. Nothing is fixed, you can change it any time.' },
+      { k: 'template', t: 'Start from a template', b: 'Pick a template to lay the room out in one click: an alerts room, alerts only, two levels, a classroom, a free community, or blank. It only fills in a starting layout. You then rename, add, remove and reorder anything.' },
+      { k: 'access', t: 'Public, free or paid for each channel', b: 'For every channel you choose who can see it. Public means anyone, even before joining. Free members means everyone who follows you. Paid means members of a tier, and with several tiers you pick the lowest tier that gets in. Chat channels can have slow mode.' },
+      { k: 'tiers', t: 'Tiers and prices', b: 'Add up to four paid tiers, each with its own name, a short list of what members get, and prices for a day, a week, a month, a year or for life. Leave a length empty to not offer it. The minimum is one dollar. The suggestion buttons fill in a starting price you can change.' },
+      { k: 'payouts', t: 'Get paid', b: 'Paid tiers are sold on stockmarketloop.com with Stripe. Accept the terms, connect Stripe, and members pay there while you receive each payment less the six percent processing fee. Until payouts are connected, the room can be browsed but not bought.' },
+      { k: 'open', t: 'Open the room and run it', b: 'The what is missing list tells you in plain words what is left, such as a price or payouts. When you are ready, tick that the room is open and save: it appears on your profile. You can delete or pin posts, and limit a member, from the room and the members list.' }
+    ]
+  },
   hedge: {
     title: 'Hedge and Income', mins: 3, blurb: 'Protect what you own, earn income on it, and see every payoff before you act.',
     steps: [

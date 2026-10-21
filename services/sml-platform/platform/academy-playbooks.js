@@ -79,6 +79,22 @@
     desk: { s: '#academy-alerts-fab' },
     fda: { s: '#catalysts-toggle' }
   });
+  const openMine = () => { if (window.smlRoom && window.smlRoom.mine && !$('#sml-room.open')) window.smlRoom.mine(); };
+  const openSettings = () => { openMine(); const b = $('#sml-room [data-go=settings]'); if (b && !$('#sml-room .rm-set')) b.click(); };
+  add('room', {
+    intro: { s: '#academy-profile-btn' },
+    door: { s: '.rm-door', pre: () => { if (!$('.rm-door') && window.smlAcademyProfile && window.smlAcademyProfile.me) window.smlAcademyProfile.me(); } },
+    enter: { s: '#sml-room .rm-main', pre: openMine },
+    channels: { s: '#sml-room .rm-rail', pre: openMine },
+    roles: { s: '#sml-room .rm-role, #sml-room .rm-side', pre: openMine },
+    locked: { s: '#sml-room .rm-ch.locked, #sml-room .rm-rail', pre: openMine },
+    setup: { s: '#sml-room .rm-foot [data-go=settings], #sml-room .rm-rail', pre: openMine },
+    template: { s: '#sml-room .rm-tpl', pre: openSettings },
+    access: { s: '#sml-room .rm-cate', pre: openSettings },
+    tiers: { s: '#sml-room .rm-tiers', pre: openSettings },
+    payouts: { s: '#sml-room .rm-sellerbox', pre: openSettings },
+    open: { s: '#sml-room [data-r=enabled], #sml-room .rm-set', pre: openSettings }
+  });
   add('fda', {
     intro: { s: '#catalysts-toggle' },
     open: { s: '#catalysts-panel', pre: both(ensure('#catalysts-panel', '#catalysts-toggle'), () => { const t = $('#catalysts-panel [data-tab="fda"]'); if (t) t.click(); }) },

@@ -357,7 +357,8 @@
       });
     }
   }
-  window.smlRoom = { open: openRoom, door, close };
+  const selfId = () => { try { const part = token().split('.')[1] || ''; const bin = atob(part.replace(/-/g, '+').replace(/_/g, '/')); const json = decodeURIComponent(Array.from(bin).map((c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('')); const c = JSON.parse(json); return String(c.u || c.sub || ''); } catch (_) { return ''; } };
+  window.smlRoom = { open: openRoom, door, close, mine: () => openRoom(selfId()), isOpen: () => root.classList.contains('open') };
   /* a link straight into a room: ?room=<owner id>[&channel=<id>] */
   try { const qs = new URLSearchParams(location.search), rid = qs.get('room'); if (rid) setTimeout(() => openRoom(rid, qs.get('channel') || ''), 2500); } catch (_) { /* ignore */ }
 })();

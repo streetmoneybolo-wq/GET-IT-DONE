@@ -39,7 +39,7 @@ test('the tour steps and the spoken script agree id for id', () => {
 
 test('every playbook step has words that fit a card and a unique key', () => {
   const { PLAYBOOKS } = require('./academy/tour-playbooks');
-  assert.deepEqual(Object.keys(PLAYBOOKS).sort(), ['alerts', 'cheap', 'fda', 'hedge', 'indicators', 'profile', 'social', 'spy', 'together']);
+  assert.deepEqual(Object.keys(PLAYBOOKS).sort(), ['alerts', 'cheap', 'fda', 'hedge', 'indicators', 'profile', 'room', 'social', 'spy', 'together']);
   for (const [n, p] of Object.entries(PLAYBOOKS)) {
     assert.ok(p.title && p.blurb && p.mins >= 2 && p.steps.length >= 6, n);
     assert.equal(new Set(p.steps.map((s) => s.k)).size, p.steps.length, n + ' keys');
