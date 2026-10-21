@@ -952,6 +952,61 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     logger('info', 'click_alert_sent', { symbol: sym, horizon: 'exit', guildId: where.guildId, partial: !!partial });
     return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, repliedTo: reply.id || null, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, price, entry: Number(entry), gainPct: Math.round(((side === 'short' ? Number(entry) - price : price - Number(entry)) / Number(entry)) * 1000) / 10, partial: !!partial, text };
   }
+  /* The analyst drags the alert's target line on the chart. Where it lands decides the post, from the live price:
+       further in the trade's direction than the current PT  -> PT RAISED
+       closer, but still beyond the live price                -> PT LOWERED
+       at or behind the live price                            -> TAKE PROFITS / close the position
+     The post goes to the alert's channel as a reply to the newest post on the stock there. alert.currentTarget is the PT now in force. */
+  async function movePt(user, { alert, target, mention, asMe = true } = {}) {
+    const userId = String(user.userId || ''), sym = String(alert.symbol || '').toUpperCase();
+    const to = Number(target), was = Number(alert.currentTarget || alert.target), entry = Number(alert.entry);
+    if (!/^[A-Z0-9.:-]{1,10}$/.test(sym)) return { ok: false, status: 422, code: 'invalid_symbol' };
+    if (!(to > 0) || !(was > 0)) return { ok: false, status: 422, code: 'invalid_target', detail: 'Drag the line to a price first.' };
+    const { last } = await loadBars(sym);
+    const price = last ? last.c : null;
+    if (!(price > 0)) return { ok: false, status: 422, code: 'no_live_price' };
+    const short = was < entry;
+    if (short ? to >= price : to <= price) {
+      const replyTo = await replyTargetFor(userId, { symbol: sym, channelId: alert.channelId, alertId: alert.id, alertAt: alert.at });
+      const out = await takeProfits(user, { symbol: sym, channelId: alert.channelId, entry, side: short ? 'short' : 'long', partial: false, why: ['Price target moved to ' + to + ', through the live price ' + price], mention, asMe, replyTo });
+      return out.ok ? { ...out, move: 'close' } : out;
+    }
+    if (Math.abs(to - was) / was < 0.001) return { ok: false, status: 422, code: 'target_unchanged', detail: 'That is the same target.' };
+    const raised = short ? to < was : to > was;
+    const sent = await postPlain(user, { channelId: alert.channelId, mention, asMe, symbol: sym, replyTo: await replyTargetFor(userId, { symbol: sym, channelId: alert.channelId, alertId: alert.id, alertAt: alert.at }),
+      text: (ping) => format.formatPtAdjust({ ticker: sym, newPt: to, oldPt: was, price, entry, side: short ? 'short' : 'long', mention: ping }),
+      row: { side: short ? 'short' : 'long', entry, target: to, stop: null, horizon: 'swing', confidence: raised ? 'raised' : 'lowered' }, dupKey: sym });
+    return sent.ok ? { ...sent, move: raised ? 'raise' : 'lower', newTarget: to, previousTarget: was, price } : sent;
+  }
+  /* post one text to a channel the member and the app can post in, as the member where possible; shared by the chart-drag updates */
+  async function postPlain(user, { channelId, text, mention, asMe = true, replyTo = '', row, dupKey } = {}) {
+    const userId = String(user.userId || '');
+    if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
+    const ent = await entitlement(userId);
+    if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured' };
+    if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required' };
+    const pd = personas && personas[userId];
+    const where = await (pd || directory).postingIn(userId, String(channelId)).catch(() => null);
+    if (!where) return { ok: false, status: 404, code: 'channel_unavailable' };
+    if (!where.userCanSend) return { ok: false, status: 403, code: 'you_cannot_post_there' };
+    if (!where.botCanSend) return { ok: false, status: 403, code: 'app_cannot_post_there' };
+    const limited = await overLimit(userId, String(channelId)); if (limited) return { ok: false, status: 429, code: 'rate_limited', detail: limited };
+    if (row && row.target != null && await store.count({ userId, channelId: String(channelId), symbol: dupKey, target: row.target, sinceMs: 60_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just posted that target.' };
+    const wantPing = mention === undefined ? true : !!mention, ping = wantPing && where.mentionEveryone;
+    let content = text(ping);
+    const persona = pd || null;
+    const viaWebhook = !persona && asMe !== false && !!where.botCanWebhook && typeof directory.postAsMember === 'function';
+    const sentBy = () => '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
+    if (footer && !viaWebhook && !persona) content += sentBy();
+    const msgBody = { content, allowed_mentions: { parse: ping ? ['everyone'] : [] } };
+    const reply = replyRef(replyTo, where.guildId, channelId);
+    let posted, postedAs = 'app';
+    if (persona) { try { posted = await persona.post(String(channelId), reply.asReply(msgBody), []); postedAs = 'persona'; } catch (error) { logger('warn', 'click_alert_persona_failed', { error: String(error.message || error) }); } }
+    if (!posted && viaWebhook) { try { posted = await directory.postAsMember(String(channelId), reply.asLink(msgBody), [], { userId, displayName: user.displayName }); postedAs = 'member'; } catch (error) { logger('warn', 'click_alert_webhook_failed', { error: String(error.message || error) }); } }
+    if (!posted) { if (footer && (viaWebhook || persona)) msgBody.content += sentBy(); posted = await directory.post(String(channelId), reply.asReply(msgBody), []); }
+    if (row) await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, ...row }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
+    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId || String(channelId), repliedTo: reply.id || null, mentioned: ping };
+  }
   /* one button press on the desk: alert = the desk's record of the post (id, symbol, entry, channelId, at, plan) */
   async function deskAction(user, { alert, action, target, mention, asMe = true } = {}) {
     if (!alert || !SNOWFLAKE.test(String(alert.channelId || ''))) return { ok: false, status: 404, code: 'channel_unavailable', detail: 'That alert\'s channel is not known.' };
@@ -976,6 +1031,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
       }
       return out;
     }
+    if (action === 'move') return movePt(user, { alert, target, mention, asMe });
     if (action === 'pt') {
       const t = Number(target);
       if (!(t > 0)) return { ok: false, status: 422, code: 'invalid_target', detail: 'Pick a price target above the current one.' };

@@ -155,6 +155,26 @@ function formatTakeProfits(a) {
   ].join('\n');
 }
 
+/* the analyst moves the price target before it is hit: PT RAISED (further in the trade's direction) or PT LOWERED (closer, but still beyond the live price) */
+function formatPtAdjust(a) {
+  const to = Number(a.newPt), was = Number(a.oldPt);
+  if (!a.ticker || !(to > 0) || !(was > 0)) throw new TypeError('pt_adjust_needs_ticker_old_and_new_pt');
+  const tk = String(a.ticker).toUpperCase().replace(/[^A-Z0-9.]/g, ''), short = a.side === 'short';
+  const raised = short ? to < was : to > was;
+  const price = Number(a.price), entry = Number(a.entry);
+  const away = price > 0 ? Math.abs((to - price) / price) * 100 : null;
+  return [
+    ...everyone(a.mention),
+    (raised ? '📈 ' : '📉 ') + bold(tk) + ' ' + bold(raised ? 'PT RAISED' : 'PT LOWERED') + ' — ' + bold('NEW PT') + ' ' + priceText(to) + ' (' + bold('WAS') + ' ' + plainPrice(was) + ')',
+    raised ? '🎯 ' + sentence(a.status, 'Target moved ' + (short ? 'lower' : 'higher') + ' before the old one was hit — the move still has room.') : '🎯 ' + sentence(a.status, 'Target brought in — taking the realistic level and protecting the gain.'),
+    '',
+    ...(price > 0 ? ['📍 ' + bold('NOW') + ' ' + plainPrice(price) + (away != null ? ' — ' + away.toFixed(away >= 10 ? 0 : 1) + '% to the new PT' : '') + (entry > 0 ? ' | ' + bold('ENTRY') + ' ' + plainPrice(entry) : '')] : []),
+    '',
+    '⚠️ ' + bold(raised ? 'MANAGE THE RISK' : 'WHAT THIS MEANS') + '  ',
+    sentence(a.riskNote, raised ? 'A higher target is not a reason to ignore the stop. Size and stop stay the same.' : 'Aim for the new level. If price goes through the stop first, the plan is wrong.')
+  ].join('\n');
+}
+
 /* ---------- options ---------- */
 const EXPIRY = {
   daily: { label: 'DAILY', note: 'Fast movement, fast risk — manage size tight.' },
@@ -243,4 +263,4 @@ function formatOptionsPtSmashed(a) {
   ].join('\n');
 }
 
-module.exports = { bold, priceText, plainPrice, autoStop, tradeType, riskLabel, formatEntryAlert, formatPtSmashed, formatTakeProfits, formatOptionsAlert, formatOptionsContractAlert, formatOptionsPtSmashed, TRADE_TYPES, RISKS };
+module.exports = { bold, priceText, plainPrice, autoStop, tradeType, riskLabel, formatEntryAlert, formatPtSmashed, formatPtAdjust, formatTakeProfits, formatOptionsAlert, formatOptionsContractAlert, formatOptionsPtSmashed, TRADE_TYPES, RISKS };
