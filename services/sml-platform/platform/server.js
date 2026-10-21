@@ -4300,6 +4300,30 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     /* The guided tour and the first-use tool cards, in the Academy's voice: ids only, the text lives in academy/tour-content.js */
+    /* The Auto Live desk speaks in the owner's voice. Owner only (the desk is), one line per request, each line stored once by its text. */
+    if (request.method === 'POST' && path === '/academy-activity/desk-speech') {
+      if (!academyVoice || !(academyVoice.configured || academyVoice.stored)) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth && academyOAuth.verifySession(request.headers.authorization);
+      if (!session || !session.ok) { sendJson(response, session?.status || 401, { ok: false, error: session?.code || 'authorization_required' }); return; }
+      if (!OWNER_IDS.includes(String(session.userId))) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+      if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+      const body = await readRequestBody(request, 4096);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      let input; try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+      const text = String(input && input.text || '').replace(/\s+/g, ' ').trim();
+      if (!text || text.length > 600) { sendJson(response, 400, { ok: false, error: 'invalid_line' }); return; }
+      try {
+        const result = await academyVoice.getPartsAudio({ parts: [text], userId: session.userId });
+        response.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': result.audio.length, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'x-academy-voice-cache': result.cached ? 'hit' : 'miss' });
+        response.end(result.audio);
+      } catch (error) {
+        const limited = error && (error.code === 'rate_limited' || error.code === 'provider_rate_limited');
+        logger('warn', 'academy_desk_voice_failed', { error, userId: session.userId });
+        sendJson(response, limited ? 429 : 503, { ok: false, error: limited ? 'rate_limited' : 'voice_temporarily_unavailable' });
+      }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/tour-speech') {
       if (!academyVoice || !(academyVoice.configured || academyVoice.stored)) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const authorization = String(request.headers.authorization || '').trim();

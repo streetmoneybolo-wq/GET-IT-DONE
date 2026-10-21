@@ -50,10 +50,11 @@ test('market and catalyst scripts speak only what the data says', () => {
   assert.equal(L.catalystScript([], []).length, 0);
   assert.match(L.catalystScript([{ kind: 'scheduled', symbol: 'ABCD', daysAway: 2 }], [])[0].say, /ABCD in 2 days/);
 });
-test('the voice is free browser speech, the desk is owner-only and places no orders', () => {
+test('the desk speaks in the owner voice with the browser voice as the fallback, is owner-only and places no orders', () => {
   const src = fs.readFileSync(path.join(__dirname, 'academy-auto-live.js'), 'utf8');
-  assert.match(src, /speechSynthesis/); assert.doesNotMatch(src, /elevenlabs|\/speech/i);
-  assert.match(src, /owner_only/); assert.match(src, /signals\?limit=1/); assert.doesNotMatch(src, /method:\s*'POST'/);
+  assert.match(src, /\/academy-activity\/desk-speech/); assert.match(src, /speechSynthesis/, 'the free browser voice is still the fallback');
+  assert.match(src, /owner_only/); assert.match(src, /signals\?limit=1/);
+  assert.deepEqual([...src.matchAll(/method:\s*'POST'/g)].length, 1, 'the only POST is the voice line');
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'); assert.match(server, /autoLiveUi \? '<script>'/);
   assert.match(fs.readFileSync(path.join(__dirname, 'academy-desktop-compact.js'), 'utf8'), /'auto-live-btn'/);
 });
