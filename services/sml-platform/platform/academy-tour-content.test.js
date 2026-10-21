@@ -1,0 +1,73 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const { TOOLS, STEPS, lineFor, catalogForPage, lines } = require('./academy/tour-content');
+const { createAcademyVoice } = require('./academy-voice');
+
+const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
+
+test('every tool in the toolbar rail has a first-use card', () => {
+  const nav = read('academy-toolbar-nav.js');
+  const group = nav.match(/const GROUPS = \[([\s\S]*?)\n  \];/)[1];
+  const ids = [...group.matchAll(/'([a-z-]+)'/g)].map((m) => m[1]).filter((id) => /-(toggle|btn)$|^depth-/.test(id));
+  assert.ok(ids.length >= 20, 'found the rail ids');
+  for (const id of ids) assert.ok(TOOLS[id], 'no first-use card for ' + id);
+  for (const id of ['lesson-toggle', 'academy-alerts-fab']) assert.ok(TOOLS[id], id);
+});
+
+test('every card is complete and short enough to be read aloud', () => {
+  for (const [id, t] of Object.entries(TOOLS)) {
+    assert.ok(t.name && t.group && t.what && t.edge && t.watch, id + ' is missing a part');
+    assert.ok(Array.isArray(t.use) && t.use.length >= 2 && t.use.length <= 4, id + ' steps');
+    assert.ok(t.say.length > 120 && t.say.length < 420, id + ' spoken length ' + t.say.length);
+    for (const p of t.pairs) assert.ok(TOOLS[p], id + ' pairs with unknown ' + p);
+    assert.doesNotMatch(t.say + t.what + t.edge, /guarantee[sd]? (profit|return|win)|can.t lose|risk.free/i, id);
+  }
+});
+
+test('the tour steps and the spoken script agree id for id', () => {
+  const src = read('academy-tour.js');
+  const ids = [...src.matchAll(/\{ id: '([a-z-]+)'/g)].map((m) => m[1]);
+  assert.equal(ids.length, 26);
+  assert.deepEqual([...ids].sort(), Object.keys(STEPS).sort());
+});
+
+test('the voice can only speak lines written in the catalog', () => {
+  assert.ok(lineFor('tool', 'smc-toggle'));
+  assert.ok(lineFor('step', 'welcome'));
+  for (const [k, id] of [['tool', 'nope'], ['step', '__proto__'], ['tool', 'constructor'], ['x', 'welcome'], ['tool', null], ['tool', ['smc-toggle']]]) assert.equal(lineFor(k, id), null, k + ':' + id);
+  assert.equal(lines().length, Object.keys(TOOLS).length + Object.keys(STEPS).length);
+});
+
+test('the page catalog carries the cards but never the spoken text', () => {
+  const page = catalogForPage();
+  assert.equal(Object.keys(page.tools).length, Object.keys(TOOLS).length);
+  assert.ok(!JSON.stringify(page).includes(TOOLS['smc-toggle'].say));
+  assert.deepEqual(page.steps.sort(), Object.keys(STEPS).sort());
+});
+
+test('tour audio: one request per distinct line, cached, rate limited per member, nothing else voiced', async () => {
+  const calls = [];
+  const svc = createAcademyVoice({ apiKey: 'k', voiceId: 'v1', fetchImpl: async (url, o) => { calls.push(JSON.parse(o.body).text); return new Response(Buffer.from('mp3'), { status: 200 }); } });
+  const a = await svc.getTourAudio({ kind: 'tool', id: 'smc-toggle', userId: 'u' });
+  const b = await svc.getTourAudio({ kind: 'tool', id: 'smc-toggle', userId: 'u' });
+  assert.equal(a.cached, false); assert.equal(b.cached, true);
+  assert.deepEqual(calls, [TOOLS['smc-toggle'].say]);
+  await assert.rejects(svc.getTourAudio({ kind: 'tool', id: 'say anything', userId: 'u' }), TypeError);
+  assert.equal(calls.length, 1);
+  let limited = null;
+  for (let n = 0; n < 14 && !limited; n += 1) { try { await svc.getTourAudio({ kind: 'step', id: 'welcome', userId: 'busy' }); } catch (e) { limited = e; } }
+  assert.equal(limited && limited.code, 'rate_limited');
+  const idle = createAcademyVoice({ fetchImpl: async () => { throw new Error('no network'); } });
+  await assert.rejects(idle.getTourAudio({ kind: 'step', id: 'welcome', userId: 'u' }), (e) => e.code === 'integration_unconfigured');
+});
+
+test('the Activity page ships the catalog, the tour and the first-use explainer, and the route is wired', () => {
+  const server = read('server.js');
+  assert.match(server, /window\.__smlTourCatalog=/);
+  assert.match(server, /academy-auto-tour\.js/);
+  assert.match(server, /path === '\/academy-activity\/tour-speech'/);
+});
