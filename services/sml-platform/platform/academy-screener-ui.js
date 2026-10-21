@@ -62,11 +62,18 @@
     } catch (_) { S.error = 'Screener data is temporarily unavailable.'; }
     paint();
   }
+  /* everything connects to the chart: the interval picked in the engine is the interval the chart shows (the chart's own button does the work, so the URL, the active pill and every overlay follow) */
+  function syncChart(tf) {
+    try {
+      const btn = document.querySelector('.intervals button[data-tf="' + String(tf).replace(/"/g, '') + '"]');
+      if (btn && !btn.classList.contains('active')) btn.click();
+    } catch (_) { /* the chart keeps its interval */ }
+  }
   function onClick(e) {
     const t = e.target.closest && e.target.closest('[data-tf],[data-view],[data-horizon],[data-load],[data-option]'); if (!t) return;
-    if (t.dataset.tf) { S.tf = t.dataset.tf; paint(); }
+    if (t.dataset.tf) { S.tf = t.dataset.tf; syncChart(S.tf); paint(); }
     else if (t.dataset.view) { S.view = t.dataset.view; paint(); }
-    else if (t.dataset.horizon) { S.horizon = t.dataset.horizon; S.busy = null; paint(); }
+    else if (t.dataset.horizon) { S.horizon = t.dataset.horizon; S.busy = null; const h = S.data && S.data.horizons && S.data.horizons[S.horizon]; if (h && h.tf) syncChart(h.tf); paint(); }
     else if (t.dataset.load) { const sym = document.getElementById('symbol'), go = document.getElementById('load'); if (sym && go) { sym.value = t.dataset.load; go.click(); } }
     else if (t.dataset.option) {
       const side = t.dataset.side === 'put' ? 'put' : 'call';
@@ -134,5 +141,12 @@
     }
     panel.innerHTML = tabs + body;
   }
+  /* and the other way: an interval picked on the chart is the one the engine screens */
+  window.addEventListener('sml-academy-market', () => {
+    try {
+      const tf = (window.smlAcademyChartState && window.smlAcademyChartState().tf) || '';
+      if (S.data && S.data.timeframes && S.data.timeframes.includes(tf) && tf !== S.tf) { S.tf = tf; paint(); }
+    } catch (_) { /* the chart is not ready */ }
+  });
   boot(0);
 })();

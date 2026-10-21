@@ -155,3 +155,8 @@ test('TARGETS: the button, the panel in the quote column, the chart lines, the r
   assert.ok(sw.includes("btn: 'targets-toggle', mods: ['#targets-panel']") && sw.includes('main .side>#targets-panel'), 'in the quote column');
   assert.ok(nav.includes("'intent-btn', 'targets-toggle'") && sh.includes("['targets', 'TARGETS', 'targets-toggle']"), 'in the rail and on the phone chart tab');
 });
+
+test('the interval picked in the Indicator Engine drives the chart, and a chart interval drives the engine', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-screener-ui.js'), 'utf8');
+  for (const bit of ['function syncChart(tf)', "'.intervals button[data-tf=\"'", 'syncChart(S.tf)', 'syncChart(h.tf)', "window.addEventListener('sml-academy-market'", 'S.data.timeframes.includes(tf)']) assert.ok(ui.includes(bit), bit);
+});
