@@ -176,9 +176,9 @@
     root.__smlAutoLive = true;
     const KEY = 'sml-auto-live-v2', token = () => String(root.smlAcademySessionToken || '');
     const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const S = { on: false, paused: false, muted: false, calls: [], seen: {}, cap: '', ch: '', phase: 'idle', focus: null, trades: 0, passed: 0, skip: false, owner: false, run: 0, queue: [], pace: 1, clean: false, caps: false, voiceOk: null, fails: 0, flash: '', note: '' };
-    try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.calls = (v.calls || []).slice(-80); S.seen = v.seen || {}; S.muted = v.muted === true; S.pace = [0.8, 1, 1.25].includes(v.pace) ? v.pace : 1; S.caps = v.caps === true; S.trades = Number(v.trades) || 0; S.passed = Number(v.passed) || 0; } } catch (_) { /* storage can be blocked */ }
-    const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ calls: S.calls.slice(-80), seen: S.seen, muted: S.muted, caps: S.caps, pace: S.pace, trades: S.trades, passed: S.passed })); } catch (_) { /* fine */ } };
+    const S = { on: false, paused: false, muted: false, calls: [], seen: {}, cap: '', ch: '', phase: 'idle', focus: null, trades: 0, passed: 0, skip: false, owner: false, run: 0, queue: [], pace: 1, clean: false, caps: false, mini: true, pos: null, voiceOk: null, fails: 0, flash: '', note: '' };
+    try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.calls = (v.calls || []).slice(-80); S.seen = v.seen || {}; S.muted = v.muted === true; S.pace = [0.8, 1, 1.25].includes(v.pace) ? v.pace : 1; S.caps = v.caps === true; S.mini = v.mini !== false; S.pos = v.pos && Number.isFinite(v.pos.x) && Number.isFinite(v.pos.y) ? v.pos : null; S.trades = Number(v.trades) || 0; S.passed = Number(v.passed) || 0; } } catch (_) { /* storage can be blocked */ }
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ calls: S.calls.slice(-80), seen: S.seen, muted: S.muted, caps: S.caps, mini: S.mini, pos: S.pos, pace: S.pace, trades: S.trades, passed: S.passed })); } catch (_) { /* fine */ } };
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const gone = () => !S.on;
 
@@ -350,6 +350,7 @@
       '#auto-live-panel .row{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;transition:opacity .4s}#auto-live-panel.idle .row{opacity:0}#auto-live-panel:hover .row,#auto-live-panel .row:focus-within{opacity:1}',
       '#auto-live-panel button,#auto-live-panel select{border:1px solid #6b4bb8;background:#21163f;color:#efeaff;border-radius:6px;padding:4px 9px;font:800 .68rem system-ui,sans-serif;cursor:pointer}#auto-live-panel button.stop{border-color:#ff6b86;color:#ffb3c1}',
       '#auto-live-panel small{color:#a99bd3;font-weight:600;line-height:1.35;display:block;margin-top:5px}#auto-live-panel .sc{display:flex;gap:10px;flex-wrap:wrap;font:800 .7rem ui-monospace,monospace;margin:6px 0}#auto-live-panel .nx{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}#auto-live-panel .nx span{background:#21163f;border:1px solid #3a2c63;border-radius:5px;padding:1px 7px;font:800 .66rem ui-monospace,monospace;color:#d8c8ff}#auto-live-panel .warn{color:#ffb04a}',
+      '#auto-live-panel.mini{width:auto;max-height:none;overflow:visible;display:none;align-items:center;gap:9px;padding:4px 9px;border-radius:999px;font:800 .68rem ui-monospace,monospace;opacity:.88;cursor:grab}body.al-on #auto-live-panel.mini{display:flex}#auto-live-panel.mini .mh{color:#caa8ff;letter-spacing:.1em;display:flex;align-items:center;gap:5px}#auto-live-panel.mini .mh i{width:7px;height:7px;border-radius:50%;background:#ff4d6d;animation:alp 1.2s infinite}#auto-live-panel.mini button{padding:1px 7px;font-size:.7rem}',
       'body.al-clean #auto-live-panel{display:none}body.al-clean #al-caption{width:min(980px,calc(100vw - 24px));left:50%;transform:translateX(-50%)}#al-clean-fab{position:fixed;right:10px;bottom:calc(var(--sml-inset-bottom,0px) + 10px);z-index:2147483001;display:none;border:1px solid #6b4bb8;background:rgba(10,8,22,.8);color:#caa8ff;border-radius:8px;padding:3px 9px;font:800 .66rem system-ui;cursor:pointer;opacity:.35}#al-clean-fab:hover{opacity:1}body.al-on.al-clean #al-clean-fab{display:block}',
       'body.al-on.chart-clean #al-caption,body.al-on.chart-clean #auto-live-panel{opacity:1!important}#sml-pointer{position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;opacity:0;transition:transform .9s cubic-bezier(.3,.8,.2,1),opacity .25s;will-change:transform}#sml-pointer.on{opacity:1}',
       '#sml-pointer svg{position:absolute;left:-6px;top:-4px;filter:drop-shadow(0 2px 5px rgba(0,0,0,.8));animation:ptb 1s ease-in-out infinite}@keyframes ptb{50%{transform:translate(5px,5px)}}',
@@ -372,6 +373,11 @@
 
     const statusText = (c) => c.status === 'done' ? 'all targets hit' : c.status === 'stopped' ? 'stopped out' : c.status === 'stopped_after_target' ? 'target ' + c.hit + ' hit, then stopped' : c.status === 'expired' ? 'expired' + (c.hit ? ' after target ' + c.hit : '') : 'open';
     const sign = (v) => (v > 0 ? '+' : '') + v;
+    function place() { if (S.pos) { panel.style.left = Math.max(0, Math.min(root.innerWidth - 60, S.pos.x)) + 'px'; panel.style.top = Math.max(0, Math.min(root.innerHeight - 30, S.pos.y)) + 'px'; panel.style.right = 'auto'; panel.style.bottom = 'auto'; } else { panel.style.left = panel.style.top = ''; panel.style.right = ''; panel.style.bottom = ''; } }
+    let drag = null;
+    panel.addEventListener('pointerdown', (e) => { if (e.target.closest('button,select,input')) return; const r = panel.getBoundingClientRect(); drag = { dx: e.clientX - r.left, dy: e.clientY - r.top }; try { panel.setPointerCapture(e.pointerId); } catch (_) { /* fine */ } });
+    panel.addEventListener('pointermove', (e) => { if (!drag) return; S.pos = { x: e.clientX - drag.dx, y: e.clientY - drag.dy }; place(); });
+    panel.addEventListener('pointerup', () => { if (drag) { drag = null; save(); } });
     function paintCap() { capbody.innerHTML = (S.ch ? '<span class="chip">' + esc(S.ch) + '</span>' : '') + '<div class="txt">' + esc(S.cap) + '</div>'; }
     function paintBanner() {
       const f = S.focus, pr = f ? progress(f, f.last) : null;
@@ -385,6 +391,15 @@
       layoutOverlay(); if (btn) btn.classList.toggle('on', S.on); if (!S.on) return;
       paintBanner(); paintCap();
       const sb = scoreboard(S.calls), f = S.focus, open = S.calls.filter((c) => c.status === 'open');
+      panel.classList.toggle('mini', S.mini); place();
+      if (S.mini) {
+        panel.innerHTML = '<span class="mh" title="Drag to move"><i></i>DESK</span><span>OPEN ' + sb.open + '</span><span class="up">WON ' + sb.wins + '</span><span class="dn">STOPPED ' + sb.losses + '</span><button id="al-pause">' + (S.paused ? '▶' : '❚❚') + '</button><button id="al-skip" title="Skip">⏭</button><button id="al-big" title="Open the full desk board">⤢</button><button class="stop" id="al-stop" title="Stop the desk">■</button>';
+        panel.querySelector('#al-pause').onclick = () => { S.paused = !S.paused; try { if (S.audio) { S.paused ? S.audio.pause() : S.audio.play().catch(() => {}); } if (root.speechSynthesis) S.paused ? root.speechSynthesis.pause() : root.speechSynthesis.resume(); } catch (_) { /* fine */ } paint(); };
+        panel.querySelector('#al-skip').onclick = () => { S.skip = true; stopMine(); try { if (root.speechSynthesis) root.speechSynthesis.cancel(); } catch (_) { /* fine */ } };
+        panel.querySelector('#al-big').onclick = () => { S.mini = false; save(); paint(); };
+        panel.querySelector('#al-stop').onclick = () => stop(false);
+        return;
+      }
       const card = (c, focus) => { const pr = progress(c, c.last); return '<div class="card' + (focus ? ' f' : '') + '"><b>' + esc(c.sym) + '</b> ' + (c.side === 'short' ? '<span class="dn">SHORT</span>' : '<span class="up">LONG</span>') + ' · in ' + fmt(c.entry) + ' · stop ' + fmt(c.stop) + (pr && c.status === 'open' ? ' · <span class="' + (pr.pct >= 0 ? 'up' : 'dn') + '">' + sign(pr.pct) + '% ' + sign(pr.r) + 'R</span>' : '') + '<br>' + c.targets.map((p, i) => '<span class="' + (c.hit > i ? 'up' : '') + '">T' + (i + 1) + ' ' + fmt(p) + (c.hit > i ? ' ✓' : '') + '</span>').join(' · ') + (c.status !== 'open' ? '<br><small>' + esc(statusText(c)) + '</small>' : '<div class="bar"><span style="width:' + Math.round(((pr && pr.frac) || 0) * 100) + '%"></span></div>') + '</div>'; };
       const others = open.filter((c) => !f || c.id !== f.id), recent = S.calls.filter((c) => c.status !== 'open').slice(-4).reverse();
       panel.innerHTML = '<h4>LIVE DESK</h4>'
@@ -394,7 +409,7 @@
         + (S.queue.length ? '<small>Next up</small><div class="nx">' + S.queue.slice(0, 5).map((c) => '<span>' + esc(c.sym) + '</span>').join('') + '</div>' : '')
         + (recent.length ? '<small>' + recent.map((c) => esc(c.sym + ': ' + statusText(c))).join(' · ') + '</small>' : '')
         + (S.voiceOk === false ? '<small class="warn">Voice is blocked in this window, so the captions carry it. Press Test voice, or share with audio from a full browser tab.</small>' : '') + (S.note ? '<small class="warn">' + esc(S.note) + '</small>' : '')
-        + '<div class="row"><button id="al-pause">' + (S.paused ? 'Resume' : 'Pause') + '</button><button id="al-skip">Skip</button><button id="al-mute">' + (S.muted ? 'Voice off' : 'Voice on') + '</button><button id="al-test">Test voice</button><select id="al-pace" title="Pace"><option value="0.8"' + (S.pace === 0.8 ? ' selected' : '') + '>Slow</option><option value="1"' + (S.pace === 1 ? ' selected' : '') + '>Normal</option><option value="1.25"' + (S.pace === 1.25 ? ' selected' : '') + '>Fast</option></select><button id="al-caps">' + (S.caps ? 'Captions on' : 'Captions off') + '</button><button id="al-clean">Clean view</button><button class="stop" id="al-stop">Stop</button></div>'
+        + '<div class="row"><button id="al-pause">' + (S.paused ? 'Resume' : 'Pause') + '</button><button id="al-skip">Skip</button><button id="al-mute">' + (S.muted ? 'Voice off' : 'Voice on') + '</button><button id="al-test">Test voice</button><select id="al-pace" title="Pace"><option value="0.8"' + (S.pace === 0.8 ? ' selected' : '') + '>Slow</option><option value="1"' + (S.pace === 1 ? ' selected' : '') + '>Normal</option><option value="1.25"' + (S.pace === 1.25 ? ' selected' : '') + '>Fast</option></select><button id="al-caps">' + (S.caps ? 'Captions on' : 'Captions off') + '</button><button id="al-clean">Clean view</button><button id="al-small">Shrink</button><button class="stop" id="al-stop">Stop</button></div>'
         + '<small>Educational simulation. Every call is logged, stopped ones too. Judged on the 1-minute candles, and when one candle touches both the stop and a target the stop counts first. No orders are placed. Not advice.</small>';
       panel.querySelector('#al-pause').onclick = () => { S.paused = !S.paused; try { if (S.audio) { S.paused ? S.audio.pause() : S.audio.play().catch(() => {}); } if (root.speechSynthesis) S.paused ? root.speechSynthesis.pause() : root.speechSynthesis.resume(); } catch (_) { /* fine */ } paint(); };
       panel.querySelector('#al-skip').onclick = () => { S.skip = true; stopMine(); try { if (root.speechSynthesis) root.speechSynthesis.cancel(); } catch (_) { /* fine */ } };
@@ -402,6 +417,7 @@
       panel.querySelector('#al-test').onclick = testVoice;
       panel.querySelector('#al-pace').onchange = (e) => { S.pace = Number(e.target.value) || 1; save(); };
       panel.querySelector('#al-caps').onclick = () => { S.caps = !S.caps; save(); layoutOverlay(); paint(); };
+      panel.querySelector('#al-small').onclick = () => { S.mini = true; save(); paint(); };
       panel.querySelector('#al-clean').onclick = () => { S.clean = true; layoutOverlay(); };
       panel.querySelector('#al-stop').onclick = () => stop(false);
     }
