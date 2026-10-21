@@ -137,6 +137,65 @@ const STEPS = {
   'p-ready': 'You are ready. Everything here is educational and never a promise. And from now on, the first time you use a tool, I will explain it. Replay this from More.'
 };
 
+/* modules that are not a toolbar button: the page raises their card from a selector or from scrolling them into view (academy-auto-tour.js MODULES) */
+Object.assign(TOOLS, {
+  'academy-indicator-toggle': { name: 'INDICATOR ENGINE', group: 'LEARN', what: 'A searchable library of every indicator the Academy teaches. The live ones are calculated from your chart and can be switched on.',
+    use: ['Search by name or pick a category: trend, momentum, volume, volatility.', 'Tap a live chip to draw it. Up to six can be on.', 'Pair one trend, one momentum and one volume indicator.'],
+    edge: 'Three indicators from different families that agree are far stronger than six that say the same thing.', watch: 'Feed chips are taught but not estimated. Indicators describe, they do not predict.', pairs: ['academy-screener-toggle', 'targets-toggle'], playbook: 'indicators',
+    say: 'This is the indicator engine, a searchable library of every indicator the Academy teaches. The live ones are calculated from your chart and you can switch them on, up to six at a time. Pair one trend, one momentum and one volume indicator, because three that agree beat six that say the same thing. Indicators describe, they do not predict.' },
+  'academy-screener-toggle': { name: 'SCREENER', group: 'LEARN', what: 'Finds stocks where an indicator is bullish or bearish, or where MEM ALGO leans long or short, by horizon.',
+    use: ['Pick By indicator or By horizon.', 'Choose a timeframe and click a ticker to load it.', 'Tap CALL or PUT beside a name to read the suggested contract.'],
+    edge: 'It does the scanning, so you only study names where the evidence already lines up.', watch: 'Suggested contracts are for reading and testing in the chain. Options can lose their whole value.', pairs: ['targets-toggle', 'chain-toggle'], playbook: 'indicators',
+    say: 'The screener finds stocks where an indicator is bullish or bearish, or where MEM ALGO leans long or short for a horizon. Click a ticker to load it, and tap call or put to read the suggested contract. Your edge is that it does the scanning, so you only study names where the evidence already lines up. Test any contract in the chain first, because options can lose their whole value.' },
+  'fda-scanner': { name: 'FDA SCANNER', group: 'DESK', what: 'Upcoming FDA decision dates with an approval estimate, an impact score and the move options already expect.',
+    use: ['Open CATALYSTS, then the FDA tab.', 'Sort your eye by days until the date and the impact score.', 'Click a row for the filing, the short interest and the plays.'],
+    edge: 'You see biotech events weeks ahead and can plan a defined-risk structure instead of gambling on the day.', watch: 'Approval odds are base rates, and the FDA can delay or surprise either way.', pairs: ['catalysts-toggle', 'chain-toggle'], playbook: 'fda',
+    say: 'The F D A scanner lists upcoming decision dates with an approval estimate, an impact score, and the move options already expect. Click a row for the filing, the short interest, and ideas for the event. Your edge is seeing biotech events weeks ahead and planning defined risk. The approval odds are base rates, and the F D A can delay or surprise either way.' },
+  'hedge-income': { name: 'HEDGE AND INCOME', group: 'DESK', what: 'Options structures around a position: protection, income, or a defined-risk directional play, each with its payoff.',
+    use: ['Enter your shares, entry, target and stop, then press Update.', 'Read the pill: hedges first or income first.', 'Compare the cards by cost, protected level, yield and payoff sketch.'],
+    edge: 'You see what protection costs and what income pays before you act, and every card shows its worst case.', watch: 'Selling options carries obligations. Nothing here places a trade.', pairs: ['mem-algo-toggle', 'chain-toggle'], playbook: 'hedge',
+    say: 'Hedge and income builds options structures around a position, protection if it falls, income while you wait, or a defined risk directional play. Enter your shares and levels, read whether hedges or income come first, then compare the cards by cost, protected level, yield, and payoff. Your edge is seeing the worst case before you act. Selling options carries obligations, and nothing here places a trade.' },
+  'market-direction': { name: 'MARKET DIRECTION', group: 'DESK', what: 'A read on SPY and the whole tape: a bias, the evidence behind it, key levels, dealer gamma, volatility and catalysts.',
+    use: ['Use the Day trading tab for same-day options.', 'Read the label, then the percent of evidence that agrees.', 'Check key levels, gamma, VIX and catalysts, in that order.'],
+    edge: 'You decide direction from the market, not from one stock, which is where most daily option losses begin.', watch: 'Near zero bias means no edge. No read is certain.', pairs: ['chain-toggle', 'mem-algo-toggle'], playbook: 'spy',
+    say: 'Market direction reads SPY and the whole tape. It gives a bias, the evidence behind it, key levels, dealer gamma, volatility, and catalysts. Use the day trading tab for same day options, and read it in the same order every morning. Your edge is deciding direction from the market, not from one stock. A bias near zero means no edge, and no read is certain.' },
+  'options-chain-lab': { name: 'OPTIONS CHAIN LAB', group: 'DESK', what: 'The full options chain with prices, volume, open interest and the greeks, for every strike and expiration.',
+    use: ['Pick an expiration, then how many strikes to show.', 'Click a call or put to load it into the price calculator.', 'Double click a contract for its own mini chart.'],
+    edge: 'You can compare cost, breakeven and liquidity across every strike in seconds and pick the contract that fits the plan.', watch: 'A wide bid and ask spread is a hidden cost. Open interest is not direction.', pairs: ['chain-toggle', 'targets-toggle'], playbook: 'cheap',
+    say: 'The options chain lab shows every strike and expiration with prices, volume, open interest, and the greeks. Pick an expiration, click a call or put to load it into the price calculator, and double click a contract for its own mini chart. Your edge is comparing cost, breakeven, and liquidity across every strike in seconds. A wide spread is a hidden cost.' },
+  'price-calculator': { name: 'PRICE CALCULATOR', group: 'DESK', what: 'Shows what an option is worth and what it pays if the stock moves, before you risk anything.',
+    use: ['Change the stock price, days or volatility and watch every number update.', 'Read the scenario table for the move you expect.', 'Press Solve IV to back out the volatility from the market price.'],
+    edge: 'You know the breakeven, the chance of finishing in the money and the max loss before you pay a cent.', watch: 'It is a model estimate, not a quote. Real options trade at their own bid and ask.', pairs: ['options-chain-lab', 'paper-toggle'], playbook: 'cheap',
+    say: 'The price calculator shows what an option is worth and what it pays if the stock moves. Change the price, days, or volatility and every number updates. Read the scenario table for the move you expect, and use solve I V to back out volatility from the market price. Your edge is knowing the breakeven, the chance of finishing in the money, and the max loss before you pay. It is a model estimate, not a quote.' },
+  'live-chat': { name: 'LIVE CHAT ROOMS', group: 'SHARE', what: 'Real-time rooms for global talk, day trading, swing trading, short selling and options.',
+    use: ['Pick the room that matches your style.', 'Reply in threads, vote, and mute anyone.', 'Click a name to see their record and follow them.'],
+    edge: 'You get questions answered while the market moves and learn how experienced traders think.', watch: 'Treat every claim as an opinion and check it against the tools.', pairs: ['talk-btn', 'academy-profile-btn'], playbook: 'social',
+    say: 'These are the live chat rooms, global, day trade, swing trade, short sale, and options. Pick the room that matches your style, reply in threads, and click a name to see their record and follow them. Your edge is getting questions answered while the market moves. Treat every claim as an opinion and check it against the tools.' },
+  'academy-profile-btn': { name: 'YOUR PROFILE', group: 'SHARE', what: 'Your public trader page: your record, your posts, your style and your followers.',
+    use: ['Press Customize my profile to edit it.', 'Choose what to show: paper rank, links, posts, followers.', 'Use Premium Alert Charts to sell access to your alerts.'],
+    edge: 'A clear record and a page that is yours is what turns viewers into followers, and followers into income.', watch: 'Only the owner of a page sees Customize and the chart settings.', pairs: ['talk-btn'], playbook: 'profile',
+    say: 'This is your profile, your public trader page with your record, your posts, your style, and your followers. Press customize to make it yours, choose what to show, and set up premium alert charts to sell access to your alerts. Your edge is that a clear record and a page that is yours turns viewers into followers, and followers into income.' },
+  'profile-customize': { name: 'CUSTOMIZE PROFILE', group: 'SHARE', what: 'Name, tagline, bio, layout, colors, fonts, lighting, 3D modules, a song, links and what to show.',
+    use: ['Fill in your name, tagline and bio first.', 'Pick a layout, colors and an immersion level.', 'Add a song and links, then choose what to show and press Save.'],
+    edge: 'A page with a clear identity gets followed. A good bio says what you trade and what followers get.', watch: 'Song links must be direct MP3 or M4A files. YouTube and Spotify are not supported.', pairs: ['academy-profile-btn'], playbook: 'profile',
+    say: 'Customize lets you set your name, tagline, bio, layout, colors, fonts, lighting, three D modules, a song, links, and what to show. Fill in the basics first, then the look, then press save. Your edge is a page with a clear identity, because a good bio says what you trade and what followers get. Song links must be direct M P 3 or M 4 A files.' }
+});
+
+/* the first-use cards that mention a walkthrough carry `playbook`; these older cards get one too */
+Object.assign(TOOLS['mem-algo-toggle'], { playbook: 'together' });
+Object.assign(TOOLS['intent-btn'], { playbook: 'together' });
+Object.assign(TOOLS['catalysts-toggle'], { playbook: 'fda' });
+Object.assign(TOOLS['chain-toggle'], { playbook: 'cheap' });
+Object.assign(TOOLS['talk-btn'], { playbook: 'social' });
+Object.assign(TOOLS['click-alert-toggle'], {
+  what: 'Click-to-alert: click a price on the chart to set a target, run the pre-alert check, then post the alert to Discord.',
+  use: ['Turn it on and click the price you care about.', 'Read the pre-alert check: go, caution or wait, and the suggested first target.', 'Pick the server and channel, then send.'],
+  watch: 'The check advises and never blocks. An alert tells you price arrived, not what to do.',
+  say: 'Alert lets you click a price on the chart to set a target, then runs the pre alert check before you post to Discord. The check tells you go, caution, or wait, whether this is a chase, whether the first target is realistic, and whether the stop makes sense. Your edge is catching a bad alert before you send it. It advises and never blocks.' });
+
+const { PLAYBOOKS, stepKey, sayFor } = require('./tour-playbooks');
+for (const [name, pb] of Object.entries(PLAYBOOKS)) for (const s of pb.steps) STEPS[stepKey(name, s.k)] = sayFor(s);
+
 const SIGNOFF_OK = /^[\x20-\x7e]+$/;
 const lines = () => [...Object.entries(TOOLS).map(([id, t]) => ['tool:' + id, t.say]), ...Object.entries(STEPS).map(([id, say]) => ['step:' + id, say])];
 
@@ -151,8 +210,10 @@ function lineFor(kind, id) {
 /** What the page needs: the tool cards without the spoken text (it fetches audio by id), and the step ids that have a voice. */
 function catalogForPage() {
   const tools = {};
-  for (const [id, t] of Object.entries(TOOLS)) tools[id] = { name: t.name, group: t.group, what: t.what, use: t.use, edge: t.edge, watch: t.watch, pairs: t.pairs };
-  return { tools, steps: Object.keys(STEPS) };
+  for (const [id, t] of Object.entries(TOOLS)) tools[id] = { name: t.name, group: t.group, what: t.what, use: t.use, edge: t.edge, watch: t.watch, pairs: t.pairs, playbook: t.playbook || '' };
+  const playbooks = {};
+  for (const [name, pb] of Object.entries(PLAYBOOKS)) playbooks[name] = { title: pb.title, mins: pb.mins, blurb: pb.blurb, steps: pb.steps.map((s) => ({ id: stepKey(name, s.k), k: s.k, t: s.t, b: s.b })) };
+  return { tools, playbooks, steps: Object.keys(STEPS) };
 }
 
 module.exports = { TOOLS, STEPS, lines, lineFor, catalogForPage };

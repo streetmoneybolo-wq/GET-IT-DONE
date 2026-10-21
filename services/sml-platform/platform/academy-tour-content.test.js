@@ -32,7 +32,32 @@ test('the tour steps and the spoken script agree id for id', () => {
   const src = read('academy-tour.js');
   const ids = [...src.matchAll(/\{ id: '([a-z-]+)'/g)].map((m) => m[1]);
   assert.equal(ids.length, 26);
-  assert.deepEqual([...ids].sort(), Object.keys(STEPS).sort());
+  const { PLAYBOOKS, stepKey } = require('./academy/tour-playbooks');
+  const pb = Object.entries(PLAYBOOKS).flatMap(([n, p]) => p.steps.map((s) => stepKey(n, s.k)));
+  assert.deepEqual([...ids, ...pb].sort(), Object.keys(STEPS).sort());
+});
+
+test('every playbook step has words that fit a card and a unique key', () => {
+  const { PLAYBOOKS } = require('./academy/tour-playbooks');
+  assert.deepEqual(Object.keys(PLAYBOOKS).sort(), ['cheap', 'fda', 'hedge', 'indicators', 'profile', 'social', 'spy', 'together']);
+  for (const [n, p] of Object.entries(PLAYBOOKS)) {
+    assert.ok(p.title && p.blurb && p.mins >= 2 && p.steps.length >= 6, n);
+    assert.equal(new Set(p.steps.map((s) => s.k)).size, p.steps.length, n + ' keys');
+    for (const s of p.steps) { assert.ok(s.t.length < 60 && s.b.length > 60 && s.b.length < 420, n + ':' + s.k + ' ' + s.b.length); assert.doesNotMatch(s.t + s.b, /guarantee|can.t lose|risk.free|will (double|triple)/i, n + ':' + s.k); }
+  }
+});
+
+test('playbook targets only name steps that exist, and every card that offers a walkthrough names a real one', () => {
+  const vm = require('node:vm');
+  const { PLAYBOOKS, stepKey } = require('./academy/tour-playbooks');
+  const ctx = { window: {}, document: { querySelector: () => null } };
+  vm.runInNewContext(read('academy-playbooks.js'), ctx);
+  const known = new Set(Object.entries(PLAYBOOKS).flatMap(([n, p]) => p.steps.map((s) => stepKey(n, s.k))));
+  const keys = Object.keys(ctx.window.smlTourTargets);
+  assert.ok(keys.length > 40);
+  for (const k of keys) assert.ok(known.has(k), 'target for unknown step ' + k);
+  for (const [id, t] of Object.entries(TOOLS)) if (t.playbook) assert.ok(PLAYBOOKS[t.playbook], id + ' -> ' + t.playbook);
+  for (const id of ['market-direction', 'hedge-income', 'fda-scanner', 'price-calculator', 'options-chain-lab', 'live-chat', 'academy-indicator-toggle', 'profile-customize']) assert.ok(TOOLS[id] && TOOLS[id].playbook, id);
 });
 
 test('the voice can only speak lines written in the catalog', () => {

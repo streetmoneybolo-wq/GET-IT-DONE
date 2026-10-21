@@ -920,7 +920,7 @@ const ACADEMY_MOBILE_SHELL = (() => {
 const ACADEMY_TOUR = (() => {
   try {
     const catalog = JSON.stringify(require('./academy/tour-content').catalogForPage()).replace(/</g, '\\u003c');
-    return '<script>window.__smlTourCatalog=' + catalog + ';</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-tour.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-auto-tour.js'), 'utf8') + '</script>';
+    return '<script>window.__smlTourCatalog=' + catalog + ';</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-tour.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-playbooks.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-auto-tour.js'), 'utf8') + '</script>';
   } catch (_) { return ''; }
 })();
 // Desktop quote column as a tabbed tool window (QUOTE, BUY/SELL, DARK POOL, SHORT SALE, SENTIMENT, SMC, MEM ALGO).

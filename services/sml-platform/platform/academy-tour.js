@@ -98,13 +98,13 @@
     + '#sml-tour ul{margin:0 0 12px;padding-left:18px;color:#c4d4dc}#sml-tour li{margin:3px 0}'
     + '#sml-tour .tr-row{display:flex;align-items:center;gap:8px}#sml-tour .tr-sp{flex:1}'
     + '#sml-tour button{border:1px solid #2b5362;border-radius:9px;background:#10222d;color:#dcebf2;padding:9px 13px;font:800 .78rem system-ui,sans-serif;cursor:pointer}'
-    + '#sml-tour button.tr-vox{padding:9px 10px;min-width:40px}#sml-tour button.tr-go{background:#00c47d;border-color:#00c47d;color:#04140d}#sml-tour button.tr-skip{border-color:transparent;background:none;color:#8fa6b3;padding:9px 4px}'
+    + '#sml-tour .tr-menu{width:min(440px,calc(100vw - 24px))}#sml-tour button.tr-opt{display:block;width:100%;margin:0 0 7px;padding:10px 12px;text-align:left;font-weight:600}#sml-tour button.tr-opt b{display:block;color:#fff;font-size:.86rem}#sml-tour button.tr-opt span{display:block;margin-top:2px;color:#9db3bf;font-weight:500;font-size:.74rem;line-height:1.35}#sml-tour button.tr-opt:hover{border-color:#00c47d}#sml-tour button.tr-vox{padding:9px 10px;min-width:40px}#sml-tour button.tr-go{background:#00c47d;border-color:#00c47d;color:#04140d}#sml-tour button.tr-skip{border-color:transparent;background:none;color:#8fa6b3;padding:9px 4px}'
     + '#sml-tour .tr-dots{display:flex;gap:4px;margin:0 0 10px}#sml-tour .tr-dots i{width:16px;height:3px;border-radius:2px;background:#1c3340}#sml-tour .tr-dots i.on{background:#00c47d}'
     + '#tour-btn{flex:none;padding:4px 8px;border:1px solid #2b5362;border-radius:7px;background:#0d1a24;color:#9ed3e6;font:800 .6rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer}'
     + '@media(prefers-reduced-motion:reduce){#sml-tour .tr-hole{animation:none;transition:none}}';
   const style = document.createElement('style'); style.id = 'academy-tour-css'; style.textContent = css; document.head.appendChild(style);
 
-  let root = null, steps = [], i = 0, running = false;
+  let root = null, steps = [], i = 0, running = false, mode = 'main', pbTitle = '';
   const visible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 4 && r.height > 4 && cs.display !== 'none' && cs.visibility !== 'hidden'; };
   const find = (sel) => { for (const part of String(sel).split(',')) { const el = $(part.trim()); if (visible(el)) return el; } return null; };
 
@@ -116,6 +116,7 @@
     const draw = () => {
       if (!root) return;
       let el = st.s ? find(st.s) : null;
+      if (st.s && !el && st.soft) { place(st, null); return; }
       if (st.s && !el) { if (i < steps.length - 1) { i += 1; render(); } else finish('done'); return; }
       if (el) { const r0 = el.getBoundingClientRect(); const fixed = getComputedStyle(el).position === 'fixed' || !!el.closest('#ms-nav,#ms-sub,#ms-top'); if (!fixed && (r0.top < 60 || r0.bottom > innerHeight - 80)) el.scrollIntoView({ block: 'center', behavior: 'instant' }); }
       requestAnimationFrame(() => { if (el) el = uncover(el); place(st, el); });
@@ -145,10 +146,10 @@
     if (!root) return;
     const n = i + 1, tot = steps.length;
     root.innerHTML = '<div class="tr-block"></div>' + (el ? '<div class="tr-hole"></div>' : '<div class="tr-dim"></div>')
-      + '<div class="tr-card" role="dialog" aria-label="Academy tour"><div class="tr-k">STEP ' + n + ' OF ' + tot + '</div><div class="tr-dots">' + steps.map((_, k) => '<i class="' + (k <= i ? 'on' : '') + '"></i>').join('') + '</div>'
+      + '<div class="tr-card" role="dialog" aria-label="Academy tour"><div class="tr-k">' + (mode === 'main' ? 'STEP ' + n + ' OF ' + tot : esc(String(pbTitle).toUpperCase()) + ' \u00b7 ' + n + '/' + tot) + '</div><div class="tr-dots">' + steps.map((_, k) => '<i class="' + (k <= i ? 'on' : '') + '"></i>').join('') + '</div>'
       + '<h3>' + esc(st.t) + '</h3><p>' + esc(st.b) + '</p>'
       + (st.adv ? '<ul><li>Live charts with the smart-money map</li><li>Order flow, dark pool and short-sale data</li><li>Options chain and five-mode trade plans</li><li>Lessons, alerts and a paper-trading account</li></ul>' : '')
-      + '<div class="tr-row">' + (i > 0 ? '<button type="button" data-a="back">Back</button>' : '<button type="button" class="tr-skip" data-a="skip">Skip tour</button>') + '<span class="tr-sp"></span>' + (st.id && window.__smlTourCatalog ? '<button type="button" class="tr-vox" data-a="vox" aria-label="Voice on or off" title="Hear this step in the Academy voice"></button>' : '') + (i > 0 && !st.last ? '<button type="button" class="tr-skip" data-a="skip">Skip</button>' : '') + '<button type="button" class="tr-go" data-a="' + (st.last ? 'done' : 'next') + '">' + (st.last ? 'Start exploring' : i === 0 ? 'Start the tour' : 'Next') + '</button></div></div>';
+      + '<div class="tr-row">' + (i > 0 ? '<button type="button" data-a="back">Back</button>' : '<button type="button" class="tr-skip" data-a="skip">' + (mode === 'main' ? 'Skip tour' : 'Close') + '</button>') + '<span class="tr-sp"></span>' + (st.id && window.__smlTourCatalog ? '<button type="button" class="tr-vox" data-a="vox" aria-label="Voice on or off" title="Hear this step in the Academy voice"></button>' : '') + (i > 0 && !st.last ? '<button type="button" class="tr-skip" data-a="skip">Skip</button>' : '') + '<button type="button" class="tr-go" data-a="' + (st.last ? 'done' : 'next') + '">' + (st.last ? (mode === 'main' ? 'Start exploring' : 'Done') : i === 0 ? (mode === 'main' ? 'Start the tour' : 'Begin') : 'Next') + '</button></div></div>';
     const card = root.querySelector('.tr-card'), hole = root.querySelector('.tr-hole');
     if (el && hole) {
       const r = el.getBoundingClientRect(), pad = st.pad == null ? 6 : st.pad;
@@ -188,11 +189,13 @@
     if (a === 'next') { if (i < steps.length - 1) { i += 1; render(); } else finish('done'); }
     else if (a === 'back') { if (i > 0) { i -= 1; render(); } }
     else if (a === 'vox') onVox();
+    else if (a === 'pb') { const n = b.dataset.n; finish('menu'); start(true, n); }
     else if (a === 'skip') finish('skipped');
     else finish('done');
   }
   function onKey(e) {
     if (!running) return;
+    if (mode === 'menu') { if (e.key === 'Escape') { finish('skipped'); e.preventDefault(); } return; }
     if (e.key === 'Escape') { finish('skipped'); e.preventDefault(); }
     else if (e.key === 'ArrowRight' || e.key === 'Enter') { if (e.target.closest && e.target.closest('button') && e.key === 'Enter') return; if (i < steps.length - 1) { i += 1; render(); } e.preventDefault(); }
     else if (e.key === 'ArrowLeft') { if (i > 0) { i -= 1; render(); } e.preventDefault(); }
@@ -209,22 +212,51 @@
     return reopen.length;
   }
   function restore() { reopen.splice(0).forEach((id) => { const b = document.getElementById(id); if (b && !isOn(b)) b.click(); }); }
-  function start(force) {
+  /* playbooks: the guided walkthroughs in academy/tour-playbooks.js. The words come from the catalog, the controls each step points at from
+   * window.smlTourTargets (academy-playbooks.js); a step whose control is not on this layout is still read, as a plain card */
+  function playbookSteps(name) {
+    const pb = window.__smlTourCatalog && window.__smlTourCatalog.playbooks && window.__smlTourCatalog.playbooks[name]; if (!pb) return null;
+    const T = window.smlTourTargets || {};
+    const out = pb.steps.map((st) => Object.assign({ id: st.id, t: st.t, b: st.b, soft: true }, T[st.id] || {}));
+    out[out.length - 1].last = true; pbTitle = pb.title; return out;
+  }
+  function menu() {
+    const cat = window.__smlTourCatalog.playbooks, rows = Object.keys(cat);
+    mode = 'menu'; running = true; steps = []; i = 0;
+    root = document.createElement('div'); root.id = 'sml-tour'; root.addEventListener('click', onClick, true); document.body.appendChild(root);
+    document.addEventListener('keydown', onKey, true);
+    root.innerHTML = '<div class="tr-block"></div><div class="tr-dim"></div><div class="tr-card tr-menu" role="dialog" aria-label="Choose a walkthrough"><div class="tr-k">LEARN THE ACADEMY</div><h3>What do you want to learn?</h3>'
+      + '<button type="button" class="tr-opt" data-a="pb" data-n="main"><b>The quick tour</b><span>1 min \u00b7 the layout, the chart and the main tools</span></button>'
+      + rows.map((n) => '<button type="button" class="tr-opt" data-a="pb" data-n="' + esc(n) + '"><b>' + esc(cat[n].title) + '</b><span>' + esc(cat[n].mins) + ' min \u00b7 ' + esc(cat[n].blurb) + '</span></button>').join('')
+      + '<div class="tr-row"><span class="tr-sp"></span><button type="button" class="tr-skip" data-a="skip">Close</button></div></div>';
+    const card = root.querySelector('.tr-card'); Object.assign(card.style, { left: Math.max(8, (innerWidth - card.offsetWidth) / 2) + 'px', top: Math.max(8, (innerHeight - card.offsetHeight) / 2) + 'px', maxHeight: 'calc(100dvh - 16px)', overflow: 'auto' });
+  }
+  function start(force, name) {
     if (running) return;
     if (!force && seen()) return;
-    if (force && window.smlAutoTour) window.smlAutoTour.reset();
-    steps = PHONE() ? PHONE_STEPS : DESK;
+    const cat = window.__smlTourCatalog || {};
+    if (force && !name && cat.playbooks) { menu(); return; }
+    mode = name && name !== 'main' ? name : 'main';
+    if (mode === 'main') { if (force && window.smlAutoTour) window.smlAutoTour.reset(); steps = PHONE() ? PHONE_STEPS : DESK; }
+    else { steps = playbookSteps(mode); if (!steps) { mode = 'main'; return; } }
     i = 0; running = true;
     root = document.createElement('div'); root.id = 'sml-tour'; root.addEventListener('click', onClick, true); document.body.appendChild(root);
     document.addEventListener('keydown', onKey, true); window.addEventListener('resize', onResize);
     if (calm()) setTimeout(() => { if (running) render(); }, 350); else render();
   }
+  /* panels a walkthrough opened for its steps are closed again when it ends, so the page is left as it was found */
+  const opened = [];
+  window.smlTourEnsure = (panelSel, openerSel) => {
+    const p = $(panelSel); if (p && visible(p)) return;
+    const o = $(openerSel); if (o) { o.click(); opened.push([panelSel, openerSel]); }
+  };
   function finish(how) {
-    running = false; mark(how); voice.stop(); unhide(); restore();
+    const was = mode; running = false; if (was === 'main') mark(how); voice.stop(); unhide();
+    opened.splice(0).reverse().forEach(([ps, os]) => { const p = $(ps), o = $(os); if (p && visible(p) && o) o.click(); });
+    restore(); mode = 'main';
     document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', onResize);
     if (root) { root.remove(); root = null; }
-    if (PHONE()) tab('chart');
-    try { window.scrollTo(0, 0); } catch (_) { /* ignore */ }
+    if (was === 'main') { if (PHONE()) tab('chart'); try { window.scrollTo(0, 0); } catch (_) { /* ignore */ } }
   }
 
   /* a TOUR button on desktop (next to GUIDE) to run it again */
@@ -242,7 +274,7 @@
     if (ready) { setTimeout(() => { if (!seen() && !running) start(false); }, 900); return; }
     if (tries < 120) setTimeout(() => arm(tries + 1), 700);
   }
-  window.smlTour = { start, seen, running: () => running, reset: () => { try { localStorage.removeItem(KEY); } catch (_) { /* ignore */ } } };
+  window.smlTour = { start, seen, running: () => running, run: (name) => start(true, name), reset: () => { try { localStorage.removeItem(KEY); } catch (_) { /* ignore */ } } };
   if (new URLSearchParams(location.search).has('popout')) return;
   setTimeout(() => arm(0), 1500);
 })();

@@ -37,6 +37,10 @@
 
   /* phone chips -> the tool they switch on (academy-mobile-shell.js SUBS) */
   const SUBMAP = { walls: 'depth-walls', cost: 'depth-cost', heat: 'heat-toggle', smc: 'smc-toggle', intent: 'intent-btn', targets: 'targets-toggle', buysell: 'buysell-toggle', dark: 'darkpool-toggle', short: 'shortsale-toggle', sent: 'sentiment-toggle', squeeze: 'squeeze-btn', chain: 'chain-toggle', mem: 'mem-algo-toggle', sire: 'sire-toggle', earn: 'earnings-toggle', cat: 'catalysts-toggle', paper: 'paper-toggle', chal: 'challenge-toggle', comments: 'talk-btn' };
+  /* modules with no toolbar button of their own: a tap inside them (or on the control that opens them) raises their card */
+  const SELMAP = [['.mem-hedge-btn', 'hedge-income'], ['#academy-hedge', 'hedge-income'], ['#catalysts-panel [data-tab="fda"]', 'fda-scanner'], ['#load-options', 'options-chain-lab'], ['.opt-calc', 'price-calculator'], ['#options-chain', 'options-chain-lab'], ['[data-pv="edit"]', 'profile-customize'], ['#academy-screener', 'academy-screener-toggle'], ['.academy-intelligence', 'academy-indicator-toggle'], ['#academy-direction', 'market-direction'], ['section.academy-chat', 'live-chat']];
+  /* modules that are simply there under the chart: their card comes the first time the member scrolls them into view */
+  const VIEWMAP = [['#academy-direction', 'market-direction'], ['section.academy-chat', 'live-chat'], ['.academy-intelligence', 'academy-indicator-toggle']];
   const SKIP_IDS = new Set(['tool-guide-btn', 'tool-quote-btn', 'tour-btn', 'explain-btn', 'tool-quote-close']);
 
   const css = '#sml-ex{position:fixed;z-index:2147483200;left:14px;bottom:14px;width:min(350px,calc(100vw - 24px));max-height:calc(100dvh - 90px);overflow:auto;padding:14px 14px 12px;border:1px solid #2b5362;border-radius:14px;background:#0a1620;color:#dcebf2;font:500 13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;box-shadow:0 18px 50px rgba(0,0,0,.65);animation:ex-in .18s ease-out}'
@@ -113,7 +117,7 @@
       + (t.edge ? '<div class="ex-edge"><b>Your edge: </b>' + esc(t.edge) + '</div>' : '')
       + detail
       + (nx ? '<div class="ex-next"><span>Try next:</span>' + nx + '</div>' : '')
-      + '<div class="ex-f"><button type="button" class="ex-quiet" data-a="off">Turn off tool tips</button><span class="ex-sp"></span><button type="button" class="ex-go" data-a="close">Got it</button></div>';
+      + '<div class="ex-f"><button type="button" class="ex-quiet" data-a="off">Turn off tool tips</button><span class="ex-sp"></span>' + (t.playbook && window.smlTour && window.smlTour.run && CAT.playbooks && CAT.playbooks[t.playbook] ? '<button type="button" data-a="show" data-pb="' + esc(t.playbook) + '">Show me how \u00b7 ' + esc(CAT.playbooks[t.playbook].mins) + ' min</button>' : '') + '<button type="button" class="ex-go" data-a="close">Got it</button></div>';
     document.body.appendChild(card);
     card.addEventListener('click', onCardClick);
     ring(req.el && visible(req.el) && (!window.smlExposed || window.smlExposed(req.el)) ? req.el : null);
@@ -132,6 +136,7 @@
     if (b.dataset.next) { const el = byId(b.dataset.next); close(); if (el) { try { el.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (_) { /* ignore */ } ring(!window.smlExposed || window.smlExposed(el) ? el : null); setTimeout(() => { if (ringEl === el) unring(); }, 6000); } return; }
     const a = b.dataset.a;
     if (a === 'close') close();
+    else if (a === 'show') { const pb = b.dataset.pb; close(); setTimeout(() => { if (window.smlTour) window.smlTour.run(pb); }, 200); }
     else if (a === 'off') { setEnabled(false); close('off'); }
     else if (a === 'vox') {
       const v = voice(); if (!v || !current) return;
@@ -147,6 +152,7 @@
     const sub = target.closest('#ms-sub button[data-sub]'); if (sub) { const id = SUBMAP[sub.dataset.sub]; return id ? { key: id, id, el: byId(id) && visible(byId(id)) ? byId(id) : sub } : null; }
     const px = target.closest('#ms-nav button[data-proxy]'); if (px && TOOLS[px.dataset.proxy]) return { key: px.dataset.proxy, id: px.dataset.proxy, el: px };
     const row = target.closest('#tool-guide [data-tool]'); if (row && TOOLS[row.dataset.tool]) return { key: row.dataset.tool, id: row.dataset.tool, el: byId(row.dataset.tool) };
+    for (const [sel, id] of SELMAP) { const m = target.closest(sel); if (m && TOOLS[id]) return { key: id, id, el: m.matches('button') ? m : null }; }
     for (let n = target, k = 0; n && k < 4; n = n.parentElement, k += 1) {
       if (n.id && SKIP_IDS.has(n.id)) return null;
       if (n.id && TOOLS[n.id]) return { key: n.id, id: n.id, el: n };
@@ -164,6 +170,24 @@
   }
   document.addEventListener('click', onTap, true);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && card) close(); });
+
+  /* a module that sits under the chart gets its card when the member scrolls it into view (a real scroll, and a moment's stay, so a fast flick past does nothing) */
+  let lastScroll = 0;
+  const stamp = (e) => { if (e.isTrusted) lastScroll = Date.now(); };
+  ['wheel', 'touchmove', 'keydown'].forEach((ev) => window.addEventListener(ev, stamp, { passive: true, capture: true }));
+  (function watch(n) {
+    if (!('IntersectionObserver' in window)) return;
+    let left = 0;
+    VIEWMAP.forEach(([sel, id]) => {
+      const el = $(sel); if (!el || el.__exWatched) { if (!el) left += 1; return; }
+      el.__exWatched = 1; let timer = 0;
+      new IntersectionObserver((es) => es.forEach((en) => {
+        clearTimeout(timer);
+        if (en.isIntersecting && en.intersectionRatio >= 0.4 && !seen.has(id)) timer = setTimeout(() => { if (Date.now() - lastScroll < 4000 && !seen.has(id) && enabled() && !snoozed) { if (card || tourUp() || introUp()) { if (queue.length < 3 && !queue.some((q) => q.key === id)) queue.push({ key: id, id, el: null }); } else show({ key: id, id, el: null }); } }, 1200);
+      }), { threshold: [0.4] }).observe(el);
+    });
+    if (left && n < 90) setTimeout(() => watch(n + 1), 2000);
+  })(0);
 
   function setEnabled(on) { if (on) store.del(PREF_KEY); else store.set(PREF_KEY, 'off'); paintBtn(); }
   function reset() { seen = new Set(); store.del(SEEN_KEY); store.del(PREF_KEY); snoozed = false; paintBtn(); }
