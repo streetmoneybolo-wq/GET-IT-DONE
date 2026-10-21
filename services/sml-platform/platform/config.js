@@ -138,7 +138,8 @@ function getConfig(env = process.env) {
     academyAppId: String(env.SML_ACADEMY_APP_ID || '').trim(),
     academyClientSecret: String(env.SML_ACADEMY_CLIENT_SECRET || '').trim(),
     academyBotToken: String(env.SML_ACADEMY_BOT_TOKEN || '').trim(),
-    /* Discord in-app purchases: the SKU ids that grant Academy access, comma separated.
+    /* Discord in-app purchases. "trader=<id>, analyst=<id>" says what each SKU buys; a bare id
+       with no label buys the analyst level, so a single-SKU setup keeps granting everything.
        Unset means nothing is sold through Discord and the entitlement check stays off. */
     academyDiscordSkus: String(env.SML_ACADEMY_DISCORD_SKUS || '').trim(),
     academyGuildId: String(env.SML_ACADEMY_GUILD_ID || '').trim(),

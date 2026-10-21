@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createEntitlements, withEntitlements, parseSkuIds, isActiveEntitlement } = require('./academy-entitlements');
+const { createEntitlements, withEntitlements, parseSkuIds, parseSkuLevels, isActiveEntitlement } = require('./academy-entitlements');
 
 const APP = '1551336038713139370';
 const TOKEN = 'bot-token-that-is-long-enough-to-pass';
@@ -125,4 +125,43 @@ test('withEntitlements upgrades only a member refused for the Academy role', asy
   const off = createEntitlements({ appId: APP, botToken: TOKEN, skuIds: [] });
   assert.equal((await withEntitlements(refused, off).verify('Bearer x')).ok, false, 'unconfigured changes nothing');
   assert.equal((await withEntitlements(refused, null).verify('Bearer x')).ok, false);
+});
+
+test('a SKU can be labelled with the level it buys; a bare id still buys everything', () => {
+  assert.deepEqual(parseSkuLevels('trader=' + SKU + ', analyst=' + OTHER_SKU), { [SKU]: 'trader', [OTHER_SKU]: 'analyst' });
+  assert.deepEqual(parseSkuLevels(SKU), { [SKU]: 'analyst' }, 'an unlabelled SKU keeps the original full grant');
+  assert.deepEqual(parseSkuLevels('nonsense=' + SKU), { [SKU]: 'analyst' }, 'an unknown label is not a downgrade');
+  assert.deepEqual(parseSkuIds('trader=' + SKU), [SKU], 'the id is still read out of a labelled entry');
+  assert.deepEqual(parseSkuLevels(''), {});
+});
+
+test('the level held decides the tier, and the better SKU wins', async () => {
+  const both = { appId: APP, botToken: TOKEN, skuIds: 'trader=' + SKU + ',analyst=' + OTHER_SKU, now: () => NOW };
+  const trader = createEntitlements({ ...both, fetchImpl: async () => ok([entitlement({ sku_id: SKU })]) });
+  assert.equal(await trader.levelFor(USER), 'trader');
+  assert.equal(await trader.hasActive(USER), true);
+
+  const analyst = createEntitlements({ ...both, fetchImpl: async () => ok([entitlement({ sku_id: OTHER_SKU })]) });
+  assert.equal(await analyst.levelFor(USER), 'analyst');
+
+  const holdsBoth = createEntitlements({ ...both, fetchImpl: async () => ok([entitlement({ sku_id: SKU }), entitlement({ id: '2', sku_id: OTHER_SKU })]) });
+  assert.equal(await holdsBoth.levelFor(USER), 'analyst', 'holding both is never a downgrade');
+
+  const none = createEntitlements({ ...both, fetchImpl: async () => ok([]) });
+  assert.equal(await none.levelFor(USER), '');
+  assert.equal(await none.hasActive(USER), false);
+
+  const expired = createEntitlements({ ...both, fetchImpl: async () => ok([entitlement({ sku_id: OTHER_SKU, ends_at: '2026-01-01T00:00:00Z' })]) });
+  assert.equal(await expired.levelFor(USER), '', 'an expired analyst SKU grants nothing');
+});
+
+test('withEntitlements gives a trader buyer a trader session, an analyst buyer a full one', async () => {
+  const refused = { verify: async () => ({ ok: false, code: 'academy_role_required', userId: USER }) };
+  const both = { appId: APP, botToken: TOKEN, skuIds: 'trader=' + SKU + ',analyst=' + OTHER_SKU, now: () => NOW };
+
+  const asTrader = createEntitlements({ ...both, fetchImpl: async () => ok([entitlement({ sku_id: SKU })]) });
+  assert.deepEqual(await withEntitlements(refused, asTrader).verify('Bearer x'), { ok: true, userId: USER, tier: 'trader' });
+
+  const asAnalyst = createEntitlements({ ...both, fetchImpl: async () => ok([entitlement({ sku_id: OTHER_SKU })]) });
+  assert.deepEqual(await withEntitlements(refused, asAnalyst).verify('Bearer x'), { ok: true, userId: USER, tier: 'academy' });
 });

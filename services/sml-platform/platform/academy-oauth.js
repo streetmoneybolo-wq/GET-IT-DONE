@@ -10,7 +10,8 @@ const SESSION_GRACE_MS = 60_000;
 const SNOWFLAKE = /^\d{15,24}$/;
 /* 'member' sessions carry no tier claim, exactly as before tiers existed, so a
    token without `t` is a member token. Only 'academy' and 'free' are written. */
-const SESSION_TIERS = new Set(['member', 'academy', 'free']);
+/* 'trader' is the lower paid level sold as a Discord SKU; 'member' and 'academy' are the role holders. */
+const SESSION_TIERS = new Set(['member', 'academy', 'trader', 'free']);
 
 /* Short-lived authorization bridge. The Activity receives the Discord access
    token only long enough to complete Discord SDK authentication; application

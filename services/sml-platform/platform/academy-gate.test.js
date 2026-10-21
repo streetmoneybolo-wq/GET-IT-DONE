@@ -742,3 +742,27 @@ test('Discord in-app purchases: the SKUs reach the page only when some are confi
     assert.ok(html.includes('"skus":["' + SKU + '"]'), 'the rendered page carries the configured SKU');
   });
 });
+
+test('a Trader session reads the market but cannot take the Analyst edition or sell alerts', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { ENTITLED_TIERS, ANALYST_TIERS } = require('./academy-access');
+  /* every paid level clears the content gate... */
+  assert.ok(ENTITLED_TIERS.includes('trader'), 'a trader buyer is past the content gate');
+  assert.ok(ENTITLED_TIERS.includes('member') && ENTITLED_TIERS.includes('academy'));
+  /* ...but only the role holders are analyst level */
+  assert.deepEqual([...ANALYST_TIERS], ['member', 'academy']);
+  assert.equal(ANALYST_TIERS.includes('trader'), false, 'the lower SKU is not analyst level');
+
+  const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  assert.ok(src.includes("const tierEntitled = (tier) => tier === 'member' || tier === 'academy' || tier === 'trader';"),
+    'a trader buyer reads the market like any paid member');
+  assert.ok(src.includes("const tierAnalyst = (tier) => tier === 'member' || tier === 'academy';"),
+    'analyst level is separate');
+  assert.ok(src.includes("if (String(body.edition || '').toLowerCase() === 'analyst' && !tierAnalyst(session.tier))"),
+    'choosing the Analyst edition needs analyst level');
+  assert.ok(src.includes("if (tier && !tierAnalyst(tier)) return { ok: false, error: 'academy_analyst_required' };"),
+    'the Article Desk rechecks the live tier, so an edition picked earlier is not a free pass');
+  assert.ok(src.includes('analystDeskFor(session.userId, session.displayName, session.tier)'),
+    'the desk is told the caller tier');
+});

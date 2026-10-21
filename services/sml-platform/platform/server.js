@@ -2104,7 +2104,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     const session = academyOAuth && typeof academyOAuth.verifySession === 'function' ? academyOAuth.verifySession(authorization) : null;
     return session && session.ok ? (session.tier || 'member') : null;
   };
-  const tierEntitled = (tier) => tier === 'member' || tier === 'academy';
+  const tierEntitled = (tier) => tier === 'member' || tier === 'academy' || tier === 'trader';
+  /* Analyst level: the institutional data, the member's own alert chart and the right to charge for it.
+     Role holders (member/academy) keep everything they had; a 'trader' SKU buyer does not reach these. */
+  const tierAnalyst = (tier) => tier === 'member' || tier === 'academy';
   /* True when a live-data request may continue; otherwise the refusal is sent. */
   const allowGatedSymbol = (request, response, symbol) => {
     if (!contentGateOn) return true;
@@ -3016,7 +3019,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           sendJson(response, 200, await alertChartBilling.sellerStatus(me)); return;
         }
         if (request.method === 'POST' && path === '/academy-activity/trader-alerts/seller') {
-          if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+          if (!tierAnalyst(session.tier)) { sendJson(response, 403, { ok: false, error: 'academy_analyst_required' }); return; }
           if (!alertChartBilling) { sendJson(response, 503, { ok: false, error: 'billing_unconfigured' }); return; }
           const gate = academyDataLimit.take(request); if (!gate.ok) { sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
           const b = await readBody(1024); if (!b) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
@@ -3985,7 +3988,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       let analyst = null;
       if (!isOwner) {
         if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
-        analyst = await analystDeskFor(session.userId, session.displayName).catch(() => ({ ok: false, error: 'analyst_check_failed' }));
+        analyst = await analystDeskFor(session.userId, session.displayName, session.tier).catch(() => ({ ok: false, error: 'analyst_check_failed' }));
         if (!analyst.ok) { sendJson(response, 403, { ok: false, error: analyst.error === 'analyst_edition_required' || analyst.error === 'site_not_linked' ? analyst.error : 'owner_only', detail: analyst.error }); return; }
       }
       const desk = getStoryDesk();
@@ -4018,7 +4021,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
-    /* Edition (academy-editions.js): Trader or Analyst, with the analyst checklist. Any signed-in member reads; choosing Analyst needs Academy access. */
+    /* Edition (academy-editions.js): Trader or Analyst, with the analyst checklist. Any signed-in member reads.
+       Choosing Trader needs Academy access; choosing ANALYST needs analyst level — the Analyst SKU, or a role
+       holder. Everything the Analyst edition unlocks (the Article Desk, the Alert Chart seller tools, the
+       member's own bot) keys off academyEditions.get(), so this one check is what the Analyst price buys. */
     if (path === '/academy-activity/edition') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -4030,6 +4036,9 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
           const raw = await readRequestBody(request, 512).catch(() => null);
           let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
+          if (String(body.edition || '').toLowerCase() === 'analyst' && !tierAnalyst(session.tier)) {
+            sendJson(response, 403, { ok: false, error: 'academy_analyst_required' }); return;
+          }
           const set = await academyEditions.set(me, body.edition);
           if (!set.ok) { sendJson(response, set.status || 400, { ok: false, error: set.code }); return; }
         } else if (request.method !== 'GET') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return; }
@@ -5943,8 +5952,11 @@ async function main() {
     return pub;
   };
   /* the analyst's Article Desk: who they write as, or null when the edition, the site link or the letters publisher is missing */
-  const analystDeskFor = async (userId, displayName) => {
+  const analystDeskFor = async (userId, displayName, tier = '') => {
     const me = String(userId || '');
+    /* the stored edition is a choice; analyst level is what pays for it, so both must hold (an edition picked
+       before the Analyst SKU existed does not keep the publishing tools) */
+    if (tier && !tierAnalyst(tier)) return { ok: false, error: 'academy_analyst_required' };
     if (await academyEditions.get(me) !== 'analyst') return { ok: false, error: 'analyst_edition_required' };
     const wp = alertChartBilling ? await alertChartBilling.wpUserOf(me).catch(() => 0) : 0;
     if (!wp) return { ok: false, error: 'site_not_linked' };

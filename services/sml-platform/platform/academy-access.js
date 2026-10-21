@@ -8,7 +8,9 @@ const SNOWFLAKE = /^\d{15,24}$/;
    paid Academy plan ('Academy Student'). 'free' = a guild member with no paid
    role, issued only when SML_ACADEMY_FREE_SESSIONS=1. */
 const TIERS = Object.freeze(['member', 'academy', 'free']);
-const ENTITLED_TIERS = Object.freeze(['member', 'academy']);
+/* Every paid level clears the content gate; what separates them is the analyst-only routes (ANALYST_TIERS). */
+const ENTITLED_TIERS = Object.freeze(['member', 'academy', 'trader']);
+const ANALYST_TIERS = Object.freeze(['member', 'academy']);
 const RETRY_AFTER_CAP_MS = 5_000;
 
 function retryAfterMs(response, body) {
@@ -153,4 +155,4 @@ function createAcademyContentGate({ enabled = false, freePreview = '', freeSymbo
 }
 
 module.exports = { createAcademyAccess, createIdentityAccess, createAcademyContentGate, parseFreePreview, lockedLesson,
-  TIERS, ENTITLED_TIERS, LOCKED_TEXT };
+  TIERS, ENTITLED_TIERS, ANALYST_TIERS, LOCKED_TEXT };
