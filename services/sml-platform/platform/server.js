@@ -5840,8 +5840,6 @@ async function main() {
     ownerIds: [...OWNER_IDS], since: process.env.SML_ALERT_RECORD_SINCE || '2026-10-05', logger: log
   });
   if (academyAlertRecord) { void academyAlertRecord.ensureSchema(); academyAlertRecord.start(); }
-  /* the member's own open alerts as standing lines on the chart (academy-alert-levels.js) */
-  const alertLevels = createAlertLevels({ record: academyAlertRecord, traderAlerts, logger: log });
   const academyProfilePages = process.env.ACADEMY_PROFILE_PAGES === 'off' ? null : createProfilePages({
     pool: database.pool, chat: createChatStore({ pool: database.pool }), paper: academyPaper, tierLive: academyTierLive,
     directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), wall: academyProfileWall, talk: () => tickerTalk, bridge: loopKickBridge, alertRecord: academyAlertRecord, logger: log
@@ -5917,6 +5915,8 @@ async function main() {
     }
   });
   if (traderAlerts) traderAlerts.ensureSchema().catch(() => {});
+  /* the member's own open alerts as standing lines on the chart (academy-alert-levels.js) */
+  const alertLevels = createAlertLevels({ record: academyAlertRecord, traderAlerts, logger: log });
   /* TRADING ROOM: the room behind each profile (channels, free and paid access, tiers); ACADEMY_ROOMS=off removes it */
   const tradingRoom = process.env.ACADEMY_ROOMS === 'off' || !traderAlerts ? null : createTradingRoom({
     pool: database.pool, traderAlerts, logger: log,
