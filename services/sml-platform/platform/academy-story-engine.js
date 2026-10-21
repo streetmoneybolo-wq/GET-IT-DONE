@@ -25,7 +25,9 @@ const ANGLES = {
   short: { label: 'Short squeeze', keywords: ['short squeeze', 'short covering', 'short interest', 'days to cover'] },
   earnings: { label: 'Earnings speculation', keywords: ['earnings preview', 'earnings play', 'implied move', 'smart money'] },
   tape: { label: 'Unusual tape', keywords: ['unusual activity', 'dark pool', 'block trades', 'market makers'] },
-  structure: { label: 'Structure story', keywords: ['liquidity sweep', 'break of structure', 'order block', 'smart money concepts'] }
+  structure: { label: 'Structure story', keywords: ['liquidity sweep', 'break of structure', 'order block', 'smart money concepts'] },
+  /* the angle that is always available: a stock with no loud signal still has a story (a build-up, a move nobody agrees on, a rumor in the tape), and the desk's job is the narrative */
+  narrative: { label: 'Market narrative', keywords: ['stock narrative', 'price speculation', 'build-up', 'what the market is pricing in'] }
 };
 
 /* ---------- angle scorers: each returns { score, facts, lean, pt, scenario } or null ---------- */
@@ -146,12 +148,53 @@ function structureAngle(c) {
   };
 }
 
+
+/* The narrative angle: always available for a name with a price history. It does not claim a signal the data lacks; it reads the build-up, the move or the
+   rumor in the tape (compression, a break toward the range's edge, unusual volume, the headline) and frames it as the story the market is telling, with a
+   measured scenario (ATR-based target and stop) that is labelled speculation. Variants: buildup, speculation (a move nobody agrees on), rumor (a headline in play). */
+function narrativeAngle(c, { headline = '' } = {}) {
+  const p = num(c.price); const d = Array.isArray(c.daily) ? c.daily : [];
+  if (!(p > 0) || d.length < 12) return null;
+  const closes = d.map((b) => num(b.c, 0)), hi = d.map((b) => num(b.h, 0)), lo = d.map((b) => num(b.l, 0));
+  const n = d.length, avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const trs = (from, to) => { const out = []; for (let i = Math.max(1, from); i < to; i++) out.push(Math.max(hi[i] - lo[i], Math.abs(hi[i] - closes[i - 1]), Math.abs(lo[i] - closes[i - 1]))); return out; };
+  const atr = avg(trs(n - 14, n)) || p * 0.02, atrPrev = avg(trs(n - 44, n - 30)) || atr;
+  const sma = (k) => (n >= k ? avg(closes.slice(n - k)) : null), s20 = sma(20), s50 = sma(50);
+  const win = Math.min(20, n), h20 = Math.max(...hi.slice(n - win)), l20 = Math.min(...lo.slice(n - win));
+  const ch5 = n > 6 && closes[n - 6] > 0 ? (p / closes[n - 6] - 1) * 100 : null, ch20 = n > 21 && closes[n - 21] > 0 ? (p / closes[n - 21] - 1) * 100 : null;
+  const pos = h20 > l20 ? (p - l20) / (h20 - l20) : 0.5, atrPct = (atr / p) * 100, squeeze = atrPrev > 0 ? atr / atrPrev : 1;
+  const relVol = num(c.relVol), chg = num(c.changePct);
+  const variant = (relVol != null && relVol >= 1.5) || (chg != null && Math.abs(chg) >= 3) ? 'speculation' : headline ? 'rumor' : 'buildup';
+  let lean = 0; if (s20 != null) lean += p > s20 ? 1 : -1; if (ch5 != null) lean += ch5 > 0 ? 1 : -1; if (c.direction && num(c.direction.bias) != null) lean += Math.sign(c.direction.bias); lean += pos > 0.8 ? 1 : pos < 0.2 ? -1 : 0;
+  const up = lean >= 0, mv = clamp((2 * atr) / p, 0.04, 0.15), sd = clamp(atr / p, 0.02, 0.07);
+  const pt = r2(p * (1 + (up ? 1 : -1) * mv)), stop = r2(p * (1 - (up ? 1 : -1) * sd));
+  const trig = up ? (h20 > p * 1.004 ? h20 : p * 1.012) : (l20 < p * 0.996 ? l20 : p * 0.988);
+  const facts = [];
+  facts.push(`${c.symbol} trades at ${px(p)}, in the ${pos >= 0.66 ? 'top third' : pos <= 0.34 ? 'bottom third' : 'middle'} of its ${win}-day range (${px(l20)} to ${px(h20)}).`);
+  if (s20 != null) facts.push(`Price is ${p >= s20 ? 'above' : 'below'} its 20-day average of ${px(s20)}${s50 != null ? ` and ${p >= s50 ? 'above' : 'below'} the 50-day at ${px(s50)}` : ''}.`);
+  if (ch5 != null) facts.push(`The stock is ${pct(ch5)} over five sessions${ch20 != null ? ` and ${pct(ch20)} over twenty` : ''}.`);
+  facts.push(`The average true range is ${atrPct.toFixed(1)}% of the price${squeeze < 0.85 ? ', tighter than it was a month ago: the range is compressing' : squeeze > 1.2 ? ', wider than a month ago: the stock is getting louder' : ''}.`);
+  if (relVol != null && relVol >= 1.2) facts.push(`Volume is ${relVol.toFixed(1)}x normal.`);
+  if (c.direction && c.direction.label) facts.push(`The market backdrop reads ${c.direction.label}.`);
+  if (c.gamma && c.gamma.available) facts.push(`Dealers are ${c.gamma.regime === 'negative' ? 'short' : 'long'} gamma on the name.`);
+  if (c.earnings && num(c.earnings.daysAway) != null && c.earnings.daysAway >= 0 && c.earnings.daysAway <= 21) facts.push(`Earnings are ${c.earnings.daysAway === 0 ? 'today' : c.earnings.daysAway === 1 ? 'tomorrow' : 'in ' + c.earnings.daysAway + ' days'}.`);
+  const what = { buildup: 'a build-up', speculation: 'a move nobody agrees on', rumor: 'a story the tape is already trading' }[variant];
+  return {
+    score: 40, variant, facts, lean: up ? 'bullish' : 'bearish', pt, ptPct: r2((pt / p - 1) * 100), timeframe: '1 to 3 weeks',
+    path: [{ label: 'TRIGGER', price: r2(trig) }, { label: 'CONFIRM', price: r2(p + (pt - p) * 0.55) }], stop,
+    scenario: { trigger: `a ${up ? 'close above' : 'close below'} ${px(trig)}, the edge of the ${win}-day range`, confirm: `volume expanding in the direction of the break instead of fading`, target: `${px(pt)}, about two average ranges from here`, invalidation: `a close ${up ? 'below' : 'above'} ${px(stop)}, which would put the stock back inside the range it is trying to leave` },
+    controversy: variant === 'buildup' ? `A quiet stock is not a dead stock. The market is usually early to a build-up and late to the headline.` : variant === 'speculation' ? `Everyone has a theory for the move. The tape only has the facts, and they support fewer theories than the comments do.` : `A story the tape is already trading is no longer a secret. The question is whether it is priced.`,
+    narrativeKind: what
+  };
+}
+
 /* ---------- ranking: setup strength × what search is already chasing × the gap nobody has filled ---------- */
-function rankStories(candidates, { maxPerSymbol = 1 } = {}) {
+function rankStories(candidates, { maxPerSymbol = 1, force = false } = {}) {
   const out = [];
   for (const c of candidates || []) {
     if (!c || !c.symbol) continue;
-    if (num(c.price, 0) < 1 || num(c.adv, 0) < 300_000) continue;
+    /* force (a piece asked for by name): any name with a price history gets a story, and the narrative angle is the one that never says no */
+    if (!force && (num(c.price, 0) < 1 || num(c.adv, 0) < 300_000)) continue;
     const angles = [['gamma', gammaAngle(c)], ['short', shortAngle(c)], ['earnings', earningsAngle(c)], ['tape', tapeAngle(c)], ['structure', structureAngle(c)]].filter(([, a]) => a);
     const heat = c.heat || {};
     const h24 = num(heat.google24h, 0) + num(heat.bing24h, 0);
@@ -162,6 +205,7 @@ function rankStories(candidates, { maxPerSymbol = 1 } = {}) {
       const rank = Math.round(a.score * heatMult * gap);
       return { symbol: c.symbol, angle: key, label: ANGLES[key].label, rank, ...a, heat: { h24, covered, heatMult: r2(heatMult), gap } };
     }).sort((a, b) => b.rank - a.rank).slice(0, maxPerSymbol);
+    if (!scored.length && force) { const nar = narrativeAngle(c, { headline: c.headline || '' }); if (nar) scored.push({ symbol: c.symbol, angle: 'narrative', label: ANGLES.narrative.label, rank: nar.score, ...nar, heat: { h24, covered: null, heatMult: r2(heatMult), gap: 1 } }); }
     out.push(...scored);
   }
   return out.sort((a, b) => b.rank - a.rank);
@@ -175,12 +219,17 @@ function headlineFor(st, c) {
     short: [`${S} Short Squeeze Setup: ${c.short && c.short.ratio != null ? Math.round(c.short.ratio * 100) + '% Short Volume' : 'Shorts Are Pressing'} and ${c.short && c.short.daysToCover != null ? c.short.daysToCover.toFixed(1) + ' Days to Cover' : 'Nowhere to Exit'}`, `${S} Is Loaded for a Short Squeeze: The FINRA Numbers Say ${pt} Is in Play`, `The Shorts in ${S} Have a Problem, and ${pt} Is Where It Shows`],
     earnings: [`${S} Earnings Speculation: What the Smart-Money Map Says Before the Print`, `${S} Into Earnings: The Chart Is Set Up for ${st.lean === 'bullish' ? 'a Beat' : 'a Sell-the-News'}, ${pt} Is the Number`, `${S} Earnings Preview Through the Tape: ${st.lean === 'bullish' ? 'Buyers Positioned Early' : 'Someone Sold Ahead'}`],
     tape: [`${S} Unusual Activity: Sweeps, Blocks and a Dark Pool Tape That Says Someone Is Building`, `Market Makers Are Busy in ${S}: The Prints Point to ${pt}`, `${S}: The Tape Is Telling a Story the Chart Has Not Caught Up To`],
-    structure: [`${S} Just Swept the Stops: The Smart-Money Structure Points to ${pt}`, `${S} Break of Structure: Why the Next Leg Targets ${pt}`, `${S}: Stops Taken, Structure Broken, ${pt} in View`]
+    structure: [`${S} Just Swept the Stops: The Smart-Money Structure Points to ${pt}`, `${S} Break of Structure: Why the Next Leg Targets ${pt}`, `${S}: Stops Taken, Structure Broken, ${pt} in View`],
+    narrative: ({
+      buildup: [`${S} Looks Quiet. The Tape Says Someone Is Getting Ready for ${pt}`, `Everyone Is Ignoring ${S}. That May Be the Mistake`, `${S} Is Coiling, and ${st.lean === 'bullish' ? 'the Break Level Is Closer Than It Looks' : 'the Floor Is Thinner Than It Looks'}`],
+      speculation: [`${S} Is Moving and Nobody Agrees Why. Here Is What the Tape Shows`, `The ${S} Move Everyone Is Explaining Away: A Skeptical Read`, `Is ${S} Really Headed to ${pt}? The Case For and Against`],
+      rumor: [`The Story Behind ${S} Is Already in the Price. Is It All of It?`, `${S}: The Rumor Is Out. What the Chart Says About the Next Move`, `What the Market Is Quietly Pricing In on ${S}, and Who Is Wrong`]
+    })[st.variant] || [`${S}: What the Market Is Pricing In, and Why It Matters`]
   }[st.angle];
   // a headline that fits (95 characters or fewer) keeps the title tag, the social card and the URL slug clean
   const fits = t.filter((x) => x.length <= 95), pool = fits.length ? fits : t.map((x) => (x.length <= 95 ? x : x.slice(0, 95).replace(/\s+\S*$/, '').replace(/[,:\-\s]+$/, '')));
   const title = pick(pool, seed), alt = pool.filter((x) => x !== title);
-  const meta = `${c.symbol} ${ANGLES[st.angle].label.toLowerCase()} read from live options, short-volume, dark-pool and structure data: the setup, the path to ${pt}, and what kills it.`.slice(0, 155);
+  const meta = (st.angle === 'narrative' ? `${c.symbol} stock: what the price, volume and range are saying right now, a speculative scenario to ${pt}, and what would prove it wrong.` : `${c.symbol} ${ANGLES[st.angle].label.toLowerCase()} read from live options, short-volume, dark-pool and structure data: the setup, the path to ${pt}, and what kills it.`).slice(0, 155);
   return { title, alternates: alt, meta, slug: slugify(title) };
 }
 function tagsFor(st, c) {
@@ -197,6 +246,7 @@ function draftArticle(st, c, { asOf = Date.now(), author = 'Vaughn McNair', publ
     short: [`Somebody is still shorting ${name} into this. The FINRA tape says so, and the FINRA tape does not have opinions.`, `${S} has a short position that is pressing into strength. That is the one kind of short that ends badly for the short.`],
     earnings: [`${name} reports soon, and the interesting part is not the estimate. It is what the tape did while nobody was watching.`, `Every earnings preview on ${S} will talk about consensus. None of them will show you where the stops were taken.`],
     tape: [`The chart on ${name} looks ordinary. The prints behind it are not.`, `Someone is working ${S} off-exchange, and the size says it is not a retail account.`],
+    narrative: [`There is no loud signal on ${name} today. That is the story: the market is deciding something, and the tape is the only witness.`, `${S} is not the stock everyone is talking about. It might be the one worth reading.`],
     structure: [`${name} just did the thing the smart-money crowd waits weeks for: it took the stops and reversed.`, `Price ran the obvious level in ${S}, then closed back inside. That is not noise. That is a sweep.`]
   }[st.angle];
   const V = require('./academy-article-voice');
@@ -236,7 +286,8 @@ function speculationLine(st, c, seed) {
     short: [`Shorts who pressed into strength have to buy to leave, and the volume to leave through is not there. ${pt} is where the first wave of covering would carry it.`, `When a crowded short meets a stock that will not go down, the exit is up. ${pt} is the first place the exits open.`],
     earnings: [`The positioning into the print leans ${st.lean}. If the report cooperates, one implied move lands near ${pt}. If it does not, the imbalance on the chart is where it goes to find buyers.`, `The chart did its positioning before the number. ${pt} is one expected move in the direction the tape already chose.`],
     tape: [`Sweeps and blocks are not how retail trades. Someone with size is building, and ${pt} is the nearest pool of resting orders they would run into.`, `The off-exchange share says the real volume is happening where the public cannot see it. ${pt} is the level the visible chart has not priced.`],
-    structure: [`A sweep followed by a break is the textbook smart-money sequence: take the stops, then move. ${pt} is the next liquidity the move would reach for.`, `The stops are gone and the structure has turned. ${pt} is where the next set of resting orders sits.`]
+    structure: [`A sweep followed by a break is the textbook smart-money sequence: take the stops, then move. ${pt} is the next liquidity the move would reach for.`, `The stops are gone and the structure has turned. ${pt} is where the next set of resting orders sits.`],
+    narrative: [`This part is speculation, and it is labelled that way. If the stock leaves its range on real volume, about two average ranges takes it to ${pt}. If it does not, nothing here is true.`, `The honest version of the trade: a break from here, on volume, points to ${pt}. Without the volume it is a stock going nowhere politely.`]
   }[st.angle];
   return pick(L, seed + 7);
 }
@@ -278,4 +329,4 @@ function createNewsHeat({ fetchImpl = fetch, now = Date.now, ttlMs = 30 * 60_000
   return { count, heatFor };
 }
 
-module.exports = { ANGLES, gammaAngle, shortAngle, earningsAngle, tapeAngle, structureAngle, rankStories, headlineFor, draftArticle, tagsFor, createNewsHeat, parseRssCount, slugify };
+module.exports = { ANGLES, narrativeAngle, gammaAngle, shortAngle, earningsAngle, tapeAngle, structureAngle, rankStories, headlineFor, draftArticle, tagsFor, createNewsHeat, parseRssCount, slugify };

@@ -371,7 +371,8 @@ function createStoryDesk({
     const c = g.c;
     if (!c) return { ok: false, error: 'no_data', subject };
     const tGather = now();
-    const ranked = engine.rankStories([c]);
+    /* a piece asked for by name is always written: a loud setup when there is one, the narrative (build-up, move, rumor) when there is not */
+    const ranked = engine.rankStories([c], { force: true });
     if (!ranked.length) return { ok: false, error: 'no_angle', heat: c.heat, subject };
     const built = await produce(ranked[0], c, { file: doFile, topic: subject.topic, dossier: g.dossier && Object.keys(g.dossier).length ? g.dossier : null, fast });
     const tBuilt = now();

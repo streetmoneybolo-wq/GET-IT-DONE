@@ -129,3 +129,25 @@ test('fast write: with the model off it is the house writer at once, and the def
   const w = W.createArticleWriter({ ai: { apiKey: 'k' }, fetchImpl: async (u, o) => { full = JSON.parse(o.body); return { ok: false, status: 500, json: async () => ({}) }; } });
   await w.write(s, { attempts: 1 }); assert.equal(full.max_tokens, 6000, 'a scheduled piece still asks for the whole thing');
 });
+
+test('the house writer handles the narrative angle: three sections, passes the same checks, no banned phrase, names the ticker', () => {
+  const bars = []; let p0 = 20; for (let i = 0; i < 80; i++) { const o = p0, c = p0 * (1 + Math.sin(i / 5) * 0.004); bars.push({ t: Date.UTC(2026, 6, 1) + i * 86_400_000, o, h: Math.max(o, c) * 1.004, l: Math.min(o, c) * 0.996, c, v: 900_000 }); p0 = c; }
+  const c = { symbol: 'QUIE', name: 'Quiet Corp', price: bars[bars.length - 1].c, changePct: 0.2, relVol: 0.9, adv: 900_000, daily: bars };
+  const st = E.rankStories([c], { force: true })[0];
+  const sh = W.factSheet({ story: st, c, dossier: {} });
+  assert.equal(sh.angle, 'narrative'); assert.equal(sh.angleLabel, 'market narrative');
+  for (let seed = 0; seed < 6; seed++) {
+    const piece = W.housePiece(sh, seed);
+    assert.equal(piece.sections.length, 3); assert.ok(piece.title.includes('$QUIE'));
+    const v = W.validate(piece, sh, { minWords: 0 });
+    assert.ok(!v.reasons.some((r) => /banned|dash|repeated|meta/.test(r)), v.reasons.join(','));
+  }
+});
+
+test('the banned list now carries the cliches and exaggerations a news desk would cut', () => {
+  for (const phrase of ['It remains to be seen.', 'Only time will tell.', 'a rapidly evolving market', 'This underscores the importance of', 'a testament to the move', 'a stunning rally', 'an unprecedented run', 'a massive squeeze']) assert.match(phrase, W.BANNED, phrase);
+});
+
+test('the prompts carry the newsroom rules: facts vs interpretation vs uncertainty, no invented causes or quotes, a provocative but supported headline', () => {
+  for (const text of [W.SYSTEM]) for (const must of [/verified facts/i, /interpretation/i, /uncertainty/i, /caused/i, /never invent quotes/i, /contrarian/i, /edit your draft once/i, /what investors may watch next/i]) assert.match(text, must);
+});

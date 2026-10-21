@@ -10,7 +10,7 @@ const num = (v, d = null) => { if (v == null || v === '') return d; const n = Nu
 const px = (v) => (v >= 1 ? '$' + Number(v).toFixed(2) : '$' + Number(v).toFixed(4));
 const pick = (arr, seed) => arr[Math.abs(seed) % arr.length];
 
-const KICKER = { gamma: 'OPTIONS POSITIONING', short: 'SHORT INTEREST', earnings: 'EARNINGS', tape: 'TAPE READING', structure: 'MARKET STRUCTURE' };
+const KICKER = { gamma: 'OPTIONS POSITIONING', short: 'SHORT INTEREST', earnings: 'EARNINGS', tape: 'TAPE READING', structure: 'MARKET STRUCTURE', narrative: 'MARKET WATCH' };
 
 /* the standfirst under the headline: one sentence, no number the page does not already carry */
 function dek(st, c, seed = 0) {
@@ -20,6 +20,7 @@ function dek(st, c, seed = 0) {
     short: [`Short volume is a clue, not a confession. What the FINRA tape does and does not say about ${S}.`, `A crowded short is a coiled spring only if the stock refuses to fall. A read on ${S}.`],
     earnings: [`The print is binary. The positioning going into it is not. A read on ${S} before the report.`, `Consensus is a number. Positioning is a story. What the tape did ahead of ${S} earnings.`],
     tape: [`Prints are the receipts. A look at who is actually trading ${S}, and what the size implies.`, `Retail reads candles; the prints show who is in the stock. A read on ${S}.`],
+    narrative: [`No loud signal, and that is the point. What the price, the range and the volume say about ${S}, and what would prove the read wrong.`, `A stock does not need a headline to have a story. A skeptical read on ${S}.`],
     structure: [`A liquidity sweep followed by a structural break is a sequence with a logic. A read on ${S}.`, `The stops got taken and the structure turned. What that sequence implies for ${S}, and what would undo it.`]
   }[st.angle] || [`A data-driven read on ${S}.`];
   return pick(v, seed + 3);
@@ -53,6 +54,12 @@ function mechanism(st, c, seed = 0) {
       `Size leaves fingerprints. An institution working an order has to choose between patience, which leaks information, and urgency, which pays for it. Sweeps are the urgency; blocks and absorption are the patience. The direction is inferred from the tick, which is a hint and not a confession.`
     ], seed));
     paras.push(`${t.offSharePct != null ? `Off-exchange share sits near ${Math.round(t.offSharePct)}%${t.typicalSharePct != null ? ` against a typical ${Math.round(t.typicalSharePct)}%` : ''}` : 'The off-exchange share is not clean here'}${t.sweepBuy != null || t.sweepSell != null ? `, with ${t.sweepBuy || 0} buy sweeps to ${t.sweepSell || 0} sell sweeps` : ''}${t.absorption ? ', and the book shows absorption' : ''}. ${pick([`The chart shows the story. The prints show the cast.`, `Candles are the headline; the tape is the byline.`], seed + 1)}`);
+  } else if (st.angle === 'narrative') {
+    paras.push(pick([
+      `A range is a negotiation. Buyers and sellers keep agreeing on a price band until one side runs out of patience, and the edge of the band is where the argument gets settled. Volatility tends to shrink before that happens and expand after, which is why a quiet stretch is often the setup rather than the absence of one.`,
+      `Markets price information before most people hear it, and the first sign is rarely a headline. It is usually a change in how the stock behaves: ranges tighten, volume shifts, price starts leaning on a level. None of that proves a story. It is the reason to go looking for one.`
+    ], seed));
+    paras.push(`${c.relVol != null ? `Volume is running ${Number(c.relVol).toFixed(1)}x normal, which matters because a break on thin volume is easy to fade and a break on real volume is harder to argue with.` : 'Volume is the tiebreaker: a break on thin trading is easy to fade, and a break on real trading is harder to argue with.'} What follows is a scenario built from the stock's own range, not a forecast.`);
   } else {
     paras.push(pick([
       `Equal highs and equal lows look like support and resistance to a retail trader and like an invoice to everyone else: they mark where stop orders cluster, and a stop is just resting liquidity. A sweep trades through that cluster, fills the orders, and then price closes back inside. When the next candle breaks structure in the opposite direction, the sequence reads as liquidity taken, then direction chosen.`,
@@ -72,6 +79,7 @@ function counter(st, c, seed = 0) {
     short: [`The honest objection: short volume is not a position. A high ratio is routine for liquid names, and shorts are sometimes simply right. A stock that fails at resistance with the same volume turns this whole read into a normal Tuesday.`, `Fair challenge: days to cover is a lagging, twice-a-month number, and borrow costs, not just price, decide who has to leave. Without a catalyst the spring stays compressed.`],
     earnings: [`The honest objection: one binary event outweighs any structure. Guidance can gap through every level on this page, and positioning read from price is circumstantial at best. The setup tilts odds; it does not underwrite the outcome.`, `Skeptics will point out that earnings reactions are dominated by guidance and tone, which no chart contains. They are right, which is why the invalidation here is about price behavior after the print, not a forecast of it.`],
     tape: [`The honest objection: prints do not carry intent. Off-exchange volume includes ordinary retail flow and hedges, and the tick rule misreads direction often enough to matter. A busy tape can mean a decision or a rebalance.`, `Fair challenge: size can be a hedge, a transition trade or a mistake. The read is a tilt toward accumulation, not a purchase order with a name on it.`],
+    narrative: [`The honest objection: a build-up is visible in hindsight and ambiguous in real time. Plenty of quiet ranges simply stay quiet, and a stock that leans on a level can lean on it for weeks before it does anything. The read is a hypothesis with a stop attached, not a conclusion.`, `The honest objection: nothing here is a catalyst. There is no event on the page that forces the move, only a stock behaving in a way that sometimes comes before one.`],
     structure: [`The honest objection: structure-based reads suffer from selection bias, because the sweeps that worked are remembered and the ones that failed are not. The pattern is a hypothesis with a defined cost of being wrong, and that cost is the point.`, `Fair challenge: any chart can be annotated to tell any story after the fact. The discipline is to commit to the level that proves the read wrong before the move, not after it.`]
   }[st.angle] || [`Every read has limits, and this one is no exception.`];
   return pick(v, seed + 5);
@@ -84,6 +92,7 @@ function humor(st, c, seed = 0) {
     short: [`Short sellers can be right and still get run over; the market has never once refunded a margin call.`, `Being early and being wrong look identical on a statement.`],
     earnings: [`Earnings previews are astrology with ticker symbols, so this one at least shows its work.`, `Consensus is the number everyone agrees on right up until the number prints.`],
     tape: [`The chart is a rumor. The tape is the receipt.`, `Candles are the headline. The prints are the fine print nobody scrolls to.`],
+    narrative: [`A quiet stock is just a stock between opinions.`, `Nobody scheduled the breakout, which is exactly why it keeps surprising people who wait for the invitation.`],
     structure: [`Stops are just IOUs with a trigger price, and sometimes the market comes to collect.`, `Support and resistance are the market's way of leaving a note for itself.`]
   }[st.angle] || [`The market is allowed to be funny. It rarely is on purpose.`];
   return pick(v, seed + 9);
