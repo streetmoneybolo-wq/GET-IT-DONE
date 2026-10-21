@@ -46,12 +46,13 @@ const { createMassiveStream } = require('./academy-massive-stream');
 const { createSireFeed } = require('./academy-sire-feed');
 const { createBrokerLinks, brokerLaunchHtml, moomooQuoteUrl, webullUrl, cleanSymbol: cleanBrokerSymbol } = require('./academy-brokers');
 const { createDataHealth } = require('./data-health');
-const { isMarketOpen, marketState } = require('./market-clock');
+const { isMarketOpen, marketState, dayInfo: marketDayInfo } = require('./market-clock');
 const { sanitizeBars, annotateCandles } = require('./data-quality');
 const { sseWrite, sseEvent } = require('./sse-safe');
 const { createPopoutService, validModule: validPopoutModule, validSymbol: validPopoutSymbol } = require('./academy-popout');
 const { cleanLayout: cleanAcademyLayout, cleanScope: cleanLayoutScope, layoutKey: academyLayoutKey } = require('./academy-layout');
 const { createCandleRecap } = require('./academy-candle-recap');
+const { createSessionRecap } = require('./academy-session-recap');
 const { createMarketDirectionV2 } = require('./academy-market-direction-v2');
 const { createStoryDesk, createLettersPublisher, createPolisher } = require('./academy-story-desk');
 const articleChart = require('./academy-article-chart');
@@ -761,6 +762,8 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const smartMoney = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money.js'), 'utf8');
     const smcExplain = fs.readFileSync(pathModule.join(__dirname, 'academy-smc-explain.js'), 'utf8');
     const smartMoneyUi = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money-ui.js'), 'utf8');
+    const sessionLevels = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-session-levels.js'), 'utf8'); } catch (_) { return ''; } })();
+    const sessionLevelsUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-session-levels-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const clickAlertUi = fs.readFileSync(pathModule.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
     const snapshotUi = fs.readFileSync(pathModule.join(__dirname, 'academy-snapshot-ui.js'), 'utf8');
     const tickerTalkUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-ticker-talk-ui.js'), 'utf8'); } catch (_) { return ''; } })();
@@ -813,7 +816,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script><script>' + targetsUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script>' + (sessionLevels && sessionLevelsUi ? '<script>' + sessionLevels + '</script><script>' + sessionLevelsUi + '</script>' : '') + '<script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script><script>' + targetsUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -3981,6 +3984,28 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       } catch (error) { logger('error', 'academy_candle_recap_failed', { error }); sendJson(response, 503, { ok: false, error: 'recap_unavailable' }); }
       return;
     }
+    /* Session recap (academy-session-recap.js): today's session written at the bell with its lettered chart. Any signed-in member.
+       ?format=svg returns the picture alone; the JSON carries the three sections, the events and the SVG. */
+    if (request.method === 'GET' && path === '/academy-activity/session-recap') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const rq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(rq.get('symbol') || 'SPY').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      const t = Number(rq.get('t')) > 0 ? Number(rq.get('t')) : Date.now();
+      try {
+        const out = await sessionRecap.build({ symbol, t });
+        if (rq.get('format') === 'svg') {
+          if (!out.ok || !out.svg) { sendJson(response, 503, { ok: false, error: out.error || 'recap_unavailable' }); return; }
+          response.writeHead(200, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'private, max-age=60', 'x-content-type-options': 'nosniff' }); response.end(out.svg); return;
+        }
+        if (out.ok) { const { png, chartInput, ...rest } = out; sendJson(response, 200, rest); } else sendJson(response, out.error === 'bars_unavailable' ? 503 : 200, out);
+      } catch (error) { logger('error', 'academy_session_recap_failed', { error }); sendJson(response, 503, { ok: false, error: 'recap_unavailable' }); }
+      return;
+    }
 
     /* Client diagnostics: the Activity reports which sign-in step it reached (and any page error) so a silent failure on a
        member's machine can be read from the server log. Unauthenticated by design (it fires before there is a session),
@@ -5682,6 +5707,19 @@ async function main() {
     alerts: academyAlerts, sentiment: academySentiment, logger: log
   });
   const siteTierDirectory = createDiscordDirectory({ tokens: alertTokens, logger: log });
+  /* Session recap (academy-session-recap.js): the day written at the bell, morning / afternoon / into tomorrow, with its lettered chart.
+     Any signed-in member can read it on /academy-activity/session-recap; after the close it is posted once to SML_SESSION_RECAP_CHANNEL_ID. */
+  const sessionRecap = createSessionRecap({
+    barsFor: candleBarsFor, gamma: academyGamma ? (s) => academyGamma.get(s) : null,
+    calendar: (o) => require('./academy-market-calendar').upcoming(o), calendarExtra: process.env.SML_MACRO_EVENTS || null, dayInfo: marketDayInfo,
+    png: challengeCardPng, post: (channelId, body, files) => siteTierDirectory.post(channelId, body, files),
+    store: createPgStateStore({ pool: database.pool, key: 'session-recap', defaultValue: () => ({ posted: {} }), logger: log }),
+    channelId: String(process.env.SML_SESSION_RECAP_CHANNEL_ID || '').trim(), symbol: String(process.env.SML_SESSION_RECAP_SYMBOL || 'SPY').toUpperCase(), logger: log
+  });
+  if (/^\d{5,25}$/.test(String(process.env.SML_SESSION_RECAP_CHANNEL_ID || '').trim())) {
+    const runRecap = () => sessionRecap.tick().then((r) => { if (r && r.ok) log('info', 'session_recap_posted', { day: r.day }); else if (r && r.error && !['outside_window', 'already_posted', 'not_trading_day'].includes(r.error)) log('warn', 'session_recap_skipped', { why: r.error }); }).catch((error) => log('warn', 'session_recap_tick_failed', { error }));
+    setTimeout(runRecap, 2 * 60_000).unref(); setInterval(runRecap, 60_000).unref();
+  }
   /* A member's Academy level right now, read by the bot (no Discord login needed): roles, free users and day passes.
      Used by the stockmarketloop.com alerts desk and by pop-out windows when they renew. */
   const academyTierLive = async (userId) => {

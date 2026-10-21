@@ -2290,7 +2290,7 @@ test('Activity navigation: one grouped tool rail (CHART, FLOW, DESK, SHARE) with
   const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
   assert.match(html, /id = 'tool-rail'/, 'the rail exists');
   for (const label of ['CHART', 'FLOW', 'DESK', 'SHARE']) assert.match(html, new RegExp("label: '" + label + "'"));
-  for (const id of ['depth-walls', 'heat-toggle', 'smc-toggle', 'intent-btn', 'buysell-toggle', 'darkpool-toggle', 'shortsale-toggle', 'sentiment-toggle', 'squeeze-btn', 'chain-toggle', 'mem-algo-toggle', 'sire-toggle', 'earnings-toggle', 'catalysts-toggle', 'paper-toggle', 'challenge-toggle', 'talk-btn', 'snap-toggle', 'click-alert-toggle']) assert.ok(html.includes("'" + id + "'"), id + ' is in a group');
+  for (const id of ['depth-walls', 'heat-toggle', 'smc-toggle', 'levels-toggle', 'intent-btn', 'buysell-toggle', 'darkpool-toggle', 'shortsale-toggle', 'sentiment-toggle', 'squeeze-btn', 'chain-toggle', 'mem-algo-toggle', 'sire-toggle', 'earnings-toggle', 'catalysts-toggle', 'paper-toggle', 'challenge-toggle', 'talk-btn', 'snap-toggle', 'click-alert-toggle']) assert.ok(html.includes("'" + id + "'"), id + ' is in a group');
   assert.match(html, /tool-guide-btn/); assert.match(html, /tool-quote-btn/); assert.match(html, /sml-quote-open main \.side\{display:flex!important/, 'the quote column opens as a phone sheet');
   assert.match(html, /narrowed to a phone width: the pills go back to floating/);
   assert.match(html, /#sml-settings-btn\{right:auto;left:10px;bottom:48px\}/, 'Settings no longer sits on the Loop Bucks pill on phones');
