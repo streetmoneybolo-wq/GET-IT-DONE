@@ -563,19 +563,22 @@
   }
 
   /* ---------- patterns ---------- */
-  let patternsDirty = true, found = null, foundKey = '';
+  let patternsDirty = true, found = null, foundKey = '', foundLive = '', foundAt = 0;
   function runPatterns(m) {
     const P = window.SmlPatterns; if (!P || !P.detect) return null;
-    const key = m.symbol + ':' + m.tf + ':' + m.N + ':' + (m.bars[m.N - 1] && m.bars[m.N - 1].t);
-    if (found && key === foundKey && !patternsDirty) return found;
+    const lb = m.bars[m.N - 1], key = m.symbol + ':' + m.tf + ':' + m.N + ':' + (lb && lb.t), live = key + ':' + (lb ? lb.c + '|' + lb.h + '|' + lb.l : '');
+    if (found && key === foundKey && !patternsDirty) {
+      /* the forming candle moves every tick: statuses (a close beyond a neckline) are re-read at most every 1.5 s, so they stay accurate without redoing the scan on every frame */
+      if (live === foundLive || performance.now() - foundAt < 1500) return found;
+    }
     try { found = P.detect(m.bars.map((b) => ({ t: +b.t, o: +b.o, h: +b.h, l: +b.l, c: +b.c, v: +b.v || 0 }))); } catch (_) { found = null; }
-    foundKey = key; patternsDirty = false; renderPatternPanel(m); return found;
+    foundKey = key; foundLive = live; foundAt = performance.now(); patternsDirty = false; renderPatternPanel(m); return found;
   }
   const human = (n) => String(n || '').replace(/_/g, ' ').replace(/[a-z]/g, (c) => c.toUpperCase());
   const COL = { bull: '#00d084', bear: '#ff5470', neutral: '#ffd166' };
   /* Every pattern family gets its own colour, so two shapes on one chart never read as one; the arrow in the label and the chip in the
      list carry the direction. Reversals are warm (violet, orange, pink), continuations are cool (sky, amber, mint), ranges are periwinkle. */
-  const FAMILY = [[/head_and_shoulders/, '#c084fc'], [/double_/, '#ff9f43'], [/triple_/, '#f472b6'], [/triangle/, '#38bdf8'], [/wedge/, '#fbbf24'], [/flag|pennant/, '#34d399'], [/rectangle/, '#a3a3ff']];
+  const FAMILY = [[/head_and_shoulders/, '#c084fc'], [/double_/, '#ff9f43'], [/triple_/, '#f472b6'], [/triangle/, '#38bdf8'], [/wedge/, '#fbbf24'], [/flag|pennant/, '#34d399'], [/rectangle/, '#a3a3ff'], [/channel/, '#60a5fa'], [/broadening/, '#fb7185'], [/cup_and_handle/, '#22d3ee'], [/rounding/, '#a78bfa']];
   const familyColor = (type) => { for (const [re, c] of FAMILY) if (re.test(String(type || ''))) return c; return COL.neutral; };
   const abbr = (name) => { const w = String(name || '').replace(/[^A-Za-z0-9 ]/g, '').split(/\s+/).filter(Boolean); if (w.length === 1) return w[0].slice(0, 3); return w.map((x) => (/^three$/i.test(x) ? '3' : /^bullish$|^bearish$/i.test(x) ? '' : x[0].toUpperCase())).join('').slice(0, 4) || 'P'; };
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; };
@@ -604,12 +607,12 @@
       lctx.save(); lctx.globalAlpha = failed ? 0.45 : (focus ? 1 : 0.9); lctx.lineJoin = 'round'; lctx.lineCap = 'round';
       /* 1. the shape itself, tinted: between the two boundary lines when there are two, else the outline of the pivots closed by the neckline */
       const upper = lines.find((l) => l.role === 'upper'), lower = lines.find((l) => l.role === 'lower'), neck = lines.find((l) => l.role === 'neckline');
-      lctx.fillStyle = rgba(c, focus ? 0.22 : 0.13);
+      lctx.fillStyle = rgba(c, failed ? 0.08 : focus ? 0.3 : p.status === 'confirmed' ? 0.22 : 0.17);
       if (upper && lower) { lctx.beginPath(); lctx.moveTo(m.x(upper.i1), m.y(upper.p1)); lctx.lineTo(m.x(upper.i2), m.y(upper.p2)); lctx.lineTo(m.x(lower.i2), m.y(lower.p2)); lctx.lineTo(m.x(lower.i1), m.y(lower.p1)); lctx.closePath(); lctx.fill(); }
       else if (pts.length > 1 && neck) { lctx.beginPath(); pts.forEach((q, j) => (j ? lctx.lineTo(m.x(q.i), m.y(q.p)) : lctx.moveTo(m.x(q.i), m.y(q.p)))); lctx.lineTo(m.x(pts[pts.length - 1].i), m.y(neck.p2)); lctx.lineTo(m.x(pts[0].i), m.y(neck.p1)); lctx.closePath(); lctx.fill(); }
       /* 2. the lines, each over a dark halo so they stay readable across candles */
-      const stroke = (dash, width) => { lctx.setLineDash([]); lctx.strokeStyle = 'rgba(0,0,0,.6)'; lctx.lineWidth = width + 2.5; lctx.stroke(); lctx.setLineDash(dash); lctx.strokeStyle = c; lctx.lineWidth = width; lctx.stroke(); lctx.setLineDash([]); };
-      lines.forEach((l) => { lctx.beginPath(); lctx.moveTo(m.x(l.i1), m.y(l.p1)); lctx.lineTo(m.x(l.i2), m.y(l.p2)); stroke(l.role === 'target' || l.role === 'projection' ? [3, 5] : l.role === 'neckline' ? [8, 5] : [], l.role === 'neckline' ? 2.2 : (focus ? 2.8 : 2.1)); });
+      const stroke = (dash, width) => { lctx.setLineDash([]); lctx.strokeStyle = 'rgba(0,0,0,.65)'; lctx.lineWidth = width + 3; lctx.stroke(); lctx.setLineDash(dash); lctx.strokeStyle = c; lctx.lineWidth = width; if (p.status === 'confirmed') { lctx.shadowColor = c; lctx.shadowBlur = 9; } lctx.stroke(); lctx.shadowBlur = 0; lctx.setLineDash([]); };
+      lines.forEach((l) => { lctx.beginPath(); lctx.moveTo(m.x(l.i1), m.y(l.p1)); lctx.lineTo(m.x(l.i2), m.y(l.p2)); stroke(l.role === 'target' || l.role === 'projection' ? [3, 5] : l.role === 'neckline' ? [8, 5] : [], l.role === 'neckline' ? 2.8 : (focus ? 3.4 : 2.7)); });
       if (pts.length > 1 && !(upper && lower)) { lctx.beginPath(); pts.forEach((q, j) => (j ? lctx.lineTo(m.x(q.i), m.y(q.p)) : lctx.moveTo(m.x(q.i), m.y(q.p)))); lctx.globalAlpha *= 0.55; stroke([], 1.6); lctx.globalAlpha = failed ? 0.45 : (focus ? 1 : 0.9); }
       /* 3. the pivots: a ringed dot and, when there is room, the role (Head, Neck 1, Peak 2...) */
       pts.forEach((q) => { const x = m.x(q.i), y = m.y(q.p); lctx.beginPath(); lctx.arc(x, y, focus ? 5.5 : 4.5, 0, 6.3); lctx.fillStyle = c; lctx.fill(); lctx.strokeStyle = 'rgba(0,0,0,.75)'; lctx.lineWidth = 2; lctx.stroke();
@@ -631,21 +634,35 @@
       if (!clean) {
         const arrow = p.dir === 'bull' ? '▲ ' : p.dir === 'bear' ? '▼ ' : '◆ ';
         const full = arrow + human(p.name) + ' · ' + p.status.toUpperCase() + ' ' + Math.round(p.confidence * 100) + '%';
-        const pw = labelPill(lx, ly, focus || m.step >= 4 ? full : arrow + abbr(human(p.name)) + ' ' + Math.round(p.confidence * 100) + '%', c, focus ? 10.5 : 9.5);
+        const pw = labelPill(lx, ly, focus || m.step >= 3 || p.status === 'confirmed' ? full : arrow + abbr(human(p.name)) + ' ' + Math.round(p.confidence * 100) + '%', c, focus ? 11.5 : 10.5);
         pills.push({ id: 'c' + k, x: lx, y: ly, w: pw, type: p.type, name: p.name, dir: p.dir, status: p.status, confidence: p.confidence, color: c });
       }
       lctx.restore();
     });
-    if (F.candles && m.step >= 5 && !clean) {
-      lctx.save(); lctx.font = '800 9px ui-monospace,monospace'; lctx.textAlign = 'center';
-      const seen = {};
-      (r.candles || []).forEach((cp) => {
-        const j = cp.i, x = m.x(j); if (x < PAD.l || x > m.w - PAD.r) return;
-        const bar = m.bars[j]; if (!bar) return;
-        const up = cp.dir === 'bull', c = COL[cp.dir] || COL.neutral, y = up ? m.y(+bar.l) + 13 + (seen[j] || 0) : m.y(+bar.h) - 7 - (seen[j] || 0);
-        seen[j] = (seen[j] || 0) + 12;
-        const text = (up ? '▲' : cp.dir === 'bear' ? '▼' : '◆') + abbr(human(cp.name)), tw = lctx.measureText(text).width;
-        lctx.fillStyle = 'rgba(7,16,24,.8)'; lctx.fillRect(x - tw / 2 - 3, y - 8.5, tw + 6, 11); lctx.fillStyle = c; lctx.fillText(text, x, y);
+    if (F.candles && m.step >= 3 && !clean) {
+      /* candlestick formations: the strongest in view get a bracket around their bars and a label; the rest keep a small arrow, so a busy chart still reads */
+      const inView = (r.candles || []).filter((cp) => { const x = m.x(cp.i); return x >= PAD.l && x <= m.w - PAD.r && m.bars[cp.i]; });
+      const ranked = inView.filter((cp) => cp.dir !== 'neutral').sort((a, b) => b.strength - a.strength || b.i - a.i), strong = new Set(ranked.slice(0, m.step >= 6 ? 16 : 8).map((cp) => cp.i + ':' + cp.name));
+      const seen = {}, lastPill = {}; lctx.save();
+      inView.forEach((cp) => {
+        const j = cp.i, x = m.x(j), bar = m.bars[j], up = cp.dir === 'bull', c = COL[cp.dir] || COL.neutral, isStrong = strong.has(j + ':' + cp.name);
+        if (isStrong && cp.bars) {
+          const b0 = Math.min(cp.bars[0], cp.bars[1]), b1 = Math.max(cp.bars[0], cp.bars[1]); let hi = -Infinity, lo = Infinity;
+          for (let q = b0; q <= b1; q++) { const bb = m.bars[q]; if (bb) { hi = Math.max(hi, +bb.h); lo = Math.min(lo, +bb.l); } }
+          if (fin(hi) && fin(lo)) {
+            const x0 = m.x(b0) - Math.max(3, m.step * 0.55), x1 = m.x(b1) + Math.max(3, m.step * 0.55), y0 = m.y(hi) - 4, y1 = m.y(lo) + 4;
+            lctx.fillStyle = rgba(c, 0.1); lctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+            lctx.setLineDash([]); lctx.strokeStyle = 'rgba(0,0,0,.6)'; lctx.lineWidth = 3.2; lctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+            lctx.strokeStyle = c; lctx.lineWidth = 1.7; if (cp.strength >= 0.7) { lctx.shadowColor = c; lctx.shadowBlur = 7; } lctx.strokeRect(x0, y0, x1 - x0, y1 - y0); lctx.shadowBlur = 0;
+          }
+        }
+        const y = up ? m.y(+bar.l) + 15 + (seen[j] || 0) : m.y(+bar.h) - 9 - (seen[j] || 0);
+        seen[j] = (seen[j] || 0) + (isStrong ? 17 : 12);
+        const text = (up ? '▲ ' : cp.dir === 'bear' ? '▼ ' : '◆ ') + (isStrong && m.step >= 4 ? human(cp.name) : abbr(human(cp.name)));
+        lastPill[up ? 'u' : 'd'] = lastPill[up ? 'u' : 'd'] || -1e9;
+        if (isStrong && x - lastPill[up ? 'u' : 'd'] >= 90) { lctx.font = '800 9.5px system-ui,sans-serif'; const tw0 = lctx.measureText(text).width + 10; labelPill(clamp(x - tw0 / 2, PAD.l + 2, m.w - PAD.r - tw0 - 2), y, text, c, 9.5); lastPill[up ? 'u' : 'd'] = x; }
+        else if (isStrong) { lctx.font = '800 9px ui-monospace,monospace'; lctx.textAlign = 'center'; const tw = lctx.measureText(abbr(human(cp.name))).width; lctx.fillStyle = 'rgba(7,16,24,.8)'; lctx.fillRect(x - tw / 2 - 3, y - 8.5, tw + 6, 11); lctx.fillStyle = c; lctx.fillText((up ? '▲ ' : '▼ ') + abbr(human(cp.name)), x, y); }
+        else { lctx.font = '800 9px ui-monospace,monospace'; lctx.textAlign = 'center'; const tw = lctx.measureText(text).width; lctx.fillStyle = 'rgba(7,16,24,.8)'; lctx.fillRect(x - tw / 2 - 3, y - 8.5, tw + 6, 11); lctx.fillStyle = c; lctx.fillText(text, x, y); }
       });
       lctx.restore();
     }

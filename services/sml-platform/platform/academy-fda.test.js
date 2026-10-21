@@ -113,3 +113,10 @@ test('catalysts panel: live token, 401 renewal, scheduled and any-day sections',
   const src = require('fs').readFileSync(require('path').join(__dirname, 'academy-catalysts-panel.js'), 'utf8');
   assert.match(src, /window\.smlAcademySessionToken/); assert.match(src, /smlAcademyReauth/); assert.match(src, /SCHEDULED DECISIONS/); assert.match(src, /COULD LAND ANY DAY/);
 });
+
+test('catalysts calendar: the default tab is a three-week calendar of earnings and FDA dates with the any-day names under it', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'academy-catalysts-panel.js'), 'utf8');
+  assert.match(src, /tab: 'cal'/); assert.match(src, /function calHtml/); assert.match(src, /\['cal', 'CALENDAR'\]/); assert.match(src, /earnings-playbook\?days=21&limit=25/);
+  assert.match(src, /FDA · COULD LAND ANY DAY/); assert.match(src, /a\.chart\{min-height:0!important/); assert.match(src, /data-totab/);
+  assert.match(src, /if \(!ROUTES\[tab\] \|\| !S\.session/);
+});

@@ -189,7 +189,7 @@
         const r = await api('', 'POST', { symbol: g('symbol'), side: g('side'), entry: g('entry'), targets: g('targets'), stop: g('stop'), channel: g('channel'), note: g('note') });
         b.disabled = false;
         if (!r.ok) { msg.textContent = { invalid_symbol: 'Check the ticker.', invalid_entry: 'Entry must be a price.', targets_required: 'Add at least one target.', targets_wrong_side: 'Targets must be beyond the entry for that side.', stop_wrong_side: 'The stop must be on the losing side of the entry.', academy_access_required: 'Alert Charts are for Academy members.', rate_limited: 'Slow down a little.' }[r.error] || 'Could not post (' + (r.error || 'error') + ').'; return; }
-        slot.innerHTML = ''; await refresh(host); toast('Alert posted to your chart' + (st.opts.feed ? '; it shows in the feed and on your profile.' : '.')); return;
+        slot.innerHTML = ''; try { if (window.smlAlertLevels) setTimeout(() => window.smlAlertLevels.refresh(), 1200); } catch (_) { /* ignore */ } await refresh(host); toast('Alert posted to your chart' + (st.opts.feed ? '; it shows in the feed and on your profile.' : '.')); return;
       }
       if (act === 'upd') {
         const row = b.closest('.ac-row'), a = (d.alerts || []).find((x) => x.id === b.dataset.id); if (!row || !a) return;

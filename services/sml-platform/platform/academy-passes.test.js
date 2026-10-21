@@ -116,3 +116,16 @@ test('Click-to-Alert passes are their own product: separate prices, separate acc
   const st = await alerts.status(U); assert.equal(st.product, 'click_alert'); assert.equal(st.subscribeUrl, 'https://x.test/sub');
   assert.ok([...wallet.charges.keys()].some((k) => k.startsWith('ca-lb:')) && [...wallet.charges.keys()].some((k) => k.startsWith('acad-lb:')));
 });
+
+test('access: the free trial admits a member who is NOT in the Academy server even when the Loop Bucks shop (prices, wallet) is not configured', async () => {
+  const store = createPassStore({});
+  const svc = createPassService({ store, wallet: null, prices: null });
+  assert.equal(svc.configured, false, 'no shop');
+  const outside = { ok: false, status: 403, code: 'academy_role_required', inGuild: false, userId: U };
+  const access = withPasses({ verify: async () => outside }, svc);
+  assert.deepEqual(await access.verify('Bearer x'), outside, 'no pass yet');
+  const t = Date.now();
+  await store.add({ discordId: U, plan: 'trial', amount: 0, ref: 'acad-trial:' + U, startsAt: new Date(t).toISOString(), expiresAt: new Date(t + 15 * 86_400_000).toISOString(), product: 'academy' });
+  assert.deepEqual(await access.verify('Bearer x'), { ok: true, userId: U, tier: 'academy' }, 'the trial pass is enough');
+  assert.equal(await svc.hasActive(U), true);
+});
