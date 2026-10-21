@@ -62,3 +62,10 @@ test('the market modules are wide short strips on desktop, with MORE for the ful
   assert.match(src, /sml-dir-more/); assert.match(src, /#academy-direction:not\(\.sml-open\) \.smd-v2/); assert.match(src, /\.auv-foot\{display:none\}/); assert.match(src, /\.avx-terms,html body \.avx-scale,html body \.avx-foot\{display:none\}/);
   assert.doesNotMatch(src, /academy-below > \.academy-chat/);
 });
+
+test('desktop: the tool rail is four tabs on the chart-tools row and the title bar stays on one line', () => {
+  const read = (f) => require('fs').readFileSync(require('path').join(__dirname, f), 'utf8');
+  const nav = read('academy-toolbar-nav.js'), dc = read('academy-desktop-compact.js');
+  assert.match(nav, /sml-tab-on/); assert.match(nav, /\.tg:not\(\.sml-tab-on\)>\.row\{display:none\}/); assert.match(nav, /showGroupOf\(btn\)/);
+  assert.match(dc, /relocate\(rail, tools, tools\.firstChild\)/); assert.match(dc, /main \.bar>strong/);
+});

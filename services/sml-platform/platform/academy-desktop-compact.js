@@ -15,6 +15,9 @@
   const A = 'html body.sml-dc';
   css.textContent = [
     A + ' main .toolbar #company{display:none!important}',
+    A + ' .academy-chart-tools{flex-wrap:wrap!important;min-width:0}' + A + ' main .chart{min-width:0}' + A + ' .academy-chart-tools button,' + A + ' .academy-chart-tools select{white-space:nowrap;padding:3px 8px!important;font-size:.66rem!important;line-height:1.25}' + A + ' .academy-chart-tools{padding-top:3px!important;padding-bottom:3px!important;gap:4px!important}' + A + ' .academy-chart-tools>label>span,' + A + ' .academy-chart-tools .academy-chart-type-label{display:none}',
+    /* the title bar stays one line: no wrapped title, no subtitle, tighter buttons (they wrapped it into a four-line block) */
+    A + ' main .bar{flex-wrap:wrap;gap:4px 8px;padding-top:4px;padding-bottom:4px}' + A + ' main .bar>strong{white-space:nowrap;flex:none}' + A + ' main .bar>span{display:none!important}' + A + ' main .bar button,' + A + ' main .bar a{white-space:nowrap;flex:none;padding:4px 9px!important;font-size:.68rem!important;line-height:1.2}',
     A + ' .sml-dc-tail{display:flex;align-items:center;gap:4px;margin:0 8px 0 0;flex:none}',
     A + ' .sml-dc-chip{margin-left:auto;flex:none}',
     A + ' .academy-chart-stage>canvas{max-width:100%!important}' + A + ' main .side{min-height:0;overflow-x:hidden}' + A + ' main .side>*{min-width:0;max-width:100%;box-sizing:border-box}',
@@ -62,9 +65,11 @@
     const chip = document.querySelector('.toolbar .data-chip, .data-chip');
     const tools = document.querySelector('.academy-chart-tools');
     if (on) {
+      if (rail && tools && rail.parentElement !== tools) relocate(rail, tools, tools.firstChild);
       if (tail && head && tail.querySelector('#tour-btn')) { tail.classList.add('sml-dc-tail'); relocate(tail, head, head.lastElementChild); }
       if (chip && tools) { chip.classList.add('sml-dc-chip'); relocate(chip, tools, null); }
     } else {
+      if (rail) restore(rail);
       if (tail) { tail.classList.remove('sml-dc-tail'); restore(tail); }
       if (chip) { chip.classList.remove('sml-dc-chip'); restore(chip); }
     }

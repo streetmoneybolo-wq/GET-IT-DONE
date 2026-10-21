@@ -49,6 +49,11 @@
     + 'body.sml-quote-open main .side{display:flex!important;position:fixed;left:0;right:0;bottom:0;height:62dvh;z-index:2147483120;border-top:2px solid #2b5362;border-left:0;border-radius:14px 14px 0 0;box-shadow:0 -14px 40px rgba(0,0,0,.6);overflow:auto!important;padding-top:34px}'
     + 'body.sml-quote-open main .side>.academy-tape{flex:none;max-height:160px}'
     + '#tool-quote-close{display:none;position:fixed;left:0;right:0;bottom:calc(62dvh - 32px);z-index:2147483121;height:32px;border:0;border-radius:14px 14px 0 0;background:#13242d;color:#9ed3e6;font:800 .62rem ui-monospace,monospace;letter-spacing:.08em}body.sml-quote-open #tool-quote-close{display:block}}'
+    /* desktop: the four groups are tabs on one line (the active group's buttons beside them), so the rail is one row, not two or three */
+    + '@media(min-width:721px){#tool-rail{order:-1!important;max-width:100%;flex:0 1 auto!important;flex-wrap:nowrap!important;overflow:visible!important;margin:0!important;padding:0!important;border-top:0!important;align-items:center;gap:4px}'
+    + '#tool-rail .tg{display:contents}#tool-rail .tg>b{order:0;cursor:pointer;padding:4px 9px;margin:0;border:1px solid #1f3a46!important;border-radius:6px;background:#0b151d;color:#7f98a6;font:800 .56rem ui-monospace,monospace;letter-spacing:.1em}'
+    + '#tool-rail .tg>b:hover{color:#dbe6ec}#tool-rail .tg.sml-tab-on>b{background:#16303b;border-color:#2b6a86!important;color:#fff}#tool-rail .tg.has-on>b:after{content:" \\25CF";color:#52e6ad;font-size:.5rem}'
+    + '#tool-rail .tg:not(.sml-tab-on)>.row{display:none}#tool-rail .tg>.row{order:2;padding:0 0 0 2px}#tool-rail .tail{order:3}}'
     /* the guide: every tool, its group and its own one-line explanation */
     + '#tool-guide{position:fixed;z-index:2147483300;top:50px;right:10px;width:min(560px,calc(100vw - 20px));max-height:calc(100dvh - 64px);display:none;flex-direction:column;background:#0b141c;border:1px solid #2b5362;border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.6);color:#dbe6ec;font:500 .7rem/1.4 system-ui,sans-serif;overflow:hidden}#tool-guide.open{display:flex}'
     + '#tool-guide header{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #1b3540;flex:none}#tool-guide header b{font:900 .76rem ui-monospace,monospace;letter-spacing:.06em;color:#9ed3e6}#tool-guide header small{color:#7f98a6}#tool-guide header .x{margin-left:auto;background:none;border:0;color:#7f98a6;font-size:18px;cursor:pointer}'
@@ -67,6 +72,7 @@
     toolbar.appendChild(rail);
     guide = document.createElement('section'); guide.id = 'tool-guide'; guide.setAttribute('aria-label', 'Tool guide'); document.body.appendChild(guide);
     quoteClose = document.createElement('button'); quoteClose.type = 'button'; quoteClose.id = 'tool-quote-close'; quoteClose.textContent = '▾ CLOSE QUOTE'; document.body.appendChild(quoteClose);
+    rail.addEventListener('click', (e) => { const b = e.target.closest ? e.target.closest('.tg>b') : null; if (b) setTab(b.parentElement.dataset.group); });
     quoteBtn = rail.querySelector('#tool-quote-btn');
     const guideBtn = rail.querySelector('#tool-guide-btn');
     guideBtn.addEventListener('click', (e) => { e.stopPropagation(); setGuide(!guide.classList.contains('open')); });
@@ -77,7 +83,7 @@
       if (t.dataset.close) { setGuide(false); return; }
       if (t.dataset.walk) { setGuide(false); if (window.smlTour && window.smlTour.run) window.smlTour.run(t.dataset.walk === 'menu' ? undefined : t.dataset.walk); return; }
       if (t.dataset.tip) { if (window.smlAutoTour && window.smlAutoTour.explain) { if (phone()) setGuide(false); window.smlAutoTour.explain(t.dataset.tip); } return; }
-      const btn = document.getElementById(t.dataset.tool); if (btn) { btn.click(); setTimeout(paintGuide, 150); if (phone()) setGuide(false); }
+      const btn = document.getElementById(t.dataset.tool); if (btn) { showGroupOf(btn); btn.click(); setTimeout(paintGuide, 150); if (phone()) setGuide(false); }
     });
     document.addEventListener('click', (e) => { if (guide.classList.contains('open') && !guide.contains(e.target) && e.target !== guideBtn) setGuide(false); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (guide.classList.contains('open')) setGuide(false); else if (document.body.classList.contains('sml-quote-open')) setQuote(false); } });
@@ -90,6 +96,21 @@
     /* the ● marks in the rail and the guide follow each tool's own on state */
     new MutationObserver(() => { clearTimeout(paint.t); paint.t = setTimeout(paint, 60); }).observe(rail, { attributes: true, subtree: true, attributeFilter: ['class', 'aria-pressed'] });
   }
+  /* the active tab: remembered, else the group that has a tool on, else CHART */
+  function setTab(key) {
+    if (!rail) return;
+    const tgs = [...rail.querySelectorAll('.tg')]; if (!tgs.length) return;
+    const pick = tgs.find((t) => t.dataset.group === key) || tgs[0];
+    tgs.forEach((t) => t.classList.toggle('sml-tab-on', t === pick));
+    try { localStorage.setItem('sml-rail-tab', pick.dataset.group); } catch (_) { /* ignore */ }
+  }
+  function initTab() {
+    if (!rail || rail.querySelector('.tg.sml-tab-on')) return;
+    let k = ''; try { k = localStorage.getItem('sml-rail-tab') || ''; } catch (_) { /* default */ }
+    const on = [...rail.querySelectorAll('.tg.has-on')][0];
+    setTab(on ? on.dataset.group : k || 'chart');
+  }
+  const showGroupOf = (b) => { const g = b && b.closest && b.closest('.tg'); if (g && !g.classList.contains('sml-tab-on')) setTab(g.dataset.group); };
   const isOn = (b) => b.classList.contains('on') || b.classList.contains('active') || b.getAttribute('aria-pressed') === 'true';
   function paint() {
     if (!rail) return;
@@ -130,6 +151,7 @@
       const have = [...row.children];
       if (want.length !== have.length || want.some((b, i) => have[i] !== b)) for (const b of want) row.appendChild(b);
     }
+    initTab();
     paint();
   }
 
@@ -144,5 +166,5 @@
     const sweep = setInterval(() => { collect(); sweeps += 1; if (sweeps > 40) clearInterval(sweep); }, 750);
   }
   boot(0);
-  window.smlToolRail = { groups: GROUPS, collect, guide: setGuide, quote: setQuote };
+  window.smlToolRail = { groups: GROUPS, collect, tab: setTab, showGroupOf, guide: setGuide, quote: setQuote };
 })();
