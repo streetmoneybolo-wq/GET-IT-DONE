@@ -210,7 +210,7 @@ function housePiece(sheet, seed = 0) {
     nearlow: lo20 ? [`${S} Is Sitting on ${lo20}. What Happens If It Gives?`, `${S} Keeps Testing ${lo20}. Is Someone Defending It, or Is It About to Break?`, `The Floor Under ${S} Is ${lo20}. Here's Why It Matters More Than the Price`] : [],
     surge: [`${S} Is Moving on ${num(m.relVol) != null ? Number(m.relVol).toFixed(1) + 'x' : 'Heavy'} Volume. What Is the Market Pricing In?`, `Something Is Happening in ${S}, and the Tape Noticed First. Here's What It Shows`, ...(chgTxt ? [`${S} Just Moved ${chgTxt}. Here's Why I Don't Trust the Easy Explanation`] : [])],
     compress: [`${S} Has Gone Quiet. Is the Market Waiting for ${trigPx}?`, `${S} Is Coiling Tight and Tight Ranges Don't Last. Is ${pt} Where This One Breaks?`, `The Range in ${S} Keeps Shrinking. Which Way Does It Break?`],
-    range: [`${S} Looks Ordinary. Here's the Detail That Makes It Worth a Second Look`, `${S}: The Quiet Chart That Might Be Hiding a Setup`, `${S}: What the Tape Is Saying Before the Next Move`]
+    range: [`${S} Looks Ordinary. Here's the Detail That Makes It Worth a Second Look`, `${S}: Is the Quiet Chart Hiding a Setup Nobody Is Talking About?`, `${S}: What the Tape Is Saying Before the Next Move`]
   };
   const byAngle = {
     gamma: [`Dealers Are Short Gamma in ${S}. Is ${pt} the Number They Hedge Toward?`, `The Options Book in ${S} Is Doing Something the Chart Isn't Showing`, `${S} Has an Options Problem, and ${pt} Is Where It Shows`],
