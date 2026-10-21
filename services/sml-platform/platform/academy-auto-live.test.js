@@ -58,3 +58,14 @@ test('the desk speaks in the owner voice with the browser voice as the fallback,
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'); assert.match(server, /autoLiveUi \? '<script>'/);
   assert.match(fs.readFileSync(path.join(__dirname, 'academy-desktop-compact.js'), 'utf8'), /'auto-live-btn'/);
 });
+
+test('the desk says only short tags out loud: a ticker and a phrase from a small fixed bank, never the full read', () => {
+  const all = [...L.OPENERS.long, ...L.OPENERS.short, ...Object.values(L.TARGET_SAY)];
+  assert.ok(all.every((p) => p.length <= 28), 'every phrase is a few words');
+  assert.ok(L.OPENERS.long.includes('Check this stock out.') && L.OPENERS.long.includes('This stock is running.'));
+  const seen = new Set(); for (let i = 0; i < 40; i++) seen.add(L.opener('long')); assert.ok(seen.size > 1 && [...seen].every((p) => L.OPENERS.long.includes(p)));
+  let prev = null; for (let i = 0; i < 40; i++) { const o = L.opener('long'); assert.notEqual(o, prev, 'never the same opener twice in a row'); prev = o; }
+  assert.ok(L.OPENERS.short.includes(L.opener('short')));
+  const src = fs.readFileSync(path.join(__dirname, 'academy-auto-live.js'), 'utf8');
+  assert.doesNotMatch(src, /await speak\(s\.say\);/, 'no step reads its full text aloud');
+});

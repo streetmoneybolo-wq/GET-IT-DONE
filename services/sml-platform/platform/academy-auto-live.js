@@ -4,13 +4,18 @@
    makes the same read with the Academy's own tools. A pointer moves to what it is talking about (a price line on the chart, a button, a module).
    When a call reaches a target or is stopped the desk says so, then moves on to the next ticker while the other calls keep being watched.
    Between trades it reads the market direction and VIX, and the next FDA and earnings dates.
-   The voice is the owner's own (ElevenLabs, each line stored once), with the browser's free speech as the fallback, and captions; it can be paused, skipped, muted or stopped.
+   The voice is the owner's own (ElevenLabs), only short tags from a small fixed phrase bank plus the ticker, with the browser's free speech as the fallback, and full captions; it can be paused, skipped, muted or stopped.
    HONEST BY DESIGN: every call it makes goes on the scoreboard, the stopped ones too; it is an educational simulation, places no orders, and is
    not advice. Owner only: the button is built only for the owner and the desk stops itself if the server says owner_only. */
 (function (root) {
   'use strict';
   const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
   const fmt = (p) => (Number(p) >= 10 ? Number(p).toFixed(2) : Number(p) >= 1 ? Number(p).toFixed(3) : Number(p).toFixed(4));
+  /* the short phrases the desk says out loud (the full read stays in the captions); few and fixed, so each is voiced once and reused */
+  const OPENERS = { long: ['Check this stock out.', 'This stock is running.', 'Look at this one.', 'This one is moving.', 'Keep an eye on this one.', 'Here is one to watch.'], short: ['Watch this one drop.', 'This one is heading down.', 'Weakness here.', 'This one is falling.'] };
+  const TARGET_SAY = { 1: 'Target one hit.', 2: 'Target two hit.', 3: 'Target three hit.' };
+  let lastOpen = -1;
+  const opener = (side) => { const pool = OPENERS[side === 'short' ? 'short' : 'long']; let i = Math.floor(Math.random() * pool.length); if (pool.length > 1 && i === lastOpen) i = (i + 1) % pool.length; lastOpen = i; return pool[i]; };
   const COOL_MS = 45 * 60_000, CALL_LIFE_MS = 6 * 3_600_000, SPOKEN = /[^\w\s.,%$+\-:;!?'/()]/g;
 
   /* ---- pure logic (tested) ---- */
@@ -104,7 +109,7 @@
   const speakable = (s) => String(s || '').replace(/·/g, ',').replace(SPOKEN, ' ').replace(/\b([A-Z]{2,5})\b/g, (m) => (m === 'FDA' || m === 'VIX' || m === 'MEM' || m === 'ALGO' ? m : m.split('').join(' '))).replace(/\s+/g, ' ').trim();
   const readMs = (s) => Math.max(1800, String(s || '').length * 62);
 
-  const API = { buildQueue, judge, scoreboard, setupScript, marketScript, catalystScript, speakable, readMs, COOL_MS, CALL_LIFE_MS };
+  const API = { OPENERS, TARGET_SAY, opener, buildQueue, judge, scoreboard, setupScript, marketScript, catalystScript, speakable, readMs, COOL_MS, CALL_LIFE_MS };
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; return; }
   if (!root || !root.document) return;
 
@@ -206,10 +211,14 @@
       return p;
     }
     const stopMine = () => { const a = S.audio; S.audio = null; if (a) { try { a.pause(); } catch (_) { /* fine */ } if (a._fin) a._fin(); } };
-    function say(text, next) {
+    /* The captions carry the whole read; the voice only says a short tag in the owner's voice, from a small bank of phrases (each stored once, so a
+       phrase costs almost nothing after its first use) plus the ticker on its own. A step with nothing to say is read in silence. */
+    async function say(text, spoken) {
       S.cap = text; paintCap();
-      if (!S.muted && mineOn()) { const mine = clipFor(text); if (next) void clipFor(next); return sayMine(text, mine); }
-      return sayBrowser(text);
+      const parts = (Array.isArray(spoken) ? spoken : spoken ? [spoken] : []).filter(Boolean);
+      if (!parts.length || S.muted) { await hold(Math.min(readMs(text) * 0.45, 5000)); return; }
+      if (mineOn()) parts.forEach((p) => void clipFor(p));
+      for (const p of parts) { if (!S.on || S.skip) break; await (mineOn() ? sayMine(p, clipFor(p)) : sayBrowser(p)); }
     }
     async function sayMine(text, minePromise) {
       const url = await minePromise;
@@ -237,7 +246,7 @@
     }
     /* wait while paused; return early when the viewer skips */
     async function hold(ms) { const end = Date.now() + ms; while (S.on && Date.now() < end && !S.skip) { await wait(S.paused ? 400 : 250); if (S.paused) { const r = end - Date.now(); if (r < 300) break; } } }
-    async function speak(text, next) { const run = S.run; await say(text, next); while (S.on && S.paused && run === S.run) await wait(300); }
+    async function speak(text, spoken) { const run = S.run; await say(text, spoken); while (S.on && S.paused && run === S.run) await wait(300); }
 
     /* ---- the panel ---- */
     const panel = document.createElement('aside'); panel.id = 'auto-live-panel'; panel.setAttribute('aria-label', 'Auto live desk'); document.body.appendChild(panel);
@@ -300,10 +309,10 @@
       while (S.on && alerts.length) {
         const { call, e } = alerts.shift(); S.phase = 'update'; S.focus = call; paint();
         await showSymbol(call.sym);
-        if (e.type === 'target') { pointAt({ kind: 'price', price: e.price, label: 'TARGET ' + e.n + ' HIT ' + fmt(e.price) }); await speak(call.sym + ' just hit target ' + e.n + ' at ' + fmt(e.price) + '. ' + (e.n === 1 ? 'That one counts as a win on the board. A common way to handle it is to take some off and move the stop to your entry.' : 'Still running, so trail the stop under the last target.')); }
-        else if (e.type === 'done') await speak(call.sym + ' finished the whole ladder. That is the full idea played out.');
-        else if (e.type === 'stop') { pointAt({ kind: 'price', price: e.price, label: 'STOPPED ' + fmt(e.price) }); await speak(call.sym + ' hit the stop at ' + fmt(e.price) + (e.afterTarget ? ', after already paying at target ' + call.hit + '.' : '. That one is a loss and it stays on the scoreboard. This is why we always know the stop before we enter.')); }
-        else if (e.type === 'expired') await speak(call.sym + ' never resolved today, so the desk closes it flat. Time is a cost too.');
+        if (e.type === 'target') { pointAt({ kind: 'price', price: e.price, label: 'TARGET ' + e.n + ' HIT ' + fmt(e.price) }); await speak(call.sym + ' just hit target ' + e.n + ' at ' + fmt(e.price) + '. ' + (e.n === 1 ? 'That one counts as a win on the board. A common way to handle it is to take some off and move the stop to your entry.' : 'Still running, so trail the stop under the last target.'), [call.sym, TARGET_SAY[e.n] || 'Target hit.']); }
+        else if (e.type === 'done') await speak(call.sym + ' finished the whole ladder. That is the full idea played out.', [call.sym, 'Full ladder.']);
+        else if (e.type === 'stop') { pointAt({ kind: 'price', price: e.price, label: 'STOPPED ' + fmt(e.price) }); await speak(call.sym + ' hit the stop at ' + fmt(e.price) + (e.afterTarget ? ', after already paying at target ' + call.hit + '.' : '. That one is a loss and it stays on the scoreboard. This is why we always know the stop before we enter.'), [call.sym, 'Stopped out.']); }
+        else if (e.type === 'expired') await speak(call.sym + ' never resolved today, so the desk closes it flat. Time is a cost too.', [call.sym, 'Closed flat.']);
         pointAt(null); save(); paint(); await hold(1500);
       }
     }
@@ -312,12 +321,12 @@
     async function marketSegment() {
       S.phase = 'market'; paint(); await showSymbol('SPY');
       const [dir, vix] = await Promise.all([api('/academy-activity/direction?mode=day'), api('/academy-activity/vix')]);
-      const ms_ = marketScript(dir, vix); for (let i = 0; i < ms_.length; i++) { const s = ms_[i]; if (!S.on || S.skip) break; pointAt(s.point); await speak(s.say, ms_[i + 1] && ms_[i + 1].say); await hold(500); }
+      const ms_ = marketScript(dir, vix); for (let i = 0; i < ms_.length; i++) { const s = ms_[i]; if (!S.on || S.skip) break; pointAt(s.point); await speak(s.say, i === 0 ? 'Market check.' : null); await hold(500); }
       pointAt(null); S.skip = false;
       const [fda, earn] = await Promise.all([api('/academy-activity/fda?days=21&limit=10'), api('/academy-activity/earnings-playbook?days=5&limit=12')]);
       const cs = catalystScript(fda && fda.events, (earn && (earn.events || earn.rows)) || []);
       if (cs.length) S.phase = 'catalysts';
-      for (let i = 0; i < cs.length; i++) { const s = cs[i]; if (!S.on || S.skip) break; paint(); pointAt(s.point); await speak(s.say, cs[i + 1] && cs[i + 1].say); await hold(500); }
+      for (let i = 0; i < cs.length; i++) { const s = cs[i]; if (!S.on || S.skip) break; paint(); pointAt(s.point); await speak(s.say, i === 0 ? 'Catalysts ahead.' : null); await hold(500); }
       pointAt(null); S.skip = false;
     }
     async function tradeSegment(cand) {
@@ -330,14 +339,14 @@
       S.calls.push(call); S.focus = call; S.trades++; S.phase = 'trade'; save(); paint(); draw();
       const dirRead = null;
       const steps = setupScript(cand, t, dirRead);
-      for (let i = 0; i < steps.length; i++) { const s = steps[i]; if (!S.on || S.skip) break; pointAt(s.point); draw(); await speak(s.say, steps[i + 1] ? steps[i + 1].say : "Now we watch it. If it moves, I will come back to it; meanwhile let's find the next one."); await hold(450); }
+      for (let i = 0; i < steps.length; i++) { const s = steps[i]; if (!S.on || S.skip) break; pointAt(s.point); draw(); await speak(s.say, i === 0 ? [cand.sym, opener(call.side)] : null); await hold(450); }
       pointAt(null); S.skip = false;
-      S.phase = 'watching'; paint(); await speak('Now we watch it. If it moves, I will come back to it; meanwhile let\'s find the next one.');
+      S.phase = 'watching'; paint(); await speak('Now we watch it. If it moves, I will come back to it; meanwhile let\'s find the next one.', 'Now we watch.');
       await hold(3000);
     }
     async function loop() {
       const run = ++S.run; let since = 0;
-      await speak('Auto Live desk is on. I will scan the whole Academy for the best setups, show you how to read each one, and keep score honestly.');
+      await speak('Auto Live desk is on. I will scan the whole Academy for the best setups, show you how to read each one, and keep score honestly.', 'Desk is live.');
       while (S.on && run === S.run) {
         try {
           await watchTick(); await drainAlerts();
