@@ -1991,6 +1991,11 @@ test('mobile scanner stays put: phone columns are built directly, live refreshes
     assert.match(html, /const cols=phoneCols\(columns\[preset\]\|\|columns\.full\)/);
     assert.match(html, /function softRender\(\)\{const quiet=Date\.now\(\)-\(window\.__smlScanTouch\|\|0\)>5000&&Date\.now\(\)-lastSort>20000/, 'a refresh re-sorts only after 5 s without touch and 20 s since the last sort');
     assert.match(html, /rows=payload\.rows;overlayLive\(\);softRender\(\)/, 'the 4 s refresh no longer rebuilds the table');
+    /* With the content gate on, the table is empty because rows were withheld, not because nothing is moving:
+       the empty row and the count both have to say so, and the withheld rows stay in the total. */
+    assert.match(html, /The live scanner is part of Academy access\./, 'a gated empty scanner says it is gated');
+    assert.match(html, /count\.textContent=\(window\.__smlScanLock&&window\.__smlScanLock\.locked\)\?'Showing '\+all\.length\+' of '\+\(all\.length\+\(window\.__smlScanLock\.count\|\|0\)\)\+' · Academy access required'/,
+      'a gated count reads "Showing 0 of 100", never "0 to 0 of 0 live results"');
     assert.doesNotMatch(html, /main\{height:calc\(100dvh - 86px\)/, 'the page frame uses the small viewport height so it does not resize while the toolbar slides');
     assert.match(html, /height:calc\(100svh - 86px\)/);
     assert.match(html, /table-layout:fixed;font-size:\.62rem;font-variant-numeric:tabular-nums/, 'phone table has fixed columns and equal-width digits');
