@@ -31,6 +31,10 @@
     + '#ca-panel select,#ca-panel button.act{width:100%;margin:3px 0;padding:7px 8px;border-radius:8px;border:1px solid #2a4a58;background:#0d1a24;color:#e6eef2;font:700 .68rem system-ui,sans-serif}#ca-panel button.act{background:#00c47d;border-color:#7dffc4;color:#032318;font-weight:900;cursor:pointer}#ca-panel button.act:disabled{opacity:.5;cursor:not-allowed}'
     + '#ca-panel label.chk{display:flex;gap:6px;align-items:center;margin:4px 0;color:#b9c8d1}#ca-panel .msg{margin:6px 0;padding:7px 9px;border-radius:8px;font-weight:700}#ca-panel .msg.err{background:#2a1118;border:1px solid #6b2234;color:#ffb3c0}#ca-panel .msg.ok{background:#0d2a20;border:1px solid #1f8a5f;color:#a8ffd8}#ca-panel .msg.info{background:#101c28;border:1px solid #2a4a58;color:#c1d5e0}'
     + '#ca-panel .scn{margin:8px 0}#ca-panel .scn img{display:block;width:100%;border-radius:8px;border:1px solid #1b2a35;margin:0 0 6px;background:#070d14}#ca-panel .scn h6{margin:0 0 4px;font:800 .6rem ui-monospace,monospace;letter-spacing:.06em;color:#7dffc4}'
+    + '#ca-panel .pre{margin:8px 0;padding:8px 10px;border-radius:9px;border:1px solid #2a2450;background:#0e0a1c}#ca-panel .pre.go{border-color:#17603f;background:#0a1a14}#ca-panel .pre.caution{border-color:#6b4a22;background:#1a130a}#ca-panel .pre.wait{border-color:#6b2234;background:#1a0a10}'
+    + '#ca-panel .pre h6{margin:0 0 4px;font:900 .56rem ui-monospace,monospace;letter-spacing:.08em;color:#9d8be0}#ca-panel .pre b.v{display:block;font:900 .74rem system-ui;color:#fff;margin:0 0 4px}#ca-panel .pre.go b.v{color:#7ef0bd}#ca-panel .pre.caution b.v{color:#ffcf8a}#ca-panel .pre.wait b.v{color:#ff8fa3}'
+    + '#ca-panel .pre ul{margin:4px 0 0;padding:0;list-style:none}#ca-panel .pre li{margin:3px 0;padding-left:16px;position:relative;font:600 .62rem/1.4 system-ui;color:#d8e6ee}#ca-panel .pre li:before{content:"";position:absolute;left:3px;top:.45em;width:7px;height:7px;border-radius:50%;background:#6f8794}#ca-panel .pre li.ok:before{background:#35e6a0}#ca-panel .pre li.warn:before{background:#ffb454}#ca-panel .pre li.stop:before{background:#ff5470}#ca-panel .pre li.tip:before{background:#6fb8ff}'
+    + '#ca-panel .pre .sug{margin-top:6px;padding:6px 8px;border-radius:7px;background:#12102a;border:1px solid #2a2450;color:#cfe3ec;font:700 .6rem/1.5 ui-monospace,monospace}#ca-panel .pre .sug button{margin-left:6px;padding:3px 8px;border:1px solid #7a5cff;border-radius:6px;background:#17112a;color:#cdb6ff;font:800 .56rem ui-monospace,monospace;cursor:pointer}#ca-panel .pre small{display:block;margin-top:5px;color:#6f8794;font-size:.54rem}'
     + '#ca-panel .prevhead{margin:10px 0 4px;color:#7f95a1;font:800 .56rem ui-monospace,monospace;letter-spacing:.08em}#ca-panel .dprev{background:#313338;border-radius:8px;padding:10px 12px;color:#dbdee1;font:400 .7rem/1.4 system-ui,sans-serif}#ca-panel .dwho{display:flex;align-items:center;gap:6px;margin-bottom:4px}#ca-panel .dav{width:22px;height:22px;border-radius:50%;background:#5865f2;color:#fff;font:800 .62rem/22px system-ui;text-align:center}#ca-panel .dwho b{color:#fff;font-size:.72rem}#ca-panel .dwho i{font:800 .5rem system-ui;font-style:normal;background:#5865f2;color:#fff;border-radius:3px;padding:1px 4px}#ca-panel .dwho time{color:#949ba4;font-size:.56rem}#ca-panel .dbody{white-space:pre-wrap;word-break:break-word}#ca-panel .dbody .mn{background:rgba(88,101,242,.3);color:#c9cdfb;border-radius:3px;padding:0 2px}#ca-panel .dpics{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}#ca-panel .dpics figure{margin:0}#ca-panel .dpics img{width:100%;border-radius:6px;border:1px solid #1e1f22;display:block}#ca-panel .dpics figcaption{color:#00a8fc;font-size:.52rem;margin-top:2px}#ca-panel .prevto{margin:6px 0;color:#b9c8d1;font-size:.64rem}#ca-panel small{display:block;margin-top:6px;color:#6f8794;font-weight:500;font-size:.56rem}#ca-panel .seg{display:flex;gap:6px;margin:6px 0}#ca-panel .seg button{flex:1;padding:9px 6px;border:1px solid #2a4a58;border-radius:9px;background:#0d1a24;color:#dbe6ec;font:800 .7rem system-ui,sans-serif;cursor:pointer}#ca-panel .seg button.on{background:#0d2a20;border-color:#7dffc4;color:#7dffc4}#ca-panel .seg button.put.on{background:#2a1118;border-color:#ff6b86;color:#ffb3c0}#ca-panel .pick{margin:6px 0 2px;padding:9px 10px;border-radius:9px;background:#0a1a24;border:1px solid #1e3a4a}#ca-panel .pick b{display:block;margin-bottom:4px;color:#eaf3f7;font:800 .7rem system-ui}#ca-panel .pick h6{margin:8px 0 2px;color:#7f95a1;font:800 .56rem ui-monospace,monospace;letter-spacing:.08em}#ca-panel .cat{margin:8px 0;padding:9px 10px;border-radius:9px;border:1px solid #2a4a58;background:#0b1620}#ca-panel .cat.supports{border-color:#1f8a5f;background:#0d2a20}#ca-panel .cat.caution{border-color:#6a4a1a;background:#211609}#ca-panel .cat.against{border-color:#6b2234;background:#2a1118}#ca-panel .cat h6{margin:0 0 4px;font:800 .58rem ui-monospace,monospace;letter-spacing:.08em;color:#7f95a1}#ca-panel .cat b.v{display:block;font:800 .74rem system-ui;color:#eaf3f7;margin-bottom:4px}#ca-panel .cat .chip{display:inline-block;padding:1px 6px;border-radius:999px;font:800 .54rem ui-monospace,monospace;letter-spacing:.06em;margin-right:4px}#ca-panel .cat .chip.up{background:#12362b;color:#7dffc4}#ca-panel .cat .chip.down{background:#3a1420;color:#ffb3c0}#ca-panel .cat .chip.flat{background:#1b2a35;color:#b9c8d1}#ca-panel .cat li a{color:#9fd3ff;text-decoration:none}@media(max-width:700px){#ca-panel{left:8px;right:8px;bottom:8px;width:auto;max-height:78vh}}';
   document.head.appendChild(css);
 
@@ -212,6 +216,20 @@
     h += '<button type="button" class="act ghost" data-ca="kind" data-kind="stock">Make it a stock alert instead</button></div>';
     return h;
   }
+  /* the pre-alert check: advice before the alert goes out; it never blocks the send */
+  function prealertHtml() {
+    const c = S.pre; if (!c || !c.ok) return '';
+    const dol = (v) => '$' + price(v);
+    let h = '<div class="pre ' + esc(c.verdict) + '"><h6>PRE-ALERT CHECK · ' + esc(c.score) + ' / 100</h6><b class="v">' + esc(c.headline) + '</b><ul>';
+    for (const f of c.findings) h += '<li class="' + esc(f.level) + '">' + esc(f.text) + '</li>';
+    h += '</ul>';
+    const sg = c.suggested;
+    if (sg && sg.targets && sg.targets.length && (c.verdict !== 'go')) {
+      const t = sg.targets[0];
+      h += '<div class="sug">Suggested first target ' + dol(t.price) + ' (' + (c.side === 'short' ? '-' : '+') + Math.abs(t.pct).toFixed(1) + '%, ' + esc(t.prob) + '% odds), then ' + sg.targets.slice(1).map((x) => dol(x.price)).join(' and ') + ' as follow-ups · stop ' + dol(sg.stop.price) + '<button type="button" data-ca="usesuggest" data-price="' + esc(t.price) + '">USE THE FIRST TARGET</button></div>';
+    }
+    return h + '<small>' + esc(c.advice) + '</small></div>';
+  }
   function catalystsHtml() {
     const c = S.cat; if (!c) return '';
     const chip = (t) => '<span class="chip ' + (t > 0 ? 'up' : t < 0 ? 'down' : 'flat') + '">' + (t > 0 ? 'BULLISH' : t < 0 ? 'BEARISH' : 'NEUTRAL') + '</span>';
@@ -242,7 +260,7 @@
   }
   function pickContract() {
     const P = S.pick; if (!P.type || !P.expiry || !(Number(P.strike) > 0)) return;
-    S.contract = { type: P.type, strike: Number(P.strike), expiry: P.expiry }; S.autoTarget = true; S.premiumTarget = null; S.symNote = ''; S.target = null; S.entry = null; S.data = null; S.opt = null; S.cat = null; S.msg = '';
+    S.contract = { type: P.type, strike: Number(P.strike), expiry: P.expiry }; S.autoTarget = true; S.premiumTarget = null; S.symNote = ''; S.target = null; S.entry = null; S.data = null; S.opt = null; S.cat = null; S.pre = null; S.msg = '';
     /* the read does not wait for the subscription check: the server makes that check itself, at the same moment */
     if (!(S.status && S.status.ok && S.status.entitled)) void loadStatus();
     if (!S.busy) void reading(); else S.queued = true;
@@ -297,6 +315,7 @@
       html += '<div class="hz"><b>' + esc(d.horizonLabel.toUpperCase()) + '</b><span>' + esc(d.horizonSpan) + ' · ' + esc(d.confidence) + ' confidence · about ' + (d.expectedDays.mid < 1 ? 'under a day' : (d.expectedDays.mid < 10 ? d.expectedDays.mid.toFixed(1) : Math.round(d.expectedDays.mid)) + ' trading days') + '</span></div>';
       html += row('Stop (suggested)', '$' + price(d.stop) + ' · ' + esc(d.stopBasis)) + row('Risk', esc(String(d.risk).toUpperCase()));
       html += '<ul>' + d.rationale.filter((t) => !(S.cat && S.cat.reasons && S.cat.reasons.includes(t))).map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>';
+      html += prealertHtml();
       html += catalystsHtml();
       html += optionsHtml();
       const ch = S.channels.find((c) => c.id === S.channelId);
@@ -348,7 +367,7 @@
     const slow = setTimeout(() => { if (S.busy) { S.msg = 'Taking longer than usual: the candles or the chain are slow. Still reading…'; S.msgTone = 'info'; render(); } }, 4_000);
     const r = await api('preview', Object.assign({ symbol: S.symbol, mode: S.mode }, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}, auto && S.premiumTarget > 0 ? { premiumTarget: S.premiumTarget } : {}));
     clearTimeout(slow);
-    S.busy = false; S.opt = r.ok ? (r.options || null) : null; S.cat = r.ok ? (r.catalysts || null) : null; S.msg = '';
+    S.busy = false; S.opt = r.ok ? (r.options || null) : null; S.cat = r.ok ? (r.catalysts || null) : null; S.pre = r.ok ? (r.prealert || null) : null; S.msg = '';
     if (S.queued) { S.queued = false; void reading(); return; } // a newer contract was double-clicked while this one was being read
     if (auto && r.ok && r.analysis) S.target = r.analysis.target;
     if (!r.ok && auto) { S.msg = explainErr(r); S.msgTone = 'err'; if (r.entitlement) S.status = Object.assign({ ok: true }, r.entitlement, { guilds: S.guilds }); S.data = null; S.entry = null; render(); draw(); return; }
@@ -395,6 +414,7 @@
 
   panel.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-ca]'); if (!a) return; const k = a.dataset.ca;
+    if (k === 'usesuggest') { const px = Number(a.dataset.price); if (px > 0) { S.target = px; S.autoTarget = false; S.premiumTarget = null; S.sent = false; void reading(); } return; }
     if (k === 'close') { const wasOpt = S.optMode; setOn(false); if (wasOpt) window.dispatchEvent(new CustomEvent('sml-options-alert-mode-set', { detail: { on: false } })); return; }
     if (k === 'self') {
       const text = (pingOn() ? S.data.alertTextWithMention : S.data.alertText) || '';
@@ -403,16 +423,16 @@
       if (S.guildId && S.channelId) openOut('https://discord.com/channels/' + S.guildId + '/' + S.channelId);
       return;
     }
-    if (k === 'nocontract') { S.contract = null; S.autoTarget = false; S.premiumTarget = null; S.symNote = ''; S.kind = 'stock'; if (S.target != null) void reading(); else { S.data = null; S.opt = null; S.cat = null; render(); draw(); } return; }
+    if (k === 'nocontract') { S.contract = null; S.autoTarget = false; S.premiumTarget = null; S.symNote = ''; S.kind = 'stock'; if (S.target != null) void reading(); else { S.data = null; S.opt = null; S.cat = null; S.pre = null; render(); draw(); } return; }
     if (k === 'kind') {
       const kind = a.dataset.kind === 'option' ? 'option' : 'stock';
       S.kind = kind; S.msg = '';
-      if (kind === 'stock') { S.contract = null; S.autoTarget = false; S.premiumTarget = null; S.symNote = ''; S.pick = { type: '', expiry: '', strike: '' }; if (S.target == null) { S.data = null; S.opt = null; S.cat = null; } if (hint.parentElement !== stage) stage.appendChild(hint); hint.style.display = 'block'; setTimeout(() => { hint.style.display = 'none'; }, 6000); if (S.target != null) void reading(); }
-      else { hint.style.display = 'none'; S.symbol = sym(); S.pick = { type: S.pick.type || '', expiry: '', strike: '' }; if (S.target == null) { S.data = null; S.opt = null; S.cat = null; } void loadChain(); }
+      if (kind === 'stock') { S.contract = null; S.autoTarget = false; S.premiumTarget = null; S.symNote = ''; S.pick = { type: '', expiry: '', strike: '' }; if (S.target == null) { S.data = null; S.opt = null; S.cat = null; S.pre = null; } if (hint.parentElement !== stage) stage.appendChild(hint); hint.style.display = 'block'; setTimeout(() => { hint.style.display = 'none'; }, 6000); if (S.target != null) void reading(); }
+      else { hint.style.display = 'none'; S.symbol = sym(); S.pick = { type: S.pick.type || '', expiry: '', strike: '' }; if (S.target == null) { S.data = null; S.opt = null; S.cat = null; S.pre = null; } void loadChain(); }
       render(); draw(); return;
     }
     if (k === 'ptype') { S.pick.type = a.dataset.type === 'put' ? 'put' : 'call'; S.pick.strike = ''; render(); return; }
-    if (k === 'repick') { S.contract = null; S.autoTarget = false; S.premiumTarget = null; S.kind = 'option'; S.pick.strike = ''; S.target = null; S.entry = null; S.data = null; S.opt = null; S.cat = null; S.msg = ''; S.sent = false; render(); draw(); void loadChain(S.pick.expiry || ''); return; }
+    if (k === 'repick') { S.contract = null; S.autoTarget = false; S.premiumTarget = null; S.kind = 'option'; S.pick.strike = ''; S.target = null; S.entry = null; S.data = null; S.opt = null; S.cat = null; S.pre = null; S.msg = ''; S.sent = false; render(); draw(); void loadChain(S.pick.expiry || ''); return; }
     if (k === 'out') { if (a.dataset.url) openOut(a.dataset.url); return; }
     if (k === 'buy') { void buyPass(a.dataset.plan); return; }
     if (k === 'send') {
@@ -457,7 +477,7 @@
   function setOn(on, { quiet = false } = {}) {
     S.on = !!on; btn.classList.toggle('on', S.on); document.body.classList.toggle('ca-armed', S.on);
     if (S.on) { if (quiet) S.kind = 'option'; else S.kind = ''; try { warm(sym()); } catch (_) { /* chart not ready */ } void loadStatus(); }
-    else { hint.style.display = 'none'; S.target = null; S.entry = null; S.data = null; S.msg = ''; S.sent = false; S.contract = null; S.opt = null; S.cat = null; S.autoTarget = false; S.premiumTarget = null; S.optMode = false; S.symNote = ''; S.queued = false; S.kind = ''; S.pick = { type: '', expiry: '', strike: '' }; S.chainErr = ''; }
+    else { hint.style.display = 'none'; S.target = null; S.entry = null; S.data = null; S.msg = ''; S.sent = false; S.contract = null; S.opt = null; S.cat = null; S.pre = null; S.autoTarget = false; S.premiumTarget = null; S.optMode = false; S.symNote = ''; S.queued = false; S.kind = ''; S.pick = { type: '', expiry: '', strike: '' }; S.chainErr = ''; }
     render(); draw();
   }
   btn.addEventListener('click', () => setOn(!S.on));

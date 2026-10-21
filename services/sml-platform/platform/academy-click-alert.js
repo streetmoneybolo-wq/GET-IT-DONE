@@ -23,6 +23,7 @@ const optionsAlert = require('./academy-options-alert');
 const optionsCalc = require('./academy-options-calc');
 const { normalizeChain: normalizeAlertChain } = require('./academy-alert-options');
 const { postAlertRange } = require('./academy-alerts');
+const { checkAlert: prealertCheck } = require('./academy-prealert');
 const { assessCatalysts } = require('./academy-alert-catalysts');
 const RISK_ORDER = ['low', 'mid', 'mid-high', 'high', 'extreme'];
 
@@ -686,8 +687,14 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     if (opt && opt.error) return { ...opt.error, entitlement: ent };
     const cat = await catalystsFor(analysis, opt && opt.oa, pre);
     const pics = scenariosFor(analysis, { options: opt && opt.oa }).map((im) => ({ which: im.which, name: im.name, alt: im.alt, svg: im.svg }));
+    /* the pre-alert check (academy-prealert.js): a chase, an unrealistic first target, a weak stop, a thin or extended-hours tape, earnings; advice only */
+    let prealert = null;
+    try {
+      const bars = analysis.__bars || {};
+      prealert = prealertCheck({ symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, price: analysis.entry, bars5: bars.m5, daily: bars.daily, alignment: analysis.alignment, earningsDays: cat && cat.earnings && Number.isFinite(Number(cat.earnings.daysAway)) ? Number(cat.earnings.daysAway) : null, horizon: analysis.horizon, learned: typeof learnedFn === 'function' ? learnedFn() : null, now: now() });
+    } catch (error) { logger('warn', 'prealert_failed', { symbol: analysis.symbol, error: String(error && error.message || error) }); }
     delete analysis.__bars;
-    return { ok: true, entitlement: ent, tookMs: now() - t0, degraded: analysis.degraded || [], scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, options: opt ? opt.oa : null, catalysts: cat, analysis: { ...analysis, alertText: textFor(analysis, opt, false), alertTextWithMention: textFor(analysis, opt, true) } };
+    return { ok: true, entitlement: ent, tookMs: now() - t0, prealert, degraded: analysis.degraded || [], scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, options: opt ? opt.oa : null, catalysts: cat, analysis: { ...analysis, alertText: textFor(analysis, opt, false), alertTextWithMention: textFor(analysis, opt, true) } };
   }
 
   /* stockmarketloop.com analyst dashboard (signed /v1/group-tools/contract-alert-preview): the same contract analysis as an options-chain
@@ -973,7 +980,10 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   }
   const startThread = (channelId, messageId, name) => directory.startThread(String(channelId), String(messageId), name);
 
-  return { entitlement, warm, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
+  /* the target engine's learned adjustments, handed in once the learner exists (the pre-alert check suggests a first target from them) */
+  let learnedFn = null;
+  const setLearned = (fn) => { learnedFn = typeof fn === 'function' ? fn : null; };
+  return { setLearned, entitlement, warm, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, synthDaily, mergeDaily, autoTargetForContract, stockTargetForPremium, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };

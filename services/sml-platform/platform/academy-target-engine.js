@@ -227,6 +227,19 @@ function suggestTargets({ symbol = '', direction = 'long', horizon = 'swing', pr
   };
 }
 
+/* how often this stock's own history reached `targetPrice` before `stopPrice` over the horizon (null stop = no stop), for a target a member chose */
+function oddsFor({ direction = 'long', horizon = 'swing', price, targetPrice, stopPrice = null, bars5 = [], daily = [] } = {}) {
+  const H = HORIZONS[horizon] || HORIZONS.swing, dir = direction === 'short' ? -1 : 1;
+  const p = num(price), t = num(targetPrice), st = num(stopPrice);
+  if (!(p > 0) || !(t > 0)) return null;
+  const series = H.series === '5m' ? (Array.isArray(bars5) ? bars5 : []) : (Array.isArray(daily) ? daily : []);
+  if (series.length < (H.series === '5m' ? 200 : 40)) return null;
+  const targetPct = (t / p - 1) * dir * 100; if (!(targetPct > 0)) return null;
+  const stopPct = st > 0 ? (1 - st / p) * dir * 100 : 0;
+  const h = hitRate(series, H, dir, H.series === '5m' ? 6 : 1, targetPct, stopPct > 0 ? stopPct : 0);
+  return h.n >= 20 ? { p: h.p, stopRate: h.stopRate, n: h.n, targetPct: r1(targetPct), stopPct: r1(Math.max(0, stopPct)) } : null;
+}
+
 /* ---------------- the learner ---------------- */
 function emptyState() { return { v: 1, open: [], buckets: {}, outcomes: [], alerts: { analyzed: {}, byBand: {} }, updatedAt: 0 }; }
 
@@ -334,4 +347,4 @@ function createTargetLearner({ store = null, candles = null, now = Date.now, log
   return { load, log, settle, ingestAlert, learned, summary, save, _state: () => state };
 }
 
-module.exports = { suggestTargets, autoDirection, createTargetLearner, levelsFrom, excursions, hitRate, outcomeOf, bucketKey, quantile, HORIZONS };
+module.exports = { suggestTargets, oddsFor, autoDirection, createTargetLearner, levelsFrom, excursions, hitRate, outcomeOf, bucketKey, quantile, HORIZONS };

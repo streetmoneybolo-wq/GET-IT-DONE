@@ -166,3 +166,13 @@ test('screener CALL / PUT reads fast and reliably: live token with renewal, hove
   for (const bit of ["const token = () => String(window.smlAcademySessionToken || S.session || '')", "res.status === 401 && typeof window.smlAcademyReauth === 'function'", "'&warm=1'", "document.addEventListener('pointerover'", 'The options feed is busy: retrying in', 'PLAN FOR THE SHARES', 'at T1', 'at T2', 'optCache']) assert.ok(ui.includes(bit), bit);
   assert.ok(!ui.includes("if (!S.session) { S.busy"), 'the token is no longer frozen at page load');
 });
+
+test('the pre-alert check is in the Click-to-Alert preview and panel, advises without blocking, and can swap in the suggested first target', () => {
+  const ca = fs.readFileSync(path.join(__dirname, 'academy-click-alert.js'), 'utf8');
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  for (const bit of ["require('./academy-prealert')", 'prealert = prealertCheck(', 'return { ok: true, entitlement: ent, tookMs: now() - t0, prealert,', 'const setLearned =']) assert.ok(ca.includes(bit), bit);
+  for (const bit of ['function prealertHtml()', 'PRE-ALERT CHECK', 'data-ca="usesuggest"', "k === 'usesuggest'", 'S.pre = r.ok ? (r.prealert || null) : null', 'html += prealertHtml();']) assert.ok(ui.includes(bit), bit);
+  assert.ok(server.includes("path === '/academy-activity/prealert'") && server.includes('academyClickAlert.setLearned('), 'the route and the learned hand-off');
+  assert.ok(!/prealert[^\n]{0,80}(throw|reject|status\(4)/i.test(ca), 'the check never rejects an alert');
+});

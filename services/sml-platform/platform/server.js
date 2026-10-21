@@ -108,6 +108,7 @@ const { createAutoPtService } = require('./academy-auto-pt');
 const { createTargetLearner, suggestTargets: suggestPriceTargets, autoDirection: pickDirection } = require('./academy-target-engine');
 const alertForensics = require('./academy-alert-forensics');
 const ignitionRead = require('./academy-ignition');
+const { checkAlert: prealertCheck } = require('./academy-prealert');
 let fallbackTargetLearner = null; // an in-memory learner for a server started without the database-backed one (tests)
 const { createHedgeService } = require('./academy-hedge');
 /* every member's paper trading account starts with this much; the owner's 1K -> 100K Challenge account keeps its own $1,000 */
@@ -4625,6 +4626,37 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       } catch (error) { logger('warn', 'academy_targets_failed', { symbol, error: String(error && error.message || error) }); sendJson(response, 503, { ok: false, error: 'targets_unavailable' }); }
       return;
     }
+    /* The pre-alert check for any alert a member is about to send by hand (the Click-to-Alert panel runs the same check inside its preview). */
+    if (request.method === 'GET' && path === '/academy-activity/prealert') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const pq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(pq.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      const side = pq.get('side') === 'short' ? 'short' : 'long';
+      const nn = (k) => { const v = Number(pq.get(k)); return Number.isFinite(v) && v > 0 ? v : null; };
+      const entry = nn('entry'), target = nn('target'), stop = nn('stop');
+      if (!target) { sendJson(response, 400, { ok: false, error: 'invalid_target' }); return; }
+      const horizon = ['day', 'swing', 'mid', 'long'].includes(pq.get('horizon')) ? pq.get('horizon') : 'swing';
+      try {
+        const [p5, p1] = await Promise.all([settledValue(getAcademyCandles(symbol, '5m'), 4_000), settledValue(getAcademyCandles(symbol, '1D'), 4_000)]);
+        const bars5 = p5 && Array.isArray(p5.bars) ? p5.bars : [], daily = p1 && Array.isArray(p1.bars) ? p1.bars : [];
+        const peek = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(symbol) : null;
+        const last = bars5.length ? bars5[bars5.length - 1] : daily[daily.length - 1];
+        const price = peek && Number(peek.last) > 0 ? Number(peek.last) : (last ? Number(last.c) : null);
+        if (!(price > 0)) { sendJson(response, 503, { ok: false, error: 'no_price' }); return; }
+        const [ev, earn] = await Promise.all([academyClickAlert ? settledValue(academyClickAlert.evidenceFor(symbol, side), 4_000) : null, academyAlerts && typeof academyAlerts.nextEarnings === 'function' ? settledValue(academyAlerts.nextEarnings(symbol), 3_000) : null]);
+        const tl = targetLearner || fallbackTargetLearner;
+        const result = prealertCheck({ symbol, side, entry: entry || price, target, stop, price, bars5, daily, alignment: ev && Number.isFinite(ev.alignment) ? ev.alignment : null, earningsDays: earn && earn.daysAway != null ? Number(earn.daysAway) : null, horizon, learned: tl ? tl.learned() : null });
+        if (!result.ok) { sendJson(response, 422, { ok: false, error: result.reason }); return; }
+        sendJson(response, 200, result);
+      } catch (error) { logger('warn', 'academy_prealert_failed', { symbol, error: String(error && error.message || error) }); sendJson(response, 503, { ok: false, error: 'prealert_unavailable' }); }
+      return;
+    }
     /* Owner only: what the target engine has learned, and the forensics of the desk alerts on a symbol. */
     if (request.method === 'GET' && (path === '/academy-activity/targets/learning' || path === '/academy-activity/alert-forensics')) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -5654,6 +5686,7 @@ async function main() {
      suggestions but stops the judging. */
   const targetLearner = createTargetLearner({ store: createPgStateStore({ pool: database.pool, key: 'target-learning', defaultValue: () => ({}), logger: log }), candles: (symbol, tf) => sentimentCandles(symbol, tf), logger: log });
   void targetLearner.load().catch(() => {});
+  if (academyClickAlert && typeof academyClickAlert.setLearned === 'function') academyClickAlert.setLearned(() => targetLearner.learned());
   if (String(process.env.ACADEMY_TARGET_LEARNING || 'on').toLowerCase() !== 'off') {
     setInterval(() => { targetLearner.settle().then((r) => { if (r && r.settled) log('info', 'target_learner_settled', r); }).catch((error) => log('warn', 'target_learner_settle_failed', { error })); }, 10 * 60_000).unref();
     const judgeAlerts = async () => {

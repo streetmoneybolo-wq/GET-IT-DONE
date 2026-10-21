@@ -2539,3 +2539,21 @@ test('the screener option route warms the chain, says plainly when a stock has n
     assert.equal(bb.error, 'busy'); assert.equal(bb.retryAfterSec, 12); assert.ok(bb.shares);
   });
 });
+
+test('the pre-alert route is session-gated, validates its inputs, and answers GO, CAUTION or WAIT from the candles', async () => {
+  const realFetch = globalThis.fetch;
+  const daily = Array.from({ length: 120 }, (_, i) => { const t = Date.UTC(2026, 5, 1) + i * 86_400_000, c = 20 + Math.sin(i / 7) * 2 + i * 0.02; return { t, o: c, h: c * 1.015, l: c * 0.985, c, v: 1e6 }; });
+  const marketHistory = { enabled: true, get: async (symbol, tf) => ({ ok: true, data: { symbol, tf, bars: tf === '1D' ? daily : [], asOf: Date.now(), source: 'massive-rest' } }) };
+  await withServer({ marketHistory, academyOAuth: { verifySession: (a) => (a === 'Bearer academy-session' ? { ok: true, userId: '1' } : { ok: false, status: 401, code: 'authorization_required' }) } }, async (base) => {
+    const h = { headers: { authorization: 'Bearer academy-session' } };
+    assert.equal((await fetch(`${base}/academy-activity/prealert?symbol=AAA&target=21`)).status, 401);
+    assert.equal((await fetch(`${base}/academy-activity/prealert?symbol=${encodeURIComponent('<x>')}&target=21`, h)).status, 400);
+    assert.equal((await fetch(`${base}/academy-activity/prealert?symbol=AAA`, h)).status, 400, 'a target is required');
+    const last = daily[daily.length - 1].c;
+    const wrong = await (await fetch(`${base}/academy-activity/prealert?symbol=AAA&side=long&entry=${last}&target=${last * 0.9}&stop=${last * 0.95}`, h)).json();
+    assert.equal(wrong.verdict, 'wait'); assert.ok(wrong.findings.some((f) => f.code === 'target_wrong_side'));
+    const far = await (await fetch(`${base}/academy-activity/prealert?symbol=AAA&side=long&entry=${last}&target=${last * 1.4}&stop=${last * 0.985}&horizon=swing`, h)).json();
+    assert.equal(far.ok, true); assert.ok(['wait', 'caution'].includes(far.verdict)); assert.ok(far.suggested && far.suggested.targets.length === 3);
+    assert.match(far.advice, /never blocks/);
+  });
+});
