@@ -19,7 +19,7 @@
   const BAND = { LOW: '#19c37d', MODERATE: '#9bd93c', ELEVATED: '#ffb020', HIGH: '#ff6a3d', EXTREME: '#ff2d55' };
   const ACT = { HOLD: ['HOLD', '#7fa6bf', '#0c1a24'], RAISE_TARGET: ['RAISE TARGET', '#19e36b', '#03150c'], PARTIAL: ['TAKE PARTIAL', '#ffb020', '#221500'], SELL: ['SELL', '#ff5470', '#2a0509'] };
 
-  const S = { alerts: [], feed: {}, tab: 'all', hidden: false, open: null, detail: null, session: '', asOf: 0, error: '', loading: false, sheet: false, perMember: false, sourceCount: 0, teaser: null, pick: null, me: null, arm: null, busy: '', note: {} };
+  const S = { alerts: [], feed: {}, tab: 'all', hidden: false, open: null, detail: null, session: '', asOf: 0, error: '', loading: false, sheet: false, perMember: false, sourceCount: 0, teaser: null, pick: null, me: null, mid: null, arm: null, busy: '', note: {} };
   const KEY = 'sml-alerts-desk-v1';
   let chosen = false;
   try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved && ['all', 'swings', 'longterm'].includes(saved.tab)) S.tab = saved.tab; if (saved && typeof saved.hidden === 'boolean' && !saved.auto) { S.hidden = saved.hidden; chosen = true; } } catch (_) { /* storage can be blocked */ }
@@ -237,7 +237,8 @@
     const swapBtn = '<button type="button" class="aa-swap" data-act="swap" title="Show the quote and order book instead">Quote</button>';
     const closeBtn = '<button type="button" class="aa-close" data-act="close" aria-label="Close alerts">✕</button>';
     const srcBtn = S.session && S.perMember ? '<button type="button" class="aa-src" data-act="sources" title="Pick which servers, channels and traders your desk follows">' + (S.pick ? 'Done' : '＋ Sources' + (S.sourceCount ? ' · ' + S.sourceCount : '')) + '</button>' : '';
-    let head = '<header><b>ALERTS DESK</b>' + srcBtn + swapBtn + closeBtn + '<small>' + (S.asOf ? 'updated ' + ago(S.asOf) + ' ago' : '') + '</small></header>'
+    const midBtn = S.session && S.perMember ? '<button type="button" class="aa-src" data-act="midday" title="Post a midday report on today\'s alerts to Discord">' + (S.mid ? 'Report ✕' : '📊 Midday') + '</button>' : '';
+    let head = '<header><b>ALERTS DESK</b>' + srcBtn + midBtn + swapBtn + closeBtn + '<small>' + (S.asOf ? 'updated ' + ago(S.asOf) + ' ago' : '') + '</small></header>'
       + '<div class="aa-tabs">' + [['all', 'All'], ['swings', 'Swings'], ['longterm', 'Long-Term'], ['traders', 'Traders']].map(([k, l]) => '<button type="button" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>';
     let body;
     if (S.session && S.pick) body = pickerHtml();
@@ -248,6 +249,7 @@
     else if (S.error && !S.alerts.length) body = '<div class="aa-empty">' + esc(S.error) + '</div>';
     else if (!list.length) body = '<div class="aa-empty">' + (S.loading ? 'Loading the alerts…' : S.alerts.length ? 'No alerts in this list right now.' : 'No recent alerts yet. New ones appear here the moment they are posted.') + '</div>';
     else body = list.map(rowHtml).join('');
+    if (S.mid && !S.pick) body = midHtml() + body;
     const warn = S.pick ? '' : Object.keys(S.feed).filter((k) => S.feed[k] && S.feed[k].ok === false && S.feed[k].lastPollAt && (S.perMember || S.tab === 'all' || S.tab === k)).map((k) => '<div class="aa-warn">' + esc(S.feed[k].label || (k === 'swings' ? 'Swings' : k === 'longterm' ? 'Long-Term' : 'A source')) + ' feed is reconnecting' + (S.feed[k].error ? ' (' + esc(S.feed[k].error) + ')' : '') + '. What is shown may be behind.</div>').join('');
     const scrollTop = (panel.querySelector('.aa-list') || {}).scrollTop || 0;
     /* the Traders tab keeps its own DOM across repaints (a form being typed must not be wiped by the poll) */
@@ -260,6 +262,46 @@
     else if (traders && window.smlAlertChart) void window.smlAlertChart.mount(traders, { feed: true });
   }
 
+  /* ---------- the midday report: today's alerts and how they are doing, as a Discord post ---------- */
+  function midHtml() {
+    const m = S.mid; if (!m) return '';
+    const card = (inner) => '<div class="aa-mid" data-stop="1" style="margin:8px 9px;padding:9px 10px;border:1px solid #8a6a1c;border-radius:9px;background:#120f08">' + inner + '</div>';
+    if (m.busy && !m.data) return card('<b style="color:#ffcf7a">MIDDAY REPORT</b><div class="mut">Reading today\'s alerts…</div>');
+    if (m.err) return card('<b style="color:#ffb3c0">MIDDAY REPORT</b><div>' + esc(m.err) + '</div>');
+    const d = m.data, st = d.stats, names = (d.channels || []).map((c) => '#' + (c.name || 'channel')).join(', ');
+    let h = '<b style="color:#ffcf7a">MIDDAY REPORT</b> <small class="mut">' + st.alerts + ' alert' + (st.alerts === 1 ? '' : 's') + ' today · ' + st.up + ' up · ' + st.down + ' down · ' + st.targetsHit + ' target' + (st.targetsHit === 1 ? '' : 's') + ' hit</small>';
+    h += '<div class="aa-raw" style="white-space:pre-wrap;max-height:200px;overflow:auto;margin:6px 0">' + esc(d.text) + '</div>';
+    if (m.done) return card(h + '<div style="color:#7ef0bd;font-weight:800">' + esc(m.done) + '</div>');
+    h += '<label style="display:flex;gap:6px;align-items:center;margin:4px 0;color:#cfe0e8"><input type="checkbox" data-act="midday-ping"' + (m.ping ? ' checked' : '') + '> Ping @everyone</label>';
+    h += '<div class="mut" style="margin:2px 0 6px">' + (names ? 'Posts to ' + esc(names) + ', where today\'s alerts went.' : 'No alert went out today, so there is no channel to post to.') + '</div>';
+    if (m.msg) h += '<div style="color:#ffb3c0;margin:0 0 6px">' + esc(m.msg) + '</div>';
+    return card(h + '<button type="button" class="aa-db pt" data-act="midday-post"' + (m.busy || !(d.channels || []).length ? ' disabled' : '') + '>' + (m.busy ? 'Posting…' : 'Post the midday report') + '</button> <button type="button" class="aa-db" data-act="midday-cancel">Cancel</button>');
+  }
+  async function middayOpen() {
+    if (S.mid) { S.mid = null; paint(); return; }
+    S.mid = { busy: true, data: null, ping: false }; paint();
+    try {
+      const res = await api('/academy-activity/click-alert/midday', 'POST', { post: false });
+      const j = await res.json().catch(() => ({}));
+      if (!S.mid) return;
+      if (res.ok && j.ok) S.mid = { busy: false, data: j, ping: false };
+      else S.mid = { err: j.error === 'click_alert_subscription_required' ? 'The midday report comes with Click-to-Alert (the Analyst level).' : (j.detail || 'The report could not be built right now. Try again in a moment.') };
+    } catch (_) { S.mid = { err: 'The desk is reconnecting. Try again in a moment.' }; }
+    paint();
+  }
+  async function middayPost() {
+    const m = S.mid; if (!m || !m.data || m.busy) return;
+    m.busy = true; m.msg = ''; paint();
+    try {
+      const res = await api('/academy-activity/click-alert/midday', 'POST', { post: true, mention: !!m.ping });
+      const j = await res.json().catch(() => ({}));
+      if (!S.mid) return;
+      S.mid.busy = false;
+      if (res.ok && j.ok) { S.mid.done = 'Posted to ' + j.posted + ' channel' + (j.posted === 1 ? '' : 's') + (j.failed ? ' (' + j.failed + ' failed)' : '') + '.'; setTimeout(() => { S.mid = null; paint(); }, 9000); }
+      else S.mid.msg = j.detail || DESK_ERR[j.error] || 'That did not post. Try again in a moment.';
+    } catch (_) { if (S.mid) { S.mid.busy = false; S.mid.msg = 'The desk is reconnecting. Try again in a moment.'; } }
+    paint();
+  }
   async function api(path, method, body) {
     const opts = () => ({ method: method || 'GET', headers: Object.assign({ authorization: 'Bearer ' + S.session }, body ? { 'content-type': 'application/json' } : {}), cache: 'no-store', body: body ? JSON.stringify(body) : undefined });
     const res = await fetch(path, opts());
@@ -385,6 +427,10 @@
     if (act) {
       if (act.dataset.act === 'unlock') { const u = document.getElementById('academy-unlock'); if (u) u.click(); }
       if (act.dataset.act === 'sources') { openPicker(); return; }
+      if (act.dataset.act === 'midday') { void middayOpen(); return; }
+      if (act.dataset.act === 'midday-post') { void middayPost(); return; }
+      if (act.dataset.act === 'midday-cancel') { S.mid = null; paint(); return; }
+      if (act.dataset.act === 'midday-ping') { if (S.mid) S.mid.ping = !!act.checked; return; }
       if (act.dataset.act === 'copy-pt') {
         const d = S.detail, list = d && d.ptUpdates || [], text = list.length ? list[list.length - 1].text : '';
         const done = () => { act.textContent = 'Copied'; setTimeout(() => { act.textContent = 'Copy update'; }, 1500); };

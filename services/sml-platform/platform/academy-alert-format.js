@@ -175,6 +175,49 @@ function formatPtAdjust(a) {
   ].join('\n');
 }
 
+/* ---------- midday report ---------- */
+const MID_PROMO = [
+  'Want every alert the moment it posts?',
+  'Start the free trial and get access to the entire Discord server.',
+  'It also unlocks the new MEM Academy trading tool, with live charts, scanners and the alert desk in one place.',
+  'And you can follow the $1K to $100K challenge live as it is traded.'
+];
+/* a.rows: [{ ticker, side, entry, price, target, movePct, state: 'target'|'stopped'|'open' }]; a.when: a Date */
+function formatMiddayReport(a) {
+  const rows = Array.isArray(a.rows) ? a.rows : [];
+  const when = a.when instanceof Date ? a.when : new Date();
+  const day = when.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' });
+  const time = when.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+  const pct = (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(Math.abs(v) >= 10 ? 0 : 1) + '%';
+  const up = rows.filter((r) => r.movePct > 0.05).length, down = rows.filter((r) => r.movePct < -0.05).length, flat = rows.length - up - down;
+  const hit = rows.filter((r) => r.state === 'target').length, stopped = rows.filter((r) => r.state === 'stopped').length;
+  const avg = rows.length ? rows.reduce((n, r) => n + r.movePct, 0) / rows.length : 0;
+  const sorted = rows.slice().sort((x, y) => y.movePct - x.movePct);
+  const shown = sorted.slice(0, 10);
+  const lines = [
+    ...everyone(a.mention),
+    '📊 ' + bold('MIDDAY REPORT') + ' — ' + day + ' · ' + time + ' ET',
+    ''
+  ];
+  if (!rows.length) {
+    lines.push('No alerts went out this morning. Patience is a position too — the next setup gets posted the moment it is there.');
+  } else {
+    lines.push('🎯 ' + bold(String(rows.length)) + ' alert' + (rows.length === 1 ? '' : 's') + ' today · ' + bold(String(up)) + ' up · ' + bold(String(down)) + ' down' + (flat ? ' · ' + flat + ' flat' : '') + ' · ' + bold(String(hit)) + ' target' + (hit === 1 ? '' : 's') + ' hit' + (stopped ? ' · ' + stopped + ' stopped' : ''));
+    lines.push('📈 ' + bold('AVERAGE MOVE FROM ENTRY') + ': ' + pct(avg), '');
+    for (const r of shown) {
+      const tk = String(r.ticker).toUpperCase().replace(/[^A-Z0-9.]/g, '');
+      lines.push((r.state === 'target' ? '✅' : r.state === 'stopped' ? '🛑' : r.movePct >= 0 ? '🟢' : '🔴') + ' ' + bold(tk) + (r.side === 'short' ? ' (short)' : '') + ' — ' + plainPrice(r.entry) + ' → ' + plainPrice(r.price) + ' (' + pct(r.movePct) + ')' + (r.state === 'target' ? ' · target hit' : r.state === 'stopped' ? ' · stopped' : r.progress != null ? ' · ' + Math.max(0, Math.min(100, Math.round(r.progress))) + '% to target' : ''));
+    }
+    if (rows.length > shown.length) lines.push('…and ' + (rows.length - shown.length) + ' more.');
+    if (rows.length > 1) lines.push('', '🏆 ' + bold('BEST') + ' ' + String(sorted[0].ticker).toUpperCase() + ' ' + pct(sorted[0].movePct) + ' · ' + bold('WEAKEST') + ' ' + String(sorted[sorted.length - 1].ticker).toUpperCase() + ' ' + pct(sorted[sorted.length - 1].movePct));
+  }
+  lines.push('', '🔥 ' + MID_PROMO.join(' '));
+  const link = clean(a.trialLink, 200);
+  if (/^https?:\/\//.test(link)) lines.push('👉 ' + link);
+  lines.push('-# Moves are measured from each alert\'s entry to the latest price. Educational, not financial advice.');
+  return lines.join('\n');
+}
+
 /* ---------- options ---------- */
 const EXPIRY = {
   daily: { label: 'DAILY', note: 'Fast movement, fast risk — manage size tight.' },
@@ -263,4 +306,4 @@ function formatOptionsPtSmashed(a) {
   ].join('\n');
 }
 
-module.exports = { bold, priceText, plainPrice, autoStop, tradeType, riskLabel, formatEntryAlert, formatPtSmashed, formatPtAdjust, formatTakeProfits, formatOptionsAlert, formatOptionsContractAlert, formatOptionsPtSmashed, TRADE_TYPES, RISKS };
+module.exports = { bold, priceText, plainPrice, autoStop, tradeType, riskLabel, formatEntryAlert, formatPtSmashed, formatPtAdjust, formatTakeProfits, formatMiddayReport, MID_PROMO, formatOptionsAlert, formatOptionsContractAlert, formatOptionsPtSmashed, TRADE_TYPES, RISKS };

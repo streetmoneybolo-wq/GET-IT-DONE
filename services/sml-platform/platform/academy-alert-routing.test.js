@@ -47,3 +47,10 @@ test('an alert is tracked for 5 trading days, over weekends too, and not after i
   assert.equal(R.isTracked(fri, mon, mon), false, 'sold after the alert');
   assert.equal(R.isTracked(fri, mon, fri - 1), true, 'a sale before the alert does not close it');
 });
+
+test('the alerts desk has a Midday button that previews, then posts, through the midday route', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-alerts-ui.js'), 'utf8'), server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  assert.match(ui, /data-act=\\?"midday\\?"/); assert.match(ui, /click-alert\/midday/); assert.match(ui, /post: false/); assert.match(ui, /post: true/);
+  assert.match(server, /path === '\/academy-activity\/click-alert\/midday'/); assert.match(server, /trialLink: academyTrial/);
+});

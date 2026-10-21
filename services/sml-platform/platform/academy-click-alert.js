@@ -380,10 +380,18 @@ function createClickAlertStore({ pool = null } = {}) {
     const cut = Date.now() - sinceMs;
     return mem.filter((x) => x.userId === userId && x.symbol === symbol && x.at > cut).sort((a, b) => b.at - a.at).map((x) => ({ channelId: x.channelId, guildId: x.guildId || '', messageId: x.messageId, confidence: x.confidence, at: x.at }));
   }
-  return { record, count, last, recent, trackedPosts, persistent: !!db };
+  /* this member's plain-stock alerts since a moment, oldest first (exits and option contracts have a space in their key and are left out) */
+  async function since({ userId, sinceMs }) {
+    if (db) {
+      const r = await db.query("SELECT channel_id, guild_id, message_id, symbol, side, entry, target, stop, created_at FROM academy_click_alerts WHERE discord_id = $1 AND created_at >= to_timestamp($2 / 1000.0) AND position(' ' in symbol) = 0 ORDER BY created_at ASC LIMIT 200", [userId, sinceMs]);
+      return r.rows.map((x) => ({ channelId: String(x.channel_id), guildId: String(x.guild_id || ''), messageId: String(x.message_id || ''), symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), stop: x.stop == null ? null : Number(x.stop), at: new Date(x.created_at).getTime() }));
+    }
+    return mem.filter((x) => x.userId === userId && x.at >= sinceMs && !String(x.symbol).includes(' ')).sort((a, b) => a.at - b.at).map((x) => ({ channelId: x.channelId, guildId: x.guildId || '', messageId: x.messageId, symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), stop: x.stop == null ? null : Number(x.stop), at: x.at }));
+  }
+  return { record, count, last, recent, trackedPosts, since, persistent: !!db };
 }
 
-function createClickAlertService({ getBars, chain = null, chainExpiry = null, expirations = null, chainDetail = null, catalysts = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, analyst = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
+function createClickAlertService({ getBars, chain = null, chainExpiry = null, expirations = null, chainDetail = null, catalysts = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, analyst = null, freeUserIds = null, personas = null, trialLink = '', footer = true, now = Date.now, logger = () => {},
   limits = {}, waits = {} } = {}) {
   /* ---------- reliability: every input a read waits on has a budget ----------
      A read used to wait as long as its slowest input took (a stuck candle feed, a slow Discord role lookup, a database that was
@@ -1012,6 +1020,53 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     if (row) await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, ...row }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId || String(channelId), repliedTo: reply.id || null, mentioned: ping };
   }
+  /* ---------- the midday report ----------
+     What this member's alerts did today, from each alert's entry to the latest price, with whether the target or the stop was reached since it posted,
+     in the alert layout, plus the short free-trial pitch. A preview returns the text and the channels today's alerts went to; posting sends it to those
+     channels (or the ones the member picks). Moves are read from market data only. */
+  const etDayStart = (ms) => {
+    const f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms));
+    const g = (t) => Number(f.find((p) => p.type === t).value);
+    return ms - ((g('hour') * 60 + g('minute')) * 60 + g('second')) * 1000;
+  };
+  async function middayReport(user, { post = false, channelIds = null, mention = false, asMe = true } = {}) {
+    const userId = String(user.userId || '');
+    const ent = await entitlement(userId);
+    if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured' };
+    if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required' };
+    const t = now(), start = etDayStart(t);
+    const all = store.since ? await budget(store.since({ userId, sinceMs: start }).catch(() => []), WAIT.db * 2) || [] : [];
+    /* one line per stock: the first entry of the day with the newest target */
+    const by = new Map();
+    for (const a of all) { const k = a.symbol; const cur = by.get(k); if (!cur) by.set(k, { ...a, firstAt: a.at }); else { cur.target = a.target; cur.stop = a.stop != null ? a.stop : cur.stop; } }
+    const rows = [];
+    for (const a of by.values()) {
+      let price = null, range = null;
+      try { const { last, set } = await loadBars(a.symbol); price = last ? last.c : null; range = postAlertRange({ at: a.firstAt }, set.m5, set.daily); } catch (_) { /* no price: the stock is left out */ }
+      if (!(price > 0) || !(a.entry > 0)) continue;
+      const long = a.side !== 'short', move = ((long ? price - a.entry : a.entry - price) / a.entry) * 100;
+      const hitT = range && (long ? range.high >= a.target : range.low <= a.target), hitS = a.stop > 0 && range && (long ? range.low <= a.stop : range.high >= a.stop);
+      const span = a.target - a.entry;
+      rows.push({ ticker: a.symbol, side: a.side, entry: a.entry, price, target: a.target, movePct: move, state: hitT ? 'target' : hitS ? 'stopped' : 'open', progress: span ? ((price - a.entry) / span) * 100 : null });
+    }
+    const chans = [...new Set(all.map((a) => a.channelId))];
+    const text = (ping) => format.formatMiddayReport({ rows, when: new Date(t), mention: ping, trialLink });
+    const named = [];
+    for (const id of chans) { let name = ''; try { const info = directory.channelInfo ? await budget(directory.channelInfo(id), WAIT.discord) : null; name = info && info.name ? info.name : ''; } catch (_) { /* id only */ } named.push({ id, name }); }
+    const stats = { alerts: rows.length, up: rows.filter((r) => r.movePct > 0.05).length, down: rows.filter((r) => r.movePct < -0.05).length, targetsHit: rows.filter((r) => r.state === 'target').length, stopped: rows.filter((r) => r.state === 'stopped').length, avgMovePct: rows.length ? Math.round(rows.reduce((n, r) => n + r.movePct, 0) / rows.length * 10) / 10 : 0 };
+    if (!post) return { ok: true, stats, channels: named, text: text(false) };
+    const targets = (Array.isArray(channelIds) && channelIds.length ? channelIds.map(String).filter((id) => SNOWFLAKE.test(id)) : chans).slice(0, 5);
+    if (!targets.length) return { ok: false, status: 422, code: 'no_channel', detail: 'No alert was posted today and no channel was chosen, so there is nowhere to send the report.' };
+    const results = [];
+    for (const channelId of targets) {
+      const r = await postPlain(user, { channelId, text, mention, asMe }).catch((error) => ({ ok: false, status: 503, code: 'temporarily_unavailable', detail: String(error && error.message || error) }));
+      results.push({ channelId, ...r });
+    }
+    const ok = results.filter((r) => r.ok);
+    if (!ok.length) return { ...results[0], results };
+    return { ok: true, stats, results, posted: ok.length, failed: results.length - ok.length };
+  }
+
   /* one button press on the desk: alert = the desk's record of the post (id, symbol, entry, channelId, at, plan) */
   async function deskAction(user, { alert, action, target, mention, asMe = true } = {}) {
     if (!alert || !SNOWFLAKE.test(String(alert.channelId || ''))) return { ok: false, status: 404, code: 'channel_unavailable', detail: 'That alert\'s channel is not known.' };
@@ -1110,7 +1165,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   /* the target engine's learned adjustments, handed in once the learner exists (the pre-alert check suggests a first target from them) */
   let learnedFn = null;
   const setLearned = (fn) => { learnedFn = typeof fn === 'function' ? fn : null; };
-  return { setLearned, entitlement, warm, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, sendMany, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
+  return { setLearned, entitlement, warm, preview, sitePreview, send, takeProfits, deskAction, middayReport, destinations, channels, sendMany, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, synthDaily, mergeDaily, autoTargetForContract, stockTargetForPremium, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };
