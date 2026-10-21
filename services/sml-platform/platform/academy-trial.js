@@ -41,11 +41,38 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
   };
   const limited = (ip) => { const t = now(), cur = rate.get(ip); const b = !cur || t - cur.at > 60_000 ? { at: t, n: 0 } : cur; b.n += 1; rate.set(ip, b); if (rate.size > 5000) rate.clear(); return b.n > 30; };
 
-  function authorizeUrl(via = '') {
+  function authorizeUrl(via = '', extra = {}) {
     const u = new URL(DISCORD + '/oauth2/authorize');
     u.searchParams.set('client_id', clientId); u.searchParams.set('response_type', 'code'); u.searchParams.set('scope', 'identify email');
-    u.searchParams.set('redirect_uri', redirectUri); u.searchParams.set('state', sign({ t: now(), via: String(via || '').slice(0, 40) }));
+    u.searchParams.set('redirect_uri', redirectUri); u.searchParams.set('state', sign({ t: now(), via: String(via || '').slice(0, 40), ...extra }));
     return u.toString();
+  }
+
+  /* Continue with Discord on stockmarketloop.com: the same Discord sign-in and the same callback (so nothing changes in the
+     Discord developer portal), but no trial is started. The site account is made or matched from the email Discord vouches for,
+     and the member is sent through the site's one-time sign-in link to the page they came from. The return path must be a path on
+     the site itself: anything else (a full URL, //host, a backslash) becomes the home page. */
+  const siteOrigin = new URL(siteRegisterUrl).origin;
+  const safeReturn = (v) => { const r = String(v || ''); return /^\/(?![\/\\])[\x21-\x7e]{0,199}$/.test(r) && !/[\r\n]/.test(r) ? r : '/'; };
+  const signinFailed = (why, extra = '') => page('Could not sign you in', '<p class="k">NOT YET</p><h1>We could not sign you in with Discord.</h1><p>' + esc(why) + '</p><a class="btn" href="' + siteOrigin + '/login/">Back to sign in</a><a class="btn alt" href="' + siteOrigin + '/register/">Create an account with email</a>' + extra);
+  async function signin(response, who, state) {
+    const b = siteBridge();
+    if (!b) { send(response, 503, signinFailed('Sign-in with Discord is not switched on for the site yet. Use your email instead.')); return; }
+    if (!who.email) { send(response, 200, signinFailed('Discord did not share an email address. Add and verify an email on your Discord account, then try again, or sign up with your email.')); return; }
+    let site;
+    try { site = await b.register({ discordUserId: who.id, discordTag: who.tag, email: who.email, emailVerified: who.emailVerified, name: who.name, returnTo: siteOrigin + safeReturn(state.ret) }); }
+    catch (error) { site = { ok: false, error: 'register_failed' }; }
+    logger(site && site.ok ? 'info' : 'warn', 'discord_signin', { userId: who.id, ok: !!(site && site.ok), created: !!(site && site.created), matched: !!(site && site.matched), error: site && site.error, emailShared: !!who.email });
+    if (site && site.ok && site.loginUrl) {
+      let host = ''; try { host = new URL(site.loginUrl).host; } catch (_) { host = ''; }
+      if (host === new URL(siteOrigin).host) { response.writeHead(302, { location: site.loginUrl, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' }); response.end(); return; }
+    }
+    const why = {
+      email_unverified_existing: 'An account with the email on your Discord already exists. Log in to it once with your email and password, and your Discord can be connected from there.',
+      discord_already_linked: 'This Discord account is already linked to a different StockMarketLoop account.',
+      email_required: 'Discord did not share an email address. Add and verify an email on your Discord account, then try again.'
+    }[site && site.error] || 'StockMarketLoop did not answer just now. Try again in a moment, or use your email.';
+    send(response, site && site.status === 409 ? 409 : 200, signinFailed(why));
   }
 
   /* the one trial a Discord account gets */
@@ -152,13 +179,16 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
     if (path === '/academy-activity/trial' || path === '/academy-activity/trial/') { send(response, 200, landing(String(q.get('via') || '').slice(0, 40))); return true; }
     const ip = String(request.headers['x-forwarded-for'] || request.socket?.remoteAddress || '').split(',')[0].trim();
     if (limited(ip)) { send(response, 429, failed('Too many attempts from this connection. Wait a minute and try again.')); return true; }
+    if (path === '/academy-activity/trial/signin') { response.writeHead(302, { location: authorizeUrl('signin', { mode: 'signin', ret: safeReturn(q.get('return')) }), 'cache-control': 'no-store' }); response.end(); return true; }
     if (path === '/academy-activity/trial/start') { response.writeHead(302, { location: authorizeUrl(q.get('via') || ''), 'cache-control': 'no-store' }); response.end(); return true; }
     if (path === '/academy-activity/trial/callback') {
       const state = open(q.get('state'));
       if (!state) { send(response, 400, failed('The sign-in link expired. Start again from the trial page.')); return true; }
+      if (state.mode === 'signin' && q.get('error')) { send(response, 200, signinFailed(q.get('error') === 'access_denied' ? 'The Discord sign-in was cancelled. Nothing was changed.' : 'Discord did not complete the sign-in.')); return true; }
       if (q.get('error')) { send(response, 200, failed(q.get('error') === 'access_denied' ? 'The Discord sign-in was cancelled. Nothing was started.' : 'Discord did not complete the sign-in (' + String(q.get('error')).slice(0, 40) + ').')); return true; }
       try {
         const who = await exchange(q.get('code'));
+        if (state.mode === 'signin') { await signin(response, who, state); return true; }
         const r = await grant(who.id, state.via);
         /* the site account, made or matched from the Discord sign-in (the email Discord shared, verified by Discord); a site that cannot answer leaves the manual steps */
         let site = null;
@@ -177,6 +207,7 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
         logger('warn', 'academy_trial_failed', { error, code: error && error.code });
         /* Discord answers 400 invalid_grant when the sign-in link was already used or has expired (a reload, a back button, a second tab):
            that is the member's link, not Discord being down, and the trial may already be running on their account */
+        if (state.mode === 'signin') { send(response, error && error.code === 'discord_token_failed' && error.status === 400 ? 400 : 502, signinFailed(error && error.code === 'discord_token_failed' && error.status === 400 ? 'That sign-in link was already used or has expired. Start again from the sign-in window.' : 'Discord did not answer the sign-in just now. Try again in a moment.')); return true; }
         if (error && error.code === 'discord_token_failed' && error.status === 400) { send(response, 400, failed('That sign-in link was already used or has expired. If you just started your trial, it is already on your Discord account: open the Academy from Discord. Otherwise start again.')); return true; }
         send(response, 502, failed('Discord did not answer the sign-in just now. Try again in a moment.'));
       }

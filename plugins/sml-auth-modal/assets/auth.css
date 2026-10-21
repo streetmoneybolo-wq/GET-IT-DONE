@@ -71,3 +71,12 @@
   .smlx-card h2{font-size:23px}
 }
 @media (prefers-reduced-motion:reduce){.smlx-auth,.smlx-card,.smlx-go::after{animation:none!important}}
+
+.smlx-oauth{margin:0 0 16px}
+.smlx-oauth[hidden]{display:none}
+.smlx-discord{display:flex;align-items:center;justify-content:center;gap:10px;min-height:50px;border-radius:13px;background:#5865f2;color:#fff;font:800 15px/1 inherit;font-family:inherit;text-decoration:none;box-shadow:0 10px 26px rgba(88,101,242,.28);transition:filter .12s,transform .08s}
+.smlx-discord:hover{filter:brightness(1.08)}
+.smlx-discord:active{transform:translateY(1px)}
+.smlx-discord:focus-visible{outline:3px solid rgba(88,101,242,.5);outline-offset:2px}
+.smlx-or{display:flex;align-items:center;gap:12px;margin:16px 0 0;color:#6f8798;font-size:12.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.smlx-or::before,.smlx-or::after{content:"";flex:1;height:1px;background:rgba(255,255,255,.1)}
