@@ -22,7 +22,7 @@
     { id: 'smc', s: '#smc-toggle', t: 'SMC: tap a zone, get the read', b: 'Switch SMC on, then click any zone on the chart. A full breakdown opens beside the chart (never over it): what the zone is, the evidence for it and a plain conclusion.' },
     { id: 'group-flow', s: '#tool-rail .tg[data-group=flow]', t: 'FLOW: who is buying and selling', b: 'BUY/SELL pressure, DARK POOL block prints, SHORT SALE data and SENTIMENT. This is the money behind the move, not just the price.' },
     { id: 'group-desk', s: '#tool-rail .tg[data-group=desk]', t: 'DESK panels', b: 'CHAIN opens the options chain. MEM ALGO shows five trade plans with entries, stops and targets. SIRE ranks movers, EARNINGS and CATALYSTS show what is coming.' },
-    { id: 'side', s: 'main .side', t: 'Quote and book', b: 'Live price, the bid and ask, depth and the top of the scanner. Click a scanner row to load that stock on the chart.' },
+    { id: 'side', s: 'main .side', pre: () => { const e = document.querySelector('main .side'); if (e) e.scrollTop = 0; }, t: 'Quote and book', b: 'Live price, the bid and ask, depth and the top of the scanner. Click a scanner row to load that stock on the chart.' },
     { id: 'scanner', s: '#academy-scanner-host', t: 'The live market scanner', b: 'Scan US stocks, ETFs, options and premarket movers. Sort by change or volume and click any row.' },
     { id: 'lessons', s: '#lesson-toggle', t: 'Lessons', b: 'Short narrated lessons that teach each concept on a live chart, from how a candle works to reading order flow.' },
     { id: 'alerts', s: '#academy-alerts-fab', t: 'Alerts desk', b: 'Trade alerts from your servers and traders you follow, scored and tracked. Open it to see entries, targets and how they played out.' },
@@ -198,6 +198,17 @@
     else if (e.key === 'ArrowLeft') { if (i > 0) { i -= 1; render(); } e.preventDefault(); }
   }
   const onResize = () => { if (running) render(); };
+  /* a clean stage: any tool panel the member had open (SQUEEZE, CHAIN, ...) is switched off for the tour and switched back on after, so a step about the quote
+   * column shows the quote column and not a tall module inside it */
+  const reopen = [];
+  const isOn = (b) => b.classList.contains('on') || b.classList.contains('active') || b.getAttribute('aria-pressed') === 'true';
+  function calm() {
+    const cat = window.__smlTourCatalog && window.__smlTourCatalog.tools || {};
+    Object.keys(cat).forEach((id) => { const b = document.getElementById(id); if (b && /-(toggle|btn)$|^depth-/.test(id) && id !== 'lesson-toggle' && id !== 'academy-alerts-fab' && isOn(b)) { reopen.push(id); b.click(); } });
+    const g = document.getElementById('tool-guide'); if (g && g.classList.contains('open')) { const gb = document.getElementById('tool-guide-btn'); if (gb) gb.click(); }
+    return reopen.length;
+  }
+  function restore() { reopen.splice(0).forEach((id) => { const b = document.getElementById(id); if (b && !isOn(b)) b.click(); }); }
   function start(force) {
     if (running) return;
     if (!force && seen()) return;
@@ -206,10 +217,10 @@
     i = 0; running = true;
     root = document.createElement('div'); root.id = 'sml-tour'; root.addEventListener('click', onClick, true); document.body.appendChild(root);
     document.addEventListener('keydown', onKey, true); window.addEventListener('resize', onResize);
-    render();
+    if (calm()) setTimeout(() => { if (running) render(); }, 350); else render();
   }
   function finish(how) {
-    running = false; mark(how); voice.stop(); unhide();
+    running = false; mark(how); voice.stop(); unhide(); restore();
     document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', onResize);
     if (root) { root.remove(); root = null; }
     if (PHONE()) tab('chart');
