@@ -226,3 +226,38 @@ test('an ElevenLabs refusal keeps the reason from its body, and the remembered r
   await assert.rejects(() => v.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'o' }), (e) => e.cached === true && /quota_exceeded/.test(e.message));
   assert.equal(calls, after, 'the remembered rejection costs no request');
 });
+
+test('the voice says M.E.M Algo letter by letter: MEM and MEM ALGO are spelled out for the voice, nothing else changes', () => {
+  const { pronounce } = require('./academy-voice');
+  assert.equal(pronounce('MEM ALGO turns the read into numbers.'), 'M.E.M. Algo turns the read into numbers.');
+  assert.equal(pronounce('Use the MEM Algo here, and mem algo there.'), 'Use the M.E.M. Algo here, and M.E.M. Algo there.');
+  assert.equal(pronounce('MEM ALGO\'s horizons lean long'), 'M.E.M. Algo\'s horizons lean long');
+  assert.equal(pronounce('The MEM server and MEM.'), 'The M.E.M. server and M.E.M.');
+  assert.equal(pronounce('M.E.M Algo stays'), 'M.E.M. Algo stays');
+  assert.equal(pronounce('Members, memory and MEMBERS are other words'), 'Members, memory and MEMBERS are other words');
+  assert.equal(pronounce(null), '');
+});
+
+test('the audio of a line that mentions M.E.M Algo is stored under the spoken text, and a line that does not keeps its old key', async () => {
+  const sent = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => { sent.push(JSON.parse(init.body).text); return new Response(Buffer.from('ID3' + 'x'.repeat(2000)), { status: 200, headers: { 'content-type': 'audio/mpeg' } }); };
+  try {
+    const { createAcademyVoice } = require('./academy-voice');
+    const voice = createAcademyVoice({ apiKey: 'k'.repeat(24), voiceId: 'v' });
+    const { lineFor } = require('./academy/tour-content');
+    const id = Object.keys(require('./academy/tour-content').catalogForPage().tools).find((k) => /MEM ALGO/.test(String(lineFor('tool', k) || '')));
+    if (id && voice.getTourAudio) { await voice.getTourAudio({ kind: 'tool', id, userId: 'u', internal: true }).catch(() => null); }
+    for (const text of sent) assert.ok(!/\bMEM\b/.test(text), 'the text sent to the voice never contains the bare word MEM: ' + text.slice(0, 80));
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('the indicator engine walkthrough explains every control in order and says M.E.M Algo for the voice', () => {
+  const { PLAYBOOKS } = require('./academy/tour-playbooks');
+  const pb = PLAYBOOKS.indicators;
+  const keys = pb.steps.map((s) => s.k);
+  for (const k of ['intro', 'active', 'search', 'category', 'browse', 'chips', 'interval', 'combo', 'screener', 'byind', 'byhorizon', 'rows', 'suggest', 'shares', 'targets', 'limits', 'routine']) assert.ok(keys.includes(k), k);
+  const text = pb.steps.map((s) => s.t + '. ' + s.b).join(' ');
+  for (const bit of ['Browse indicators', 'live chip', 'feed chip', 'By indicator', 'By horizon', 'CALL or PUT', 'Press the button again', 'pre-alert check']) assert.ok(new RegExp(bit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(text), bit);
+  assert.ok(/M\.E\.M Algo/.test(text), 'written the way it is said');
+});

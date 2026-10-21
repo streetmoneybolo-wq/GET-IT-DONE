@@ -6,6 +6,15 @@ const { lessonParts } = require('./academy/lesson-parts');
 const { lineFor } = require('./academy/tour-content');
 
 const DEFAULT_MODEL = 'eleven_multilingual_v2';
+
+/* How the voice SAYS things, as opposed to how the screen spells them. The product is the M.E.M Algo: three letters, said one by one ("em ee em"),
+   then the word "Algo". Written MEM or MEM ALGO the voice reads "mem" as a word (and shouts A-L-G-O), so the spoken text spells it out. The
+   audio is stored under the SPOKEN text, so a line that changes here is regenerated once, and every other line keeps its stored audio. */
+function pronounce(text) {
+  return String(text == null ? '' : text)
+    .replace(/\bM\.?E\.?M\.?\s+ALGO\b/gi, 'M.E.M. Algo')
+    .replace(/\bMEM\b\.?/g, 'M.E.M.');
+}
 const MAX_CACHE_ITEMS = 1024;
 /* the in-memory copy is a short window over the durable store (academy_media holds every part; a miss here is one database read):
    about 90 narration parts, six lessons' worth. The service runs in 512 MB, and 96 MB of audio buffers was a quarter of it. */
@@ -145,7 +154,8 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
 
   /** One narration part, cached by its own text, so an edit to one part regenerates only that part. */
   async function partAudio(text, context) {
-    const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0part\0${text}`).digest('hex');
+    const spoken = pronounce(text);
+    const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0part\0${spoken}`).digest('hex');
     if (cache.has(digest)) return { audio: cache.get(digest), cached: true };
     if (!inflight.has(digest)) {
       inflight.set(digest, (async () => {
@@ -156,7 +166,7 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
           error.code = 'integration_unconfigured';
           throw error;
         }
-        const audio = await generateText(text, digest, context);
+        const audio = await generateText(spoken, digest, context);
         await remember(digest, audio, text, 'lesson');
         return { audio, cached: false };
       })().finally(() => inflight.delete(digest)));
@@ -201,8 +211,8 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     const index = Number(partIndex);
     if (!episode || !Number.isInteger(index) || index < 0 || index >= parts.length) throw new TypeError('invalid discipline audio part');
     consume(String(userId || 'unknown'));
-    const text = parts[index];
-    const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0discipline\0${episode.id}\0${index}\0${text}`).digest('hex');
+    const text = parts[index], spoken = pronounce(text);
+    const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0discipline\0${episode.id}\0${index}\0${spoken}`).digest('hex');
     if (cache.has(digest)) return { audio: cache.get(digest), cached: true, partCount: parts.length };
     const baked = await fromStore(digest);
     if (baked) return { audio: baked, cached: true, partCount: parts.length };
@@ -211,7 +221,7 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
       error.code = 'integration_unconfigured';
       throw error;
     }
-    if (!inflight.has(digest)) inflight.set(digest, generateText(text, digest).then(async (audio) => { await remember(digest, audio, text, 'discipline'); return audio; }).finally(() => inflight.delete(digest)));
+    if (!inflight.has(digest)) inflight.set(digest, generateText(spoken, digest).then(async (audio) => { await remember(digest, audio, text, 'discipline'); return audio; }).finally(() => inflight.delete(digest)));
     return { audio: await inflight.get(digest), cached: false, partCount: parts.length };
   }
 
@@ -225,7 +235,8 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     const text = lineFor(kind, id);
     if (!text) throw new TypeError('invalid tour audio line');
     if (internal !== true) consume(String(userId || 'unknown'));
-    const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0tour\0${text}`).digest('hex');
+    const spoken = pronounce(text);
+    const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0tour\0${spoken}`).digest('hex');
     if (cache.has(digest)) return { audio: cache.get(digest), cached: true };
     const baked = await fromStore(digest);
     if (baked) return { audio: baked, cached: true };
@@ -234,7 +245,7 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
       error.code = 'integration_unconfigured';
       throw error;
     }
-    if (!inflight.has(digest)) inflight.set(digest, generateText(text, digest).then(async (audio) => { await remember(digest, audio, text, 'tour'); return audio; }).finally(() => inflight.delete(digest)));
+    if (!inflight.has(digest)) inflight.set(digest, generateText(spoken, digest).then(async (audio) => { await remember(digest, audio, text, 'tour'); return audio; }).finally(() => inflight.delete(digest)));
     return { audio: await inflight.get(digest), cached: false };
   }
 
@@ -261,4 +272,4 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
   return { configured, stored, getLessonAudio, getTourAudio, getDisciplineAudio, getDisciplineEpisodeAudio };
 }
 
-module.exports = { createAcademyVoice, narrationFor, mp3DurationMs, stripId3 };
+module.exports = { createAcademyVoice, narrationFor, mp3DurationMs, stripId3, pronounce };
