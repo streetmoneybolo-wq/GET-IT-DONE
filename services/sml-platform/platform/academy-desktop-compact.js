@@ -59,7 +59,7 @@
       if (b.textContent !== short && /^(Interval stats|Reset view)$/.test(b.textContent.trim())) { b.textContent = short; if (!b.title) b.title = full; }
     }
   }
-  const OWNER_TOOLS = ['evolve-btn', 'squeeze-btn', 'challenge-toggle', 'sml-sig-fab'];
+  const OWNER_TOOLS = ['evolve-btn', 'squeeze-btn', 'challenge-toggle', 'sml-sig-fab', 'auto-live-btn'];
   function ownerTools(on) {
     let box = document.getElementById('sml-owner-tools');
     if (!on) { OWNER_TOOLS.forEach((id) => { const b = document.getElementById(id); if (b) { delete b.dataset.ownerSlot; restore(b); } }); if (box) box.remove(); return; }
