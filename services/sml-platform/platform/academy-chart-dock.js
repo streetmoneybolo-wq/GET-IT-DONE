@@ -28,8 +28,10 @@
     + 'body.dock-open main .chart>.academy-chart-stage{grid-column:1!important}'
     + 'body.sire-open.dock-open main .chart{grid-template-columns:minmax(0,1fr) var(--dock-w,340px) var(--sire-w,332px)!important}'
     + 'body.sire-open.dock-open #sire-panel{grid-column:3!important}'
-    + '#chart-dock{display:none;grid-column:2!important;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;margin-left:4px;flex-direction:column;gap:6px;scrollbar-width:thin}'
+    + '#chart-dock{display:none;grid-column:2!important;min-width:0;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;margin-left:4px;flex-direction:column;gap:6px;scrollbar-width:thin}'
     + 'body.dock-open #chart-dock{display:flex}'
+    /* nothing in the dock may be wider than the dock: it wraps instead of being cut off behind a sideways scroll bar */
+    + '#chart-dock>*{min-width:0!important;max-width:100%!important;box-sizing:border-box;overflow-wrap:anywhere}#chart-dock button,#chart-dock select,#chart-dock input{max-width:100%;min-width:0}#chart-dock .om-row,#chart-dock .row{flex-wrap:wrap}#chart-dock .om-row>button{flex:1 1 7rem;white-space:normal}'
     + '#chart-dock>*{position:static!important;left:auto!important;top:auto!important;right:auto!important;bottom:auto!important;width:auto!important;max-width:none!important;max-height:none!important;margin:0!important;flex:0 0 auto;box-shadow:none!important}'
     + '#chart-dock>.academy-pro-panel.open{display:flex!important}#chart-dock>.academy-pro-panel .plist{max-height:46vh}'
     + '#chart-dock>#mem-algo-panel.open{display:block!important}'

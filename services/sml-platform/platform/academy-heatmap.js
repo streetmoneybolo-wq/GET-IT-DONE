@@ -65,7 +65,7 @@
   const tf = () => { try { const M = window.smlChartModel && window.smlChartModel(); if (M && M.tf) return String(M.tf); } catch (_) { /* fall through */ } try { const st = window.smlAcademyChartState && window.smlAcademyChartState(); if (st && st.tf) return String(st.tf); } catch (_) { /* fall through */ } return String(q().get('tf') || '5m'); };
 
   const style = document.createElement('style');
-  style.textContent = '#heat-layer{position:absolute;pointer-events:none;z-index:3;background:transparent;border:0;border-radius:0;min-height:0;max-width:none;mix-blend-mode:screen}'
+  style.textContent = '#heat-layer{position:absolute;pointer-events:none;z-index:3;background:transparent;border:0;border-radius:0;min-height:0;max-width:100%;mix-blend-mode:screen}'
     + '#heat-toggle.on{background:#4a2a5a;border-color:#d08cff;color:#fff}';
   document.head.appendChild(style);
   const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'heat-toggle'; btn.className = 'depth-toggle'; btn.textContent = 'HEAT'; btn.title = 'Order-book heat map: where liquidity sat over the last twenty minutes (intraday charts)'; toolbar.appendChild(btn);

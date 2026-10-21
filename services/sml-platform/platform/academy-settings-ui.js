@@ -50,7 +50,7 @@
     + '#sml-settings-panel{position:fixed;right:10px;bottom:52px;z-index:2147483201;width:min(340px,calc(100vw - 20px));max-height:calc(100dvh - 70px);overflow:auto;background:#0a1118;border:1px solid #2f6cf5;border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.65);color:#dbe6ec;font:600 .72rem/1.4 system-ui,sans-serif;padding:12px;display:none}'
     + '#sml-settings-panel h4{margin:0 0 8px;font:800 .8rem system-ui}#sml-settings-panel h6{margin:10px 0 5px;font:800 .58rem ui-monospace,monospace;letter-spacing:.08em;color:#9cc8ff}'
     + '#sml-settings-panel label{display:flex;gap:7px;align-items:center;padding:5px 0;cursor:pointer}#sml-settings-panel input{accent-color:#2f6cf5}'
-    + '#sml-settings-panel .brk{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}#sml-settings-panel select{width:100%;background:#0d1720;color:#eaf5f8;border:1px solid #294554;border-radius:6px;padding:6px}'
+    + '#sml-settings-panel .edges{display:flex;flex-wrap:wrap;gap:6px 12px}#sml-settings-panel .edges input{width:64px;background:#0d1720;color:#eaf5f8;border:1px solid #294554;border-radius:6px;padding:5px}#sml-settings-panel .brk{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}#sml-settings-panel select{width:100%;background:#0d1720;color:#eaf5f8;border:1px solid #294554;border-radius:6px;padding:6px}'
     + '#sml-settings-panel .pv{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}#sml-settings-panel .pv span{border:1px solid;border-radius:6px;padding:3px 8px;font:800 .62rem system-ui}'
     + '#sml-settings-panel .note{color:#7f95a1;font-weight:500;font-size:.6rem;margin-top:8px}#sml-settings-panel .ft{display:flex;gap:8px;margin-top:12px}#sml-settings-panel .ft button{flex:1;border:1px solid #2a4a58;border-radius:7px;background:#0d1a24;color:#e6eef2;padding:7px;font:800 .66rem system-ui;cursor:pointer}'
     + '@media(max-width:720px){#sml-settings-btn{right:auto;left:10px;bottom:48px}}';
@@ -68,6 +68,7 @@
         : '<div class="brk">' + P.BROKERS.map((b) => '<label><input type="checkbox" data-p="' + b.key + '"' + (prefs.platforms.includes(b.key) ? ' checked' : '') + '>' + esc(b.name) + '</label>').join('') + '</div>')
       + '<h6>SELL BUTTONS</h6><label><input type="checkbox" data-k="sell"' + (prefs.sell ? ' checked' : '') + '>Show a Sell button beside Buy on contracts and hedge ideas</label>'
       + '<h6>PREVIEW</h6><div class="pv">' + chosen.map((b) => '<span style="color:' + b.color + ';background:' + b.bg + ';border-color:' + b.border + '">Buy on ' + esc(b.name) + ' ↗</span>').join('') + '</div>'
+      + (window.smlDiscordEdges && window.smlDiscordEdges.active ? '<h6>DISCORD PHONE EDGES</h6><div class="edges"><label>Top gap <input type="number" data-edge="top" min="0" max="200" step="4" value="' + window.smlDiscordEdges.get().top + '"> px</label><label>Bottom gap <input type="number" data-edge="bottom" min="0" max="200" step="4" value="' + window.smlDiscordEdges.get().bottom + '"> px</label></div><p class="note">Discord\'s own bars cover the top and bottom of an Activity on a phone, and a tap there never reaches the Academy. These gaps keep every button clear of them: raise one if something is still hidden, lower it to use more screen.</p>' : '')
       + '<p class="note">Applies to the chart toolbar, the options chain, the contract mini chart and the hedge ideas. Buttons open your broker on the stock (or its options chain) and copy the contract symbol; every order is reviewed and placed by you in your broker. Nothing is traded from the Academy.</p>'
       + '<div class="ft"><button type="button" data-reset="1">Reset</button><button type="button" data-close="1">Done</button></div>';
   }
@@ -77,11 +78,12 @@
     else if (t.dataset.p) { const set = new Set(prefs.platforms); if (t.checked) set.add(t.dataset.p); else set.delete(t.dataset.p); window.smlBuyPrefs.set({ platforms: P.KEYS.filter((k) => set.has(k)) }); }
     else if (t.dataset.k === 'primary') window.smlBuyPrefs.set({ primary: t.value });
     else if (t.dataset.k === 'sell') window.smlBuyPrefs.set({ sell: t.checked });
+    else if (t.dataset.edge && window.smlDiscordEdges) window.smlDiscordEdges.set({ [t.dataset.edge]: t.value });
     paint();
   });
   panel.addEventListener('click', (e) => {
     const b = e.target.closest ? e.target.closest('button') : null; if (!b) return;
-    if (b.dataset.reset) { window.smlBuyPrefs.set(Object.assign({}, P.DEFAULTS)); paint(); }
+    if (b.dataset.reset) { window.smlBuyPrefs.set(Object.assign({}, P.DEFAULTS)); if (window.smlDiscordEdges && window.smlDiscordEdges.active) window.smlDiscordEdges.reset(); paint(); }
     else if (b.dataset.close) toggle(false);
   });
   function toggle(on) { const show = on == null ? panel.style.display !== 'block' : on; if (show) paint(); panel.style.display = show ? 'block' : 'none'; btn.setAttribute('aria-expanded', String(show)); }

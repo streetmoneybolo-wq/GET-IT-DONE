@@ -50,7 +50,7 @@
   const A = 'html body.sml-ms';
   const css = [
     ':root{--ms-nav-h:54px;--ms-sub-h:0px}',
-    A + '{padding-bottom:calc(var(--ms-nav-h) + var(--ms-sub-h) + env(safe-area-inset-bottom,0px))!important}',
+    A + '{padding-bottom:calc(var(--ms-nav-h) + var(--ms-sub-h) + env(safe-area-inset-bottom,0px) + var(--sml-inset-bottom,0px))!important}',
     /* what the tabs replace */
     /* the hover mini chart is a mouse feature: a tap loads the symbol on the chart tab instead */
     A + ' #sml-scan-pop{display:none!important}',
