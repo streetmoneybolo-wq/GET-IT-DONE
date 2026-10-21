@@ -12,6 +12,11 @@
   'use strict';
   const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
   const fmt = (p) => (Number(p) >= 10 ? Number(p).toFixed(2) : Number(p) >= 1 ? Number(p).toFixed(3) : Number(p).toFixed(4));
+  /* the short phrases the desk says out loud (the full read stays in the captions); few and fixed, so each is voiced once and reused */
+  const OPENERS = { long: ['Check this stock out.', 'This stock is running.', 'Look at this one.', 'This one is moving.', 'Keep an eye on this one.', 'Here is one to watch.'], short: ['Watch this one drop.', 'This one is heading down.', 'Weakness here.', 'This one is falling.'] };
+  const TARGET_SAY = { 1: 'Target one hit.', 2: 'Target two hit.', 3: 'Target three hit.' };
+  let lastOpen = -1;
+  const opener = (side) => { const pool = OPENERS[side === 'short' ? 'short' : 'long']; let i = Math.floor(Math.random() * pool.length); if (pool.length > 1 && i === lastOpen) i = (i + 1) % pool.length; lastOpen = i; return pool[i]; };
   const COOL_MS = 45 * 60_000, CALL_LIFE_MS = 6 * 3_600_000, SPOKEN = /[^\w\s.,%$+\-:;!?'/()]/g;
 
   /* ---- pure logic (tested) ---- */
@@ -159,7 +164,7 @@
   const speakable = (s) => String(s || '').replace(/·/g, ',').replace(SPOKEN, ' ').replace(/\b([A-Z]{2,5})\b/g, (m) => (m === 'FDA' || m === 'VIX' || m === 'MEM' || m === 'ALGO' ? m : m.split('').join(' '))).replace(/\s+/g, ' ').trim();
   const readMs = (s) => Math.max(1800, String(s || '').length * 62);
 
-  const API = { buildQueue, judge, judgeBars, vetCall, progress, scoreboard, setupScript, marketScript, catalystScript, chunk, speakable, readMs, TIPS, COOL_MS, CALL_LIFE_MS };
+  const API = { OPENERS, TARGET_SAY, opener, buildQueue, judge, judgeBars, vetCall, progress, scoreboard, setupScript, marketScript, catalystScript, chunk, speakable, readMs, TIPS, COOL_MS, CALL_LIFE_MS };
   if (typeof module !== 'undefined' && module.exports) { module.exports = API; return; }
   if (!root || !root.document) return;
 
@@ -304,19 +309,27 @@
         a.play().then(() => { if (S.voiceOk !== true) { S.voiceOk = true; paint(); } }, () => fin(false));
       });
     }
-    async function say(text, ch, next) {
+    /* The captions carry the whole read; the voice only says a short tag: the ticker and a phrase from a small fixed bank, in the owner's voice (each
+       one voiced once and reused, so it costs almost nothing). A step with no tag is read in silence at a quicker pace. */
+    async function say(text, ch, spoken) {
       S.cap = text; if (ch != null) S.ch = ch; paintCap();
-      if (!S.muted && mineOn()) { const mine = clipFor(text); if (next) void clipFor(next); if (await sayMine(text, mine)) return; if (gone() || S.skip) return; }
-      const parts = chunk(text), quiet = S.muted || !root.speechSynthesis || S.voiceOk === false;
-      if (quiet) { await timed(readMs(text) / S.pace); return; }
-      try { root.speechSynthesis.cancel(); } catch (_) { /* fine */ }
-      for (const p of parts) { if (gone() || S.skip) break; await utter(p); while (S.on && S.paused) await wait(250); if (S.muted || S.voiceOk === false) { await timed(readMs(p) / S.pace); } }
+      const tags = (Array.isArray(spoken) ? spoken : spoken ? [spoken] : []).filter(Boolean);
+      if (!tags.length || S.muted) { await timed(Math.min(readMs(text) * 0.45, 5000) / S.pace); return; }
+      if (mineOn()) tags.forEach((p) => void clipFor(p));
+      for (const p of tags) {
+        if (gone() || S.skip) break;
+        if (mineOn() && await sayMine(p, clipFor(p))) continue;
+        if (gone() || S.skip) break;
+        if (!root.speechSynthesis || S.voiceOk === false) { await timed(readMs(p) / S.pace); continue; }
+        try { root.speechSynthesis.cancel(); } catch (_) { /* fine */ }
+        await utter(p); while (S.on && S.paused) await wait(250);
+      }
     }
     /* a wait that ends early on skip and holds while paused */
     async function timed(ms) { let left = ms; while (S.on && left > 0 && !S.skip) { await wait(200); if (!S.paused) left -= 200; } }
     const hold = (ms) => timed(ms / S.pace);
-    async function speak(text, ch, next) { await say(text, ch, next); }
-    function testVoice() { if (mineOn()) { void sayMine('Voice check.', clipFor('Voice check. If you can hear this, the desk can talk.')); return; } if (!root.speechSynthesis) { S.voiceOk = false; S.note = 'This browser has no speech. Captions still work.'; paint(); return; } S.voiceOk = null; S.muted = false; try { root.speechSynthesis.cancel(); } catch (_) { /* fine */ } void utter('Voice check. If you can hear this, the desk can talk.').then(() => { if (S.voiceOk == null) S.voiceOk = false; paint(); }); }
+    async function speak(text, ch, spoken) { await say(text, ch, spoken); }
+    function testVoice() { if (mineOn()) { void sayMine('Voice check.', clipFor('Voice check.')); return; } if (!root.speechSynthesis) { S.voiceOk = false; S.note = 'This browser has no speech. Captions still work.'; paint(); return; } S.voiceOk = null; S.muted = false; try { root.speechSynthesis.cancel(); } catch (_) { /* fine */ } void utter('Voice check. If you can hear this, the desk can talk.').then(() => { if (S.voiceOk == null) S.voiceOk = false; paint(); }); }
 
     /* ---- the overlays: banner at the top, caption bar at the bottom, board at the side ---- */
     const banner = document.createElement('div'); banner.id = 'al-banner';
@@ -417,10 +430,10 @@
         const { call, e } = alerts.shift(); S.phase = 'update'; S.focus = call; paint();
         await showSymbol(call.sym);
         const late = e.at && Date.now() - e.at > 4 * 60_000 ? ' This happened a little while ago.' : '';
-        if (e.type === 'target') { S.flash = 'win'; chime(true); paint(); pointAt({ kind: 'price', price: e.price, label: 'TARGET ' + e.n + ' HIT ' + fmt(e.price) }); await speak(call.sym + ' hit target ' + (e.n === 1 ? 'one' : e.n === 2 ? 'two' : 'three') + ' at ' + fmt(e.price) + '.' + late + (e.n === 1 ? ' That counts as a win on the board. A common way to handle it is to take some off and move the stop to your entry.' : ' Still running, so trail the stop under the last target.'), 'TARGET HIT'); }
-        else if (e.type === 'done') { S.flash = 'win'; chime(true); paint(); await speak(call.sym + ' finished the whole ladder. That is the full idea played out.', 'ALL TARGETS'); }
-        else if (e.type === 'stop') { S.flash = 'loss'; chime(false); paint(); pointAt({ kind: 'price', price: e.price, label: 'STOPPED ' + fmt(e.price) }); await speak(call.sym + ' hit the stop at ' + fmt(e.price) + (e.afterTarget ? ', after already paying at target ' + call.hit + '.' : '. That one is a loss and it stays on the scoreboard. This is why we know the stop before we enter.') + (e.cautious ? ' The same candle also reached the target, and we count the stop first to stay honest.' : '') + late, 'STOPPED'); }
-        else if (e.type === 'expired') await speak(call.sym + ' never resolved in time, so the desk closes it flat. Time is a cost too.', 'EXPIRED');
+        if (e.type === 'target') { S.flash = 'win'; chime(true); paint(); pointAt({ kind: 'price', price: e.price, label: 'TARGET ' + e.n + ' HIT ' + fmt(e.price) }); await speak(call.sym + ' hit target ' + (e.n === 1 ? 'one' : e.n === 2 ? 'two' : 'three') + ' at ' + fmt(e.price) + '.' + late + (e.n === 1 ? ' That counts as a win on the board. A common way to handle it is to take some off and move the stop to your entry.' : ' Still running, so trail the stop under the last target.'), 'TARGET HIT', [call.sym, TARGET_SAY[e.n] || 'Target hit.']); }
+        else if (e.type === 'done') { S.flash = 'win'; chime(true); paint(); await speak(call.sym + ' finished the whole ladder. That is the full idea played out.', 'ALL TARGETS', [call.sym, 'Full ladder.']); }
+        else if (e.type === 'stop') { S.flash = 'loss'; chime(false); paint(); pointAt({ kind: 'price', price: e.price, label: 'STOPPED ' + fmt(e.price) }); await speak(call.sym + ' hit the stop at ' + fmt(e.price) + (e.afterTarget ? ', after already paying at target ' + call.hit + '.' : '. That one is a loss and it stays on the scoreboard. This is why we know the stop before we enter.') + (e.cautious ? ' The same candle also reached the target, and we count the stop first to stay honest.' : '') + late, 'STOPPED', [call.sym, 'Stopped out.']); }
+        else if (e.type === 'expired') await speak(call.sym + ' never resolved in time, so the desk closes it flat. Time is a cost too.', 'EXPIRED', [call.sym, 'Closed flat.']);
         S.flash = ''; pointAt(null); save(); paint(); await hold(1200);
       }
     }
@@ -429,17 +442,17 @@
     async function marketSegment() {
       S.phase = 'market'; S.focus = null; paint(); await showSymbol('SPY');
       const [dir, vix] = await Promise.all([api('/academy-activity/direction?mode=day'), api('/academy-activity/vix')]);
-      const ms_ = marketScript(dir, vix); for (let i = 0; i < ms_.length; i++) { const s = ms_[i]; if (gone() || S.skip) break; pointAt(s.point); await speak(s.say, s.ch, ms_[i + 1] && ms_[i + 1].say); await hold(400); }
+      const ms_ = marketScript(dir, vix); for (let i = 0; i < ms_.length; i++) { const s = ms_[i]; if (gone() || S.skip) break; pointAt(s.point); await speak(s.say, s.ch, i === 0 ? 'Market check.' : null); await hold(400); }
       pointAt(null); S.skip = false;
       const [fda, earn] = await Promise.all([api('/academy-activity/fda?days=21&limit=10'), api('/academy-activity/earnings-playbook?days=5&limit=12')]);
       const cs = catalystScript(fda && fda.events, (earn && (earn.events || earn.rows)) || []);
       if (cs.length) { S.phase = 'catalysts'; paint(); }
-      for (let i = 0; i < cs.length; i++) { const s = cs[i]; if (gone() || S.skip) break; pointAt(s.point); await speak(s.say, s.ch, cs[i + 1] && cs[i + 1].say); await hold(400); }
+      for (let i = 0; i < cs.length; i++) { const s = cs[i]; if (gone() || S.skip) break; pointAt(s.point); await speak(s.say, s.ch, i === 0 ? 'Catalysts ahead.' : null); await hold(400); }
       pointAt(null); S.skip = false;
     }
     async function pass(cand, reason) {
       S.passed++; S.seen[cand.sym] = Date.now(); save(); S.phase = 'scanning'; S.focus = null; paint();
-      await speak('Passing on ' + cand.sym + ': ' + reason + '. Not every setup earns a trade, and skipping is part of the job.', 'PASS');
+      await speak('Passing on ' + cand.sym + ': ' + reason + '. Not every setup earns a trade, and skipping is part of the job.', 'PASS', [cand.sym, 'Passing on this one.']);
     }
     async function tradeSegment(cand) {
       S.phase = 'scanning'; S.focus = null; S.ch = 'LOOKING'; S.cap = 'Checking ' + cand.sym + '…'; paint(); S.seen[cand.sym] = Date.now(); save();
@@ -452,15 +465,15 @@
       await showSymbol(cand.sym);
       const call = { id: cand.sym + ':' + Date.now(), sym: cand.sym, side: t.direction, entry: v.entry, targets: t.targets.slice(0, 3).map((x) => x.price), stop: t.stop.price, at: Date.now(), hit: 0, status: 'open', last: v.entry, why: cand.why.slice(0, 2), scanned: 0 };
       S.calls.push(call); S.focus = call; S.trades++; S.phase = 'trade'; S.fails = 0; save(); paint(); draw();
-      const steps = setupScript(cand, t, null, { n: S.trades - 1, entry: v.entry, rr: v.rr }), tail = 'Now we watch it. If it moves I will come back; meanwhile, here is the next one.'; for (let i = 0; i < steps.length; i++) { const s = steps[i]; if (gone() || S.skip) break; pointAt(s.point); draw(); await speak(s.say, s.ch, steps[i + 1] ? steps[i + 1].say : tail); await hold(350); }
+      const steps = setupScript(cand, t, null, { n: S.trades - 1, entry: v.entry, rr: v.rr }), tail = 'Now we watch it. If it moves I will come back; meanwhile, here is the next one.'; for (let i = 0; i < steps.length; i++) { const s = steps[i]; if (gone() || S.skip) break; pointAt(s.point); draw(); await speak(s.say, s.ch, i === 0 ? [cand.sym, opener(t.direction)] : null); await hold(350); }
       pointAt(null); S.skip = false;
-      S.phase = 'watching'; paint(); await speak(tail, 'WATCHING');
+      S.phase = 'watching'; paint(); await speak(tail, 'WATCHING', 'Now we watch.');
       await hold(12000);
     }
     async function loop() {
       const run = ++S.run; let since = 0;
       await watchTick(); await drainAlerts();
-      await speak('Auto Live desk is on. I scan the whole Academy for setups, show how each one is read, and keep an honest scoreboard.', 'WELCOME');
+      await speak('Auto Live desk is on. I scan the whole Academy for setups, show how each one is read, and keep an honest scoreboard.', 'WELCOME', 'Desk is live.');
       while (S.on && run === S.run) {
         try {
           await watchTick(); await drainAlerts();
