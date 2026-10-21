@@ -100,11 +100,17 @@
         html += '<div class="note">Without your own bot, the StockMarketLoop Connect bot posts your alerts: invite it to your server and let it view, post and attach files in your alert channels. Alerts are members\' opinions, not advice; nothing here places a trade.</div>';
       }
     } else html += '<div class="note">Switch to ANALYST to run your own trading room, post Click-to-Alert into your server, sell premium channels and write letters.</div>';
+    if (window.smlAcademySeats) {
+      const held = window.smlAcademySeats.held();
+      html += '<h6>FOR YOUR SERVER</h6><div class="note" style="padding-bottom:4px">Put the members you choose on Trader: seats, by the month, one price each. You pick who sits in them, and you can move a seat to someone else at any time.</div>'
+        + '<div class="row"><button type="button" data-seats="1">' + (held ? 'Team seats &#183; ' + held.used + '/' + held.seats : 'Buy team seats') + '</button></div>';
+    }
     card.innerHTML = html;
   }
   card.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-pick],[data-close],[data-save],[data-remove]'); if (!t) return;
+    const t = e.target.closest('[data-pick],[data-close],[data-save],[data-remove],[data-seats]'); if (!t) return;
     if (t.dataset.close) { S.open = false; paint(); return; }
+    if (t.dataset.seats) { S.open = false; paint(); window.smlAcademySeats.open(); return; }
     if (t.dataset.pick) { void choose(t.dataset.pick); return; }
     if (t.dataset.save) { void saveBot(); return; }
     if (t.dataset.remove) { void removeBot(); }

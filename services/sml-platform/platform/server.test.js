@@ -2639,6 +2639,87 @@ test('Editions and persona bots: a member picks Trader or Analyst, the analyst c
   assert.match(html, /id = 'edition-btn'/); assert.match(html, /body\.sml-edition-trader #click-alert-toggle,body\.sml-edition-trader #article-btn\{display:none!important\}/, 'the Trader edition hides the publishing tools');
 });
 
+test('team seats: the owner buys them, hands them out by Discord id, and only the site owner may grant one by hand', async () => {
+  const OWNER = '258456581000000000';
+  const A = '111111111111111111';
+  const academyOAuth = {
+    verifySession: (authorization) => {
+      /* 'boss' is the site owner (academy-free-users OWNER_IDS), the only one who may grant a subscription by hand */
+      const who = { 'Bearer owner': OWNER, 'Bearer boss': '1087769175453339648' }[String(authorization || '')];
+      return who ? { ok: true, userId: who, tier: 'trader' } : { ok: false, status: 401, code: 'authorization_required' };
+    }
+  };
+  const state = { subs: {} };
+  const { createSeats } = require('./academy-seats');
+  const { createPassStore } = require('./academy-passes');
+  const academySeats = createSeats({
+    store: { read: async () => state, write: async (next) => { Object.assign(state, next); } },
+    passes: createPassStore()
+  });
+  const billingCalls = [];
+  const academySeatsBilling = {
+    webhookConfigured: true,
+    MAX_BODY_BYTES: 1024,
+    checkout: async (ownerId, seats) => { billingCalls.push(['checkout', ownerId, seats]); return { ok: true, url: 'https://checkout.stripe.com/c/pay/cs_1', seats }; },
+    portal: async () => ({ ok: false, status: 404, code: 'no_subscription' }),
+    resync: async () => ({ ok: true, seats: 4, used: 0, members: [], live: true }),
+    webhook: async ({ signature }) => (signature === 'good' ? { ok: true, status: 200 } : { ok: false, status: 400, code: 'signature_mismatch' })
+  };
+  /* ids are unreadable on their own, so the GET labels each seat */
+  const academySeatNames = async (members) => members.map((m) => ({ ...m, name: m.memberId === A ? 'Dana' : '' }));
+
+  await withServer({ academyOAuth, academySeats, academySeatsBilling, academySeatNames }, async (base) => {
+    const h = { authorization: 'Bearer owner' }, j = { ...h, 'content-type': 'application/json' };
+    assert.equal((await fetch(`${base}/academy-activity/seats`)).status, 401, 'no session, no seats');
+
+    let r = await fetch(`${base}/academy-activity/seats`, { headers: h });
+    let b = await r.json();
+    assert.equal(r.status, 200); assert.equal(b.seats, 0); assert.equal(b.live, false);
+
+    /* buying goes through Stripe, and the URL is handed back for the browser to open */
+    r = await fetch(`${base}/academy-activity/seats/checkout`, { method: 'POST', headers: j, body: '{"seats":3}' });
+    assert.equal(r.status, 200); assert.match((await r.json()).url, /^https:\/\/checkout\.stripe\.com\//);
+    assert.deepEqual(billingCalls[0], ['checkout', OWNER, 3]);
+    /* a refusal keeps its own code so the card can say the right thing */
+    r = await fetch(`${base}/academy-activity/seats/portal`, { method: 'POST', headers: j });
+    assert.equal(r.status, 404); assert.equal((await r.json()).error, 'no_subscription');
+
+    /* nobody but the site owner may grant a subscription by hand */
+    r = await fetch(`${base}/academy-activity/seats`, { method: 'POST', headers: j, body: JSON.stringify({ action: 'set', ownerId: OWNER, seats: 2, periodEnd: '2099-01-01T00:00:00Z' }) });
+    assert.equal(r.status, 403); assert.equal((await r.json()).error, 'owner_only');
+    r = await fetch(`${base}/academy-activity/seats`, { method: 'POST', headers: { authorization: 'Bearer boss', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'set', ownerId: OWNER, seats: 2, periodEnd: '2099-01-01T00:00:00Z' }) });
+    assert.equal(r.status, 200); assert.equal((await r.json()).seats, 2);
+
+    /* and now the owner hands a seat out */
+    r = await fetch(`${base}/academy-activity/seats`, { method: 'POST', headers: j, body: JSON.stringify({ action: 'assign', memberId: A }) });
+    assert.equal(r.status, 200); b = await r.json(); assert.equal(b.used, 1); assert.equal(b.free, 1);
+    r = await fetch(`${base}/academy-activity/seats`, { headers: h }); b = await r.json();
+    assert.deepEqual(b.members, [{ memberId: A, at: b.members[0].at, name: 'Dana' }], 'the seat carries a name');
+    assert.equal(b.customerId, undefined, 'the Stripe customer never reaches the client');
+    r = await fetch(`${base}/academy-activity/seats`, { method: 'POST', headers: j, body: JSON.stringify({ action: 'release', memberId: A }) });
+    assert.equal((await r.json()).used, 0);
+    assert.equal((await fetch(`${base}/academy-activity/seats`, { method: 'POST', headers: j, body: '{"action":"fly"}' })).status, 400);
+    assert.equal((await fetch(`${base}/academy-activity/seats/nonsense`, { method: 'POST', headers: j })).status, 404);
+
+    /* the webhook is signature-only: no session, and a bad signature changes nothing */
+    r = await fetch(`${base}/v1/academy/seats/stripe/webhook`, { method: 'POST', headers: { 'stripe-signature': 'good' }, body: '{}' });
+    assert.equal(r.status, 200); assert.equal((await r.json()).received, true);
+    r = await fetch(`${base}/v1/academy/seats/stripe/webhook`, { method: 'POST', headers: { 'stripe-signature': 'bad' }, body: '{}' });
+    assert.equal(r.status, 400); assert.equal((await r.json()).error, 'signature_mismatch');
+  });
+
+  /* without the services the routes say so rather than pretending */
+  await withServer({ academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/seats`, { headers: { authorization: 'Bearer owner' } })).status, 503);
+    assert.equal((await fetch(`${base}/academy-activity/seats/checkout`, { method: 'POST', headers: { authorization: 'Bearer owner' } })).status, 503);
+    assert.equal((await fetch(`${base}/v1/academy/seats/stripe/webhook`, { method: 'POST', body: '{}' })).status, 503);
+  });
+
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  assert.match(html, /id = 'seats-btn'/, 'the seats card ships with the page');
+  assert.match(html, /window\.smlAcademySeats/, 'and the edition card can open it');
+});
+
 test('the free trial lets a member in from outside the Academy server: the pass check and the identity lookup do not wait for the Loop Bucks shop to be configured', () => {
   const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
   assert.ok(src.includes('withFreeUsers(academyPasses ? withPasses(academyAccessBase, academyPasses) : academyAccessBase'), 'withPasses whenever the pass service exists');

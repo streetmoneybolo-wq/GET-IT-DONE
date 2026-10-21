@@ -25,7 +25,8 @@
  * release ends exactly the right pass and re-issuing within one period is idempotent.
  *
  * State lives in one JSON document (academy_state_kv key `academy-seats` in production):
- *   { subs: { <ownerId>: { seats, periodEnd, status, assigned: { <memberId>: { at, ref } } } } }
+ *   { subs: { <ownerId>: { seats, periodEnd, status, billingAt, customerId, subscriptionId,
+ *                            assigned: { <memberId>: { at, ref } } } } }
  */
 
 const SNOWFLAKE = /^\d{15,25}$/;
@@ -64,20 +65,35 @@ function createSeats({ store = null, passes = null, now = () => Date.now(), logg
       periodEnd: (sub && sub.periodEnd) || null,
       status: (sub && sub.status) || 'none',
       live: live(sub),
+      /* true once Stripe has told us about a subscription, so the UI can offer "Manage billing".
+         The customer id itself stays server-side. */
+      billing: Boolean(sub && sub.customerId),
       members: Object.entries((sub && sub.assigned) || {})
         .map(([memberId, row]) => ({ memberId, at: row && row.at ? row.at : null }))
         .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')))
     };
   }
 
-  /* Billing tells us what the owner is paying for. Called on checkout, renewal and cancellation. */
-  async function setSubscription(ownerId, { seats, periodEnd = null, status = 'active' } = {}) {
+  /* Billing tells us what the owner is paying for. Called on checkout, renewal and cancellation.
+     `eventAt` is the billing event's own timestamp: Stripe can deliver out of order, and a late
+     'updated' arriving after a 'deleted' would otherwise hand the seats back. `customerId` and
+     `subscriptionId` are kept so the owner can be sent to their billing portal later. */
+  async function setSubscription(ownerId, { seats, periodEnd = null, status = 'active', eventAt = null, customerId = null, subscriptionId = null } = {}) {
     const owner = id(ownerId);
     if (!isId(owner)) return { ok: false, status: 400, code: 'invalid_owner' };
     const count = Number(seats);
     if (!Number.isInteger(count) || count < 0 || count > MAX_SEATS) return { ok: false, status: 400, code: 'invalid_seats' };
     await load();
     const sub = state.subs[owner] || { seats: 0, periodEnd: null, status: 'active', assigned: {} };
+    /* Number(null) is 0, which would read as older than every real event and make a direct read of
+       Stripe (which carries no event time) look stale, so absent must stay absent. */
+    const at = eventAt == null || eventAt === '' ? NaN : Number(eventAt);
+    if (Number.isFinite(at) && Number.isFinite(Number(sub.billingAt)) && at < Number(sub.billingAt)) {
+      return { ok: true, stale: true, ...view(owner, sub), dropped: [] };
+    }
+    if (Number.isFinite(at)) sub.billingAt = at;
+    if (customerId) sub.customerId = String(customerId);
+    if (subscriptionId) sub.subscriptionId = String(subscriptionId);
     sub.seats = count;
     sub.periodEnd = periodEnd ? iso(periodEnd) : null;
     sub.status = status === 'active' ? 'active' : 'ended';
@@ -164,6 +180,17 @@ function createSeats({ store = null, passes = null, now = () => Date.now(), logg
     return { ok: true, ...view(owner, state.subs[owner]) };
   }
 
+  /* What Stripe knows this owner by: the customer for the billing portal, the subscription for a
+     resync. Server-side only; never in a response. */
+  async function billingOf(ownerId) {
+    const owner = id(ownerId);
+    if (!isId(owner)) return null;
+    await load();
+    const sub = state.subs[owner];
+    if (!sub || (!sub.customerId && !sub.subscriptionId)) return null;
+    return { customerId: sub.customerId || null, subscriptionId: sub.subscriptionId || null };
+  }
+
   /* Is this member sitting in someone's seat? Used for reporting; access itself comes from the pass. */
   async function seatOf(memberId) {
     const member = id(memberId);
@@ -175,7 +202,7 @@ function createSeats({ store = null, passes = null, now = () => Date.now(), logg
     return null;
   }
 
-  return Object.freeze({ configured, setSubscription, assign, release, get, seatOf, MAX_SEATS });
+  return Object.freeze({ configured, setSubscription, assign, release, get, seatOf, billingOf, MAX_SEATS });
 }
 
 module.exports = { createSeats, refFor, MAX_SEATS };

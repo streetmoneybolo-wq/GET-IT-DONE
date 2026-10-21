@@ -56,6 +56,7 @@ const { createSessionRecap } = require('./academy-session-recap');
 const { createPersonaBots } = require('./academy-persona-bots');
 const { createEditions } = require('./academy-editions');
 const { createSeats } = require('./academy-seats');
+const { createSeatsBilling } = require('./academy-seats-billing');
 const { createAutoTrade, createMoomooSimBroker } = require('./academy-autotrade');
 const { createMarketDirectionV2 } = require('./academy-market-direction-v2');
 const { createStoryDesk, createLettersPublisher, createPolisher } = require('./academy-story-desk');
@@ -775,6 +776,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const sessionLevelsUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-session-levels-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const autoTradeUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-autotrade-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const editionUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-edition-ui.js'), 'utf8'); } catch (_) { return ''; } })();
+    const seatsUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-seats-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const clickAlertUi = fs.readFileSync(pathModule.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
     const alertLineUi = fs.readFileSync(pathModule.join(__dirname, 'academy-alert-line.js'), 'utf8');
     const snapshotUi = fs.readFileSync(pathModule.join(__dirname, 'academy-snapshot-ui.js'), 'utf8');
@@ -830,7 +832,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script>' + (sessionLevels && sessionLevelsUi ? '<script>' + sessionLevels + '</script><script>' + sessionLevelsUi + '</script>' : '') + (editionUi ? '<script>' + editionUi + '</script>' : '') + (autoTradeUi ? '<script>' + autoTradeUi + '</script>' : '') + '<script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + alertLineUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script><script>' + targetsUi + '</script>' : '') + (alertLevelsUi ? '<script>' + alertLevelsUi + '</script>' : '') + (autoLiveUi ? '<script>' + autoLiveUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script>' + (sessionLevels && sessionLevelsUi ? '<script>' + sessionLevels + '</script><script>' + sessionLevelsUi + '</script>' : '') + (editionUi ? '<script>' + editionUi + '</script>' : '') + (seatsUi ? '<script>' + seatsUi + '</script>' : '') + (autoTradeUi ? '<script>' + autoTradeUi + '</script>' : '') + '<script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + alertLineUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script><script>' + targetsUi + '</script>' : '') + (alertLevelsUi ? '<script>' + alertLevelsUi + '</script>' : '') + (autoLiveUi ? '<script>' + autoLiveUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -2070,7 +2072,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getSqueezeList = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null, academyProfileWall = null,
-  autoTrade = null, sessionRecap = null, personaRegistry = null, academyEditions = null, academySeats = null, analystDeskFor = async () => ({ ok: false, error: 'analyst_unavailable' }), storyPublisher = null,
+  autoTrade = null, sessionRecap = null, personaRegistry = null, academyEditions = null, academySeats = null, academySeatsBilling = null, academySeatNames = null, analystDeskFor = async () => ({ ok: false, error: 'analyst_unavailable' }), storyPublisher = null,
   pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null, academySocialNotify = null, alertChartBilling = null, tradingRoom = null, alertLevels = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
@@ -2594,6 +2596,18 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
     if (request.method === 'POST' && path === '/v1/stripe/webhook') {
       await handleStripeWebhook(request, response, { acceptStripeEvent, stripeWebhookSecret, logger, now });
+      return;
+    }
+
+    /* Seats webhook. Its own endpoint and its own signing secret, so neither this nor the
+       platform's own Stripe destination can be replayed against the other. Verified over the exact
+       bytes Stripe sent, which is why the body is read raw and never parsed first. */
+    if (request.method === 'POST' && path === '/v1/academy/seats/stripe/webhook') {
+      if (!academySeatsBilling || !academySeatsBilling.webhookConfigured) { sendJson(response, 503, { ok: false, error: 'stripe_unconfigured' }); return; }
+      const body = await readRequestBody(request, academySeatsBilling.MAX_BODY_BYTES).catch(() => null);
+      if (!body || !body.ok) { sendJson(response, 413, { ok: false, error: 'payload_too_large' }); return; }
+      const out = await academySeatsBilling.webhook({ rawBody: body.rawBody, signature: request.headers['stripe-signature'] });
+      sendJson(response, out.ok ? 200 : (out.status || 400), out.ok ? { received: true } : { ok: false, error: out.code });
       return;
     }
 
@@ -4088,6 +4102,34 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
        POST {action:'assign'|'release', memberId}: the owner moves their own seats.
        POST {action:'set', ownerId, seats, periodEnd, status}: OWNER ONLY, the manual grant used
        until Stripe drives it; billing will call the same setSubscription. */
+    /* Seats, the money side (academy-seats-billing.js). The owner buys N seats per month through
+       Stripe Checkout; the seat count IS the subscription quantity, so changing it is the portal's
+       job and Stripe prorates. /resync re-reads Stripe for an owner whose webhook went missing. */
+    if (path.startsWith('/academy-activity/seats/')) {
+      const leaf = path.slice('/academy-activity/seats/'.length);
+      if (request.method !== 'POST') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return; }
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const me = String(session.userId);
+      if (!academySeatsBilling) { sendJson(response, 503, { ok: false, error: 'seats_billing_unconfigured' }); return; }
+      try {
+        let out = null;
+        if (leaf === 'checkout') {
+          const raw = await readRequestBody(request, 256).catch(() => null);
+          let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
+          out = await academySeatsBilling.checkout(me, body.seats);
+        } else if (leaf === 'portal') out = await academySeatsBilling.portal(me);
+        else if (leaf === 'resync') out = await academySeatsBilling.resync(me);
+        else { sendJson(response, 404, { ok: false, error: 'not_found' }); return; }
+        sendJson(response, out.ok ? 200 : (out.status || 400), out.ok ? out : { ok: false, error: out.code, ...out });
+      } catch (error) {
+        logger('error', 'academy_seats_billing_failed', { leaf, error });
+        sendJson(response, 503, { ok: false, error: 'seats_billing_unavailable' });
+      }
+      return;
+    }
+
     if (path === '/academy-activity/seats') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -4095,7 +4137,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const me = String(session.userId);
       if (!academySeats) { sendJson(response, 503, { ok: false, error: 'seats_unavailable' }); return; }
       try {
-        if (request.method === 'GET') { sendJson(response, 200, await academySeats.get(me)); return; }
+        if (request.method === 'GET') {
+          const held = await academySeats.get(me);
+          /* ids alone are unreadable, so each seat is labelled where a bot can see the member */
+          if (held.ok && held.members.length && academySeatNames) held.members = await academySeatNames(held.members);
+          sendJson(response, 200, held); return;
+        }
         if (request.method !== 'POST') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return; }
         const raw = await readRequestBody(request, 1024).catch(() => null);
         let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
@@ -6048,6 +6095,28 @@ async function main() {
     store: createPgStateStore({ pool: database.pool, key: 'academy-seats', defaultValue: () => ({ subs: {} }), logger: log }),
     passes: academyPassStore, logger: log
   });
+  /* seats are paid for in Stripe: a per-unit monthly price whose quantity is the seat count.
+     Inert until SML_ACADEMY_SEATS_PRICE_ID and a Stripe key are set; the webhook needs
+     SML_ACADEMY_SEATS_WEBHOOK_SECRET and answers 503 without it. */
+  const academySeatsBilling = createSeatsBilling({ env: process.env, seats: academySeats, logger: log });
+  /* seat ids turned into names, through whichever Academy bot can see the member (cached half an
+     hour inside the directory). A member no bot shares a server with keeps their id, which is still
+     enough to release the seat. */
+  const academySeatNames = (() => {
+    if (!alertTokens.length) return null;
+    const directory = createDiscordDirectory({ tokens: alertTokens, logger: log });
+    return async (members) => Promise.all(members.map(async (m) => {
+      try {
+        const p = await directory.userProfile(m.memberId);
+        return p ? { ...m, name: p.globalName || p.username || '' } : m;
+      } catch (_) { return m; }
+    }));
+  })();
+  if (academySeatsBilling.configured || academySeatsBilling.webhookConfigured) {
+    log('info', 'academy_seats_billing_ready', {
+      checkout: academySeatsBilling.configured, webhook: academySeatsBilling.webhookConfigured, graceHours: academySeatsBilling.graceHours
+    });
+  }
   /* an analyst's own letters publisher: the same signed service call as the owner's, made as their linked site account */
   const analystPublishers = new Map();
   const analystPublisherFor = (wpUserId) => {
@@ -6568,7 +6637,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, autoTrade, sessionRecap, personaRegistry, academyEditions, academySeats, analystDeskFor, storyPublisher, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling, tradingRoom, alertLevels,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, autoTrade, sessionRecap, personaRegistry, academyEditions, academySeats, academySeatsBilling, academySeatNames, analystDeskFor, storyPublisher, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling, tradingRoom, alertLevels,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,

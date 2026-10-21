@@ -184,3 +184,31 @@ test('re-issuing inside one period never asks the store for a duplicate ref', as
   assert.equal(seen.length, 1, 'one pass written, however many times the period is re-stated');
   assert.ok(await activeFor(raw, A), 'and the member still holds it');
 });
+
+test('a billing event older than the last one applied is ignored, but a direct read is not', async () => {
+  const { seats } = harness();
+  await seats.setSubscription(OWNER, { seats: 3, periodEnd: PERIOD, eventAt: 1000 });
+  await seats.assign(OWNER, A);
+
+  const late = await seats.setSubscription(OWNER, { seats: 0, periodEnd: null, status: 'ended', eventAt: 999 });
+  assert.equal(late.stale, true);
+  assert.equal(late.seats, 3, 'the out-of-order event changed nothing');
+  assert.equal((await seats.get(OWNER)).used, 1);
+
+  /* eventAt absent means "read straight from the source", which is never out of order.
+     Number(null) is 0, so an absent time must not be compared as a number. */
+  const read = await seats.setSubscription(OWNER, { seats: 1, periodEnd: PERIOD });
+  assert.equal(read.stale, undefined);
+  assert.equal(read.seats, 1);
+});
+
+test('the Stripe binding is kept for the portal and never leaves in a response', async () => {
+  const { seats } = harness();
+  await seats.setSubscription(OWNER, { seats: 1, periodEnd: PERIOD, customerId: 'cus_9', subscriptionId: 'sub_9' });
+  const view = await seats.get(OWNER);
+  assert.equal(view.billing, true);
+  assert.equal(view.customerId, undefined);
+  assert.equal(view.subscriptionId, undefined);
+  assert.deepEqual(await seats.billingOf(OWNER), { customerId: 'cus_9', subscriptionId: 'sub_9' });
+  assert.equal(await seats.billingOf(A), null);
+});
