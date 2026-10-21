@@ -120,6 +120,7 @@ const PAPER_START_CASH = require('./academy-paper').RULES.startCash;
 const { createProfileService } = require('./academy-profile');
 const { createTraderAlerts } = require('./academy-trader-alerts');
 const { createTradingRoom } = require('./academy-trading-room');
+const { createAlertLevels } = require('./academy-alert-levels');
 const { createCommunity } = require('./academy-community');
 const { createSocialNotify } = require('./academy-social-notify');
 const { createAlertChartBilling } = require('./alert-chart-billing');
@@ -770,6 +771,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const clickAlertUi = fs.readFileSync(pathModule.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
     const snapshotUi = fs.readFileSync(pathModule.join(__dirname, 'academy-snapshot-ui.js'), 'utf8');
     const tickerTalkUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-ticker-talk-ui.js'), 'utf8'); } catch (_) { return ''; } })();
+    const alertLevelsUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-alert-levels-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const targetsUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-targets-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const smartIntentUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-smart-intent-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const patternLiveUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-pattern-live-ui.js'), 'utf8'); } catch (_) { return ''; } })();
@@ -819,7 +821,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script>' + (sessionLevels && sessionLevelsUi ? '<script>' + sessionLevels + '</script><script>' + sessionLevelsUi + '</script>' : '') + (editionUi ? '<script>' + editionUi + '</script>' : '') + '<script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script><script>' + targetsUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script>' + (sessionLevels && sessionLevelsUi ? '<script>' + sessionLevels + '</script><script>' + sessionLevelsUi + '</script>' : '') + (editionUi ? '<script>' + editionUi + '</script>' : '') + '<script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script><script>' + targetsUi + '</script>' : '') + (alertLevelsUi ? '<script>' + alertLevelsUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -2029,7 +2031,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null, academyProfileWall = null,
   sessionRecap = null, personaRegistry = null, academyEditions = null, analystDeskFor = async () => ({ ok: false, error: 'analyst_unavailable' }), storyPublisher = null,
-  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null, academySocialNotify = null, alertChartBilling = null, tradingRoom = null,
+  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null, academySocialNotify = null, alertChartBilling = null, tradingRoom = null, alertLevels = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -3018,6 +3020,19 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         sendJson(response, 404, { ok: false, error: 'not_found' }); return;
       } catch (error) { logger('error', 'academy_trader_alerts_failed', { error: String((error && error.message) || error) }); sendJson(response, 503, { ok: false, error: 'temporary_unavailable' }); return; }
     }
+    /* STANDING ALERT LEVELS (academy-alert-levels.js): the member's own open alerts for one symbol (entry, current target, stop), for the chart to keep in view */
+    if (request.method === 'GET' && path === '/academy-activity/my-alert-levels') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!alertLevels) { sendJson(response, 200, { ok: true, levels: [], asOf: Date.now() }); return; }
+      const lq = new URL(request.url || '/', 'http://localhost').searchParams, lsym = String(lq.get('symbol') || '').toUpperCase();
+      if (lsym && !/^[A-Z][A-Z0-9.\-]{0,9}$/.test(lsym)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      try { sendJson(response, 200, await alertLevels.forMember(String(session.userId), lsym)); }
+      catch (error) { logger('warn', 'academy_alert_levels_failed', { error: String((error && error.message) || error) }); sendJson(response, 200, { ok: true, levels: [], asOf: Date.now() }); }
+      return;
+    }
+
     /* TRADING ROOM (academy-trading-room.js): the room behind a trader's profile: channels that are public, free (members) or paid (by tier). Reads and chat need only a verified session; the owner's setup needs Academy access. */
     if (path === '/academy-activity/room' || path.startsWith('/academy-activity/room/')) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -5825,6 +5840,8 @@ async function main() {
     ownerIds: [...OWNER_IDS], since: process.env.SML_ALERT_RECORD_SINCE || '2026-10-05', logger: log
   });
   if (academyAlertRecord) { void academyAlertRecord.ensureSchema(); academyAlertRecord.start(); }
+  /* the member's own open alerts as standing lines on the chart (academy-alert-levels.js) */
+  const alertLevels = createAlertLevels({ record: academyAlertRecord, traderAlerts, logger: log });
   const academyProfilePages = process.env.ACADEMY_PROFILE_PAGES === 'off' ? null : createProfilePages({
     pool: database.pool, chat: createChatStore({ pool: database.pool }), paper: academyPaper, tierLive: academyTierLive,
     directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), wall: academyProfileWall, talk: () => tickerTalk, bridge: loopKickBridge, alertRecord: academyAlertRecord, logger: log
@@ -6347,7 +6364,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, sessionRecap, personaRegistry, academyEditions, analystDeskFor, storyPublisher, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling, tradingRoom,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, sessionRecap, personaRegistry, academyEditions, analystDeskFor, storyPublisher, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling, tradingRoom, alertLevels,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,
