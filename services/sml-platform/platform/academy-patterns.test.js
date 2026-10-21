@@ -435,3 +435,89 @@ test('false positives: 200 random walks of 300 bars stay quiet', () => {
   assert.ok(avg < 1.5, 'avg charts per random series = ' + avg);
   assert.ok(hsTriple / N < 0.03, 'confirmed H&S/triple in ' + hsTriple + ' of ' + N + ' series');
 });
+
+/* ---------- the formations added later: cup and handle, rounding, channels, broadening, more candlesticks ---------- */
+function fnBars(n, f, seed, o) {
+  const opt = Object.assign({ nz: 0.12, wk: 0.3 }, o || {}), r = rngFn(seed), bars = [];
+  let prev = f(0);
+  for (let i = 0; i < n; i++) {
+    const c = i === n - 1 ? f(i) : f(i) + opt.nz * gauss(r), oo = i === 0 ? c : prev;
+    bars.push({ t: 1700000000000 + i * 60000, o: oo, h: Math.max(oo, c) + opt.wk * (0.3 + r()), l: Math.min(oo, c) - opt.wk * (0.3 + r()), c, v: 1000 + Math.round(200 * r()) });
+    prev = c;
+  }
+  return bars;
+}
+const has = (res, type) => (res.charts || []).some((c) => c.type === type);
+
+test('cup and handle: a rounded base, a shallow handle and a break above the rim', () => {
+  // rim 110, cup 80 bars down to 92 and back, handle 10 bars to 107, then the breakout
+  const f = (i) => (i < 10 ? 100 + i : i < 90 ? 110 - 18 * (1 - Math.pow((i - 50) / 40, 2)) : i < 100 ? 110 - 3 * Math.sin(((i - 90) / 10) * Math.PI) : 110 + (i - 100) * 0.9);
+  const res = P.detect(fnBars(115, f, 5));
+  const c = res.charts.find((x) => x.type === 'cup_and_handle');
+  assert.ok(c, JSON.stringify(res.charts.map((x) => x.type)));
+  assert.equal(c.dir, 'bull'); assert.ok(c.target > c.neckline, 'the target is the cup depth above the rim');
+  assert.ok(c.points.some((q) => q.label === 'Handle') && c.points.some((q) => q.label === 'Left rim'));
+});
+
+test('inverted cup and handle is the mirror image and reads bearish', () => {
+  const f = (i) => 200 - (i < 10 ? 100 + i : i < 90 ? 110 - 18 * (1 - Math.pow((i - 50) / 40, 2)) : i < 100 ? 110 - 3 * Math.sin(((i - 90) / 10) * Math.PI) : 110 + (i - 100) * 0.9);
+  const res = P.detect(fnBars(115, f, 6));
+  const c = res.charts.find((x) => x.type === 'inverted_cup_and_handle');
+  assert.ok(c, JSON.stringify(res.charts.map((x) => x.type))); assert.equal(c.dir, 'bear'); assert.ok(c.target < c.neckline);
+});
+
+test('rounding bottom and rounding top: a smooth bowl with the right side recovered', () => {
+  const bowl = (i) => 110 - 14 * (1 - Math.pow((i - 60) / 60, 2));
+  const up = P.detect(fnBars(122, (i) => (i < 5 ? 110 : bowl(i)), 7, { nz: 0.1 }));
+  assert.ok(has(up, 'rounding_bottom'), JSON.stringify(up.charts.map((x) => x.type)));
+  const dn = P.detect(fnBars(122, (i) => 200 - (i < 5 ? 110 : bowl(i)), 8, { nz: 0.1 }));
+  assert.ok(has(dn, 'rounding_top'), JSON.stringify(dn.charts.map((x) => x.type)));
+  assert.equal(dn.charts.find((x) => x.type === 'rounding_top').dir, 'bear');
+});
+
+test('a rising channel: parallel boundaries touched by several swings', () => {
+  // an oscillation of period 20 bars and amplitude 3 on a line rising 0.25 per bar
+  const f = (i) => 100 + 0.25 * i + 3 * Math.sin((i / 20) * 2 * Math.PI);
+  const res = P.detect(fnBars(130, f, 9, { nz: 0.05, wk: 0.1 }));
+  const c = res.charts.find((x) => x.type === 'ascending_channel');
+  assert.ok(c, JSON.stringify(res.charts.map((x) => x.type)));
+  assert.ok(c.lines.some((l) => l.role === 'upper') && c.lines.some((l) => l.role === 'lower'));
+  const dn = P.detect(fnBars(130, (i) => 200 - f(i), 10, { nz: 0.05, wk: 0.1 }));
+  assert.ok(has(dn, 'descending_channel'), JSON.stringify(dn.charts.map((x) => x.type)));
+});
+
+test('a broadening formation: highs rising, lows falling, the range widening', () => {
+  const f = (i) => 100 + (1 + i * 0.04) * 5 * Math.sin((i / 30) * 2 * Math.PI);
+  const res = P.detect(fnBars(160, f, 11, { nz: 0.05, wk: 0.1 }));
+  assert.ok(has(res, 'broadening_formation'), JSON.stringify(res.charts.map((x) => x.type)));
+});
+
+test('the added candlesticks: kicker, belt hold, three outside, abandoned baby, matching low, stick sandwich, advance block, homing pigeon', () => {
+  const trend = (dir, n, start, step) => Array.from({ length: n }, (_, i) => { const o = start + dir * step * i, c = o + dir * step * 0.9; return { t: i, o, h: Math.max(o, c) + 0.1, l: Math.min(o, c) - 0.1, c, v: 1000 }; });
+  const run = (pre, tail) => P.detect(pre.concat(tail.map((b, k) => Object.assign({ t: pre.length + k, v: 1000 }, b))), { minConfidence: 0, minCandleStrength: 0.2 });
+  const names = (res) => res.candles.map((k) => k.name);
+  const down = trend(-1, 24, 140, 1), last = down[down.length - 1].c, up = trend(1, 24, 60, 1), top = up[up.length - 1].c;
+  // bullish kicker: a strong bearish candle, then a strong bullish one opening above its open
+  assert.ok(names(run(down, [{ o: last + 0.2, h: last + 0.4, l: last - 4.1, c: last - 4, }, { o: last + 0.5, h: last + 5, l: last + 0.4, c: last + 4.8 }])).includes('bullish_kicker'));
+  // bullish belt hold: opens on the low after a decline and closes near the high
+  assert.ok(names(run(down, [{ o: last - 3, h: last + 2.2, l: last - 3, c: last + 2 }])).includes('bullish_belt_hold'));
+  // three outside up
+  assert.ok(names(run(down, [{ o: last + 0.5, h: last + 0.6, l: last - 2.1, c: last - 2 }, { o: last - 2.4, h: last + 1.6, l: last - 2.5, c: last + 1.5 }, { o: last + 1.6, h: last + 3.8, l: last + 1.5, c: last + 3.6 }])).includes('three_outside_up'));
+  // bullish abandoned baby: bearish candle, a doji gapped below, a bullish candle gapped above it
+  assert.ok(names(run(down, [{ o: last + 0.5, h: last + 0.6, l: last - 2.1, c: last - 2 }, { o: last - 3.6, h: last - 3.2, l: last - 4, c: last - 3.62 }, { o: last - 3, h: last + 0.6, l: last - 3.1, c: last + 0.4 }])).includes('bullish_abandoned_baby'));
+  // matching low and stick sandwich
+  assert.ok(names(run(down, [{ o: last + 0.5, h: last + 0.6, l: last - 1.6, c: last - 1.5 }, { o: last - 1.4, h: last - 1.3, l: last - 2.6, c: last - 2.5 }, ].slice(0, 2).map((b, k) => (k === 1 ? { o: last - 0.2, h: last - 0.1, l: last - 1.7, c: last - 1.5 } : b)))).includes('matching_low'));
+  assert.ok(names(run(down, [{ o: last + 0.5, h: last + 0.6, l: last - 1.6, c: last - 1.5 }, { o: last - 1.2, h: last + 0.9, l: last - 1.3, c: last + 0.8 }, { o: last + 0.9, h: last + 1, l: last - 1.6, c: last - 1.5 }])).includes('stick_sandwich'));
+  // bearish kicker is the mirror; advance block: three rising candles, bodies shrinking, upper shadows growing
+  assert.ok(names(run(up, [{ o: top - 0.2, h: top + 4.1, l: top - 0.4, c: top + 4 }, { o: top - 0.5, h: top - 0.4, l: top - 5, c: top - 4.8 }])).includes('bearish_kicker'));
+  assert.ok(names(run(up, [{ o: top, h: top + 3.1, l: top - 0.1, c: top + 3 }, { o: top + 1.5, h: top + 4.8, l: top + 1.4, c: top + 4 }, { o: top + 3, h: top + 6.2, l: top + 2.9, c: top + 5 }])).includes('advance_block'));
+  assert.ok(names(run(down, [{ o: last + 0.5, h: last + 0.6, l: last - 4.1, c: last - 4 }, { o: last - 1.5, h: last - 1.4, l: last - 3.6, c: last - 3.4 }])).includes('homing_pigeon'));
+});
+
+test('drawing: the new families have their own colours, confirmed shapes glow, candlestick formations are bracketed and the live status is throttled', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'academy-chart-pro.js'), 'utf8');
+  for (const re of ['channel', 'broadening', 'cup_and_handle', 'rounding']) assert.match(src, new RegExp('\\[/' + re + '/,'));
+  assert.match(src, /shadowBlur = 9/); assert.match(src, /strong = new Set\(ranked\.slice/); assert.match(src, /performance\.now\(\) - foundAt < 1500/);
+  for (const t of ['cup_and_handle', 'inverted_cup_and_handle', 'rounding_bottom', 'rounding_top', 'broadening_formation']) assert.ok(P.CHART_TYPES.includes(t), t);
+  for (const n of ['bullish_kicker', 'three_outside_up', 'bullish_abandoned_baby', 'advance_block']) assert.ok(P.CANDLE_NAMES.includes(n), n);
+});

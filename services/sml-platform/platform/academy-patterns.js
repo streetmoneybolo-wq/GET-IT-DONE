@@ -149,7 +149,10 @@
     tweezer_bottom: 'Tweezer Bottom', morning_star: 'Morning Star', evening_star: 'Evening Star',
     morning_doji_star: 'Morning Doji Star', evening_doji_star: 'Evening Doji Star', three_white_soldiers: 'Three White Soldiers',
     three_black_crows: 'Three Black Crows', three_inside_up: 'Three Inside Up', three_inside_down: 'Three Inside Down',
-    rising_three_methods: 'Rising Three Methods', falling_three_methods: 'Falling Three Methods'
+    rising_three_methods: 'Rising Three Methods', falling_three_methods: 'Falling Three Methods',
+    bullish_kicker: 'Bullish Kicker', bearish_kicker: 'Bearish Kicker', matching_low: 'Matching Low', homing_pigeon: 'Homing Pigeon',
+    bullish_belt_hold: 'Bullish Belt Hold', bearish_belt_hold: 'Bearish Belt Hold', three_outside_up: 'Three Outside Up', three_outside_down: 'Three Outside Down',
+    bullish_abandoned_baby: 'Bullish Abandoned Baby', bearish_abandoned_baby: 'Bearish Abandoned Baby', stick_sandwich: 'Stick Sandwich', advance_block: 'Advance Block'
   };
 
   function detectCandles(S, A, opts) {
@@ -197,6 +200,11 @@
           push(bull(i) ? 'bullish_marubozu' : 'bearish_marubozu', bull(i) ? 'bull' : 'bear', clamp(b / (2 * a), 0, 1), null, [i, i], 'Full-bodied candle with almost no shadows: one side controlled the whole bar.');
         }
       }
+      if (r > 0 && r >= 0.8 * a && b >= 0.6 * r && b >= 0.8 * a) {
+        const tB = tr(i);
+        if (bull(i) && loS(i) <= 0.05 * r && tB.dir === 'down') push('bullish_belt_hold', 'bull', clamp(b / (2 * a), 0.4, 1), tB, [i, i], 'Opens at the low after a decline and closes near the high: buyers took control from the first tick.');
+        if (bear(i) && upS(i) <= 0.05 * r && tB.dir === 'up') push('bearish_belt_hold', 'bear', clamp(b / (2 * a), 0.4, 1), tB, [i, i], 'Opens at the high after a rally and closes near the low: sellers took control from the first tick.');
+      }
       if (i < 1) continue;
       const p = i - 1;
       const bP = body(p), rP = rng(p);
@@ -222,6 +230,15 @@
           if (tI.dir === 'down' && bear(p) && bull(i) && Math.abs(l[p] - l[i]) <= 0.1 * a) push('tweezer_bottom', 'bull', 0.6 + 0.4 * (1 - Math.abs(l[p] - l[i]) / (0.1 * a)), tI, [p, i], 'Two candles bottoming at the same low: the level held twice.');
         }
       }
+      {
+        const tK = tr(p);
+        if (bP >= 0.6 * a && b >= 0.6 * a && bP >= 0.6 * rP && b >= 0.6 * r) {
+          if (bear(p) && bull(i) && o[i] >= o[p] && tK.dir !== 'up') push('bullish_kicker', 'bull', clamp(b / (2 * a), 0.4, 1), tK.dir === 'down' ? tK : null, [p, i], 'A bearish candle, then a bullish one opening at or above its open: the mood flipped at once, the strongest reversal signal in candles.');
+          if (bull(p) && bear(i) && o[i] <= o[p] && tK.dir !== 'down') push('bearish_kicker', 'bear', clamp(b / (2 * a), 0.4, 1), tK.dir === 'up' ? tK : null, [p, i], 'A bullish candle, then a bearish one opening at or below its open: the mood flipped at once.');
+        }
+        if (tK.dir === 'down' && bear(p) && bear(i) && bP >= 0.3 * a && Math.abs(c[p] - c[i]) <= 0.05 * a) push('matching_low', 'bull', 0.55, tK, [p, i], 'Two bearish candles closing at the same price after a decline: sellers could not push lower.');
+        if (tK.dir === 'down' && bear(p) && bear(i) && bP >= 0.6 * a && top(i) <= top(p) && bot(i) >= bot(p) && b <= 0.6 * bP) push('homing_pigeon', 'bull', 0.5, tK, [p, i], 'A small bearish candle held inside the prior long bearish body: the selling is fading.');
+      }
       if (i < 2) continue;
       const f = i - 2, m = i - 1, tF = tr(f);
       const b1 = body(f), r1 = rng(f), b2 = body(m), r2 = rng(m);
@@ -239,6 +256,18 @@
       if (b1 >= 0.8 * a && b1 >= 0.6 * r1 && b2 <= 0.6 * b1) {
         if (tF.dir === 'down' && bear(f) && bull(m) && bot(m) >= c[f] && top(m) <= o[f] && bull(i) && c[i] > o[f] && b >= 0.4 * a) push('three_inside_up', 'bull', 0.6 + 0.4 * clamp((c[i] - o[f]) / a, 0, 1), tF, [f, i], 'Bullish harami followed by a close above the first candle open: the reversal is confirmed.');
         if (tF.dir === 'up' && bull(f) && bear(m) && bot(m) >= o[f] && top(m) <= c[f] && bear(i) && c[i] < o[f] && b >= 0.4 * a) push('three_inside_down', 'bear', 0.6 + 0.4 * clamp((o[f] - c[i]) / a, 0, 1), tF, [f, i], 'Bearish harami followed by a close below the first candle open: the reversal is confirmed.');
+      }
+      {
+        const first = b1 >= 0.5 * a;
+        if (first && tF.dir === 'down' && bear(f) && bull(m) && o[m] <= c[f] && c[m] >= o[f] && (o[m] < c[f] || c[m] > o[f]) && bull(i) && c[i] > c[m]) push('three_outside_up', 'bull', 0.55 + 0.4 * clamp((c[i] - c[m]) / a, 0, 1), tF, [f, i], 'A bullish engulfing, then a close above it: the reversal is confirmed.');
+        if (first && tF.dir === 'up' && bull(f) && bear(m) && o[m] >= c[f] && c[m] <= o[f] && (o[m] > c[f] || c[m] < o[f]) && bear(i) && c[i] < c[m]) push('three_outside_down', 'bear', 0.55 + 0.4 * clamp((c[m] - c[i]) / a, 0, 1), tF, [f, i], 'A bearish engulfing, then a close below it: the reversal is confirmed.');
+        const dojiM = r2 > 0 && b2 <= 0.1 * r2;
+        if (b1 >= 0.8 * a && dojiM && b >= 0.5 * a) {
+          if (tF.dir === 'down' && bear(f) && h[m] < l[f] && bull(i) && l[i] > h[m]) push('bullish_abandoned_baby', 'bull', 0.8, tF, [f, i], 'A doji gapped away on both sides, isolated below the bars around it: a rare, strong bottom.');
+          if (tF.dir === 'up' && bull(f) && l[m] > h[f] && bear(i) && h[i] < l[m]) push('bearish_abandoned_baby', 'bear', 0.8, tF, [f, i], 'A doji gapped away on both sides, isolated above the bars around it: a rare, strong top.');
+        }
+        if (tF.dir === 'down' && b1 >= 0.5 * a && bear(f) && bull(m) && bear(i) && o[m] >= c[f] && c[m] >= o[f] && Math.abs(c[i] - c[f]) <= 0.05 * a) push('stick_sandwich', 'bull', 0.55, tF, [f, i], 'Two bearish candles with the same close around a bullish one: the low held twice.');
+        if (tF.dir !== 'down' && b1 >= 0.6 * a && bull(f) && bull(m) && bull(i) && o[m] >= o[f] && o[m] <= c[f] && o[i] >= o[m] && o[i] <= c[m] && c[m] > c[f] && c[i] > c[m] && tF.dir === 'up' && b2 <= 0.85 * b1 && b <= 0.85 * b2 && upS(m) >= upS(f) + 0.15 * a && upS(i) >= upS(m) + 0.15 * a && upS(i) >= 0.4 * b) push('advance_block', 'bear', 0.55, tF.dir === 'up' ? tF : null, [f, i], 'Three rising candles with shrinking bodies and growing upper shadows: the advance is running out of buyers.');
       }
       if (i < 4) continue;
       // ---- five candle continuation ----
@@ -295,7 +324,11 @@
     flag: { id: ['bull_flag', 'bear_flag'], name: ['Bull Flag', 'Bear Flag'], dir: ['bull', 'bear'] },
     pennant: { id: ['bull_pennant', 'bear_pennant'], name: ['Bull Pennant', 'Bear Pennant'], dir: ['bull', 'bear'] },
     sym: { id: ['symmetrical_triangle', 'symmetrical_triangle'], name: ['Symmetrical Triangle', 'Symmetrical Triangle'], dir: ['neutral', 'neutral'] },
-    rect: { id: ['rectangle', 'rectangle'], name: ['Rectangle', 'Rectangle'], dir: ['neutral', 'neutral'] }
+    rect: { id: ['rectangle', 'rectangle'], name: ['Rectangle', 'Rectangle'], dir: ['neutral', 'neutral'] },
+    chan: { id: ['channel', 'channel'], name: ['Channel', 'Channel'], dir: ['neutral', 'neutral'] },
+    broad: { id: ['broadening_formation', 'broadening_formation'], name: ['Broadening Formation', 'Broadening Formation'], dir: ['neutral', 'neutral'] },
+    cup: { id: ['cup_and_handle', 'inverted_cup_and_handle'], name: ['Cup and Handle', 'Inverted Cup and Handle'], dir: ['bull', 'bear'] },
+    round: { id: ['rounding_bottom', 'rounding_top'], name: ['Rounding Bottom', 'Rounding Top'], dir: ['bull', 'bear'] }
   };
 
   // Convert a view-space raw pattern into a real-space chart entry (still in clean-index space).
@@ -304,7 +337,7 @@
     const swap = role => sg > 0 ? role : (role === 'upper' ? 'lower' : role === 'lower' ? 'upper' : role);
     const pv = x => (x === null || x === undefined) ? null : r6(x * sg);
     out.push({
-      type: M.id[k], name: M.name[k], dir: r.dir || M.dir[k], status: r.status, confidence: clamp(r.conf, 0, 1),
+      type: r.id || M.id[k], name: r.name || M.name[k], dir: r.dir || M.dir[k], status: r.status, confidence: clamp(r.conf, 0, 1),
       startIdx: r.start, endIdx: r.end, breakIdx: r.brk === undefined ? -1 : r.brk,
       points: r.points.map(q => ({ i: q.i, p: pv(q.p), label: q.label })),
       lines: r.lines.map(q => ({ i1: q.i1, p1: pv(q.p1), i2: q.i2, p2: pv(q.p2), role: swap(q.role) })),
@@ -616,6 +649,165 @@
   }
 
   /* ---------- assembly helpers ---------- */
+  /* ---------- channels, broadening, cups and rounding bottoms ---------- */
+  /* A rising or falling CHANNEL: two parallel boundary lines (each touched by at least two swings) that both travel, with price staying inside. */
+  function detChannel(V, out) {
+    if (V.sgn < 0) return;
+    const P = V.P;
+    for (let e = 4; e < P.length; e++) {
+      for (let len = 5; len <= 9 && e - len + 1 >= 0; len++) {
+        const W = P.slice(e - len + 1, e + 1), hi = W.filter(q => q.type === 'H'), lo = W.filter(q => q.type === 'L');
+        if (hi.length < 2 || lo.length < 2 || W.length < 6) continue;
+        const i0 = W[0].i, i1 = W[W.length - 1].i, span = i1 - i0;
+        if (span < 20 || span > 250) continue;
+        const a = V.atr[i1], U = fitLine(hi), L = fitLine(lo);
+        if (U.res > 0.25 * a || L.res > 0.25 * a) continue;
+        const w0 = U.at(i0) - L.at(i0), w1 = U.at(i1) - L.at(i1), wm = (w0 + w1) / 2;
+        if (wm < 3 * a || Math.abs(w1 - w0) > 0.12 * wm) continue;
+        const dU = U.at(i1) - U.at(i0), dL = L.at(i1) - L.at(i0);
+        if (Math.sign(dU) !== Math.sign(dL) || Math.min(Math.abs(dU), Math.abs(dL)) < 0.8 * wm) continue;
+        let viol = 0;
+        for (let j = i0; j <= i1; j++) if (V.c[j] > U.at(j) + 0.6 * a || V.c[j] < L.at(j) - 0.6 * a) viol++;
+        if (viol > Math.floor(0.04 * (span + 1))) continue;
+        const up = dU > 0, trend = up ? 'bull' : 'bear';
+        let brk = -1, dir = trend, status = 'forming';
+        for (let j = i1 + 1; j < V.n; j++) {
+          if (V.c[j] > U.at(j) + 0.25 * a) { brk = j; dir = 'bull'; status = 'confirmed'; break; }
+          if (V.c[j] < L.at(j) - 0.25 * a) { brk = j; dir = 'bear'; status = 'confirmed'; break; }
+        }
+        const iEnd = brk >= 0 ? brk : Math.min(V.n - 1, i1 + Math.round(span * 0.35));
+        const conf = statusConf(0.38 + 0.2 * clamp(1 - Math.max(U.res, L.res) / (0.35 * a), 0, 1) + 0.1 * clamp((hi.length + lo.length - 4) / 4, 0, 1), status);
+        finish(V, {
+          kind: 'chan', id: up ? 'ascending_channel' : 'descending_channel', name: up ? 'Ascending Channel' : 'Descending Channel', dir, status, conf, start: i0, end: i1, brk,
+          points: W.map((q, n) => ({ i: q.i, p: q.p, label: q.type === 'H' ? 'High' : 'Low' })),
+          lines: [{ i1: i0, p1: U.at(i0), i2: iEnd, p2: U.at(iEnd), role: 'upper' }, { i1: i0, p1: L.at(i0), i2: iEnd, p2: L.at(iEnd), role: 'lower' }],
+          level: brk >= 0 ? (dir === 'bull' ? U.at(brk) : L.at(brk)) : null, neckline: null, target: brk >= 0 ? (dir === 'bull' ? U.at(brk) + wm : L.at(brk) - wm) : null, invalidation: null,
+          stale: Math.max(12, Math.round(span * 0.35)),
+          note: 'Two parallel boundaries about ' + r4(wm / a) + ' ATR apart, each touched by at least two swings, sloping ' + (up ? 'up' : 'down') + '. A close beyond either boundary ends the channel and measures one channel width.'
+        }, out);
+      }
+    }
+  }
+
+  /* A BROADENING formation (megaphone): rising highs and falling lows, the range widening: indecision that grows until one side gives. */
+  function detBroadening(V, out) {
+    if (V.sgn < 0) return;
+    const P = V.P;
+    for (let e = 4; e < P.length; e++) {
+      for (let len = 5; len <= 9 && e - len + 1 >= 0; len++) {
+        const W = P.slice(e - len + 1, e + 1), hi = W.filter(q => q.type === 'H'), lo = W.filter(q => q.type === 'L');
+        if (hi.length < 2 || lo.length < 2 || W.length < 6) continue;
+        const i0 = W[0].i, i1 = W[W.length - 1].i, span = i1 - i0;
+        if (span < 20 || span > 200) continue;
+        const a = V.atr[i1], U = fitLine(hi), L = fitLine(lo);
+        if (U.res > 0.3 * a || L.res > 0.3 * a) continue;
+        const w0 = U.at(i0) - L.at(i0), w1 = U.at(i1) - L.at(i1);
+        if (w0 < 1.5 * a || w1 < 1.7 * w0) continue;
+        const dU = U.at(i1) - U.at(i0), dL = L.at(i1) - L.at(i0);
+        if (dU < 0.3 * w0 || dL > -0.3 * w0) continue;
+        let brk = -1, dir = 'neutral', status = 'forming';
+        for (let j = i1 + 1; j < V.n; j++) {
+          if (V.c[j] > U.at(j) + 0.3 * a) { brk = j; dir = 'bull'; status = 'confirmed'; break; }
+          if (V.c[j] < L.at(j) - 0.3 * a) { brk = j; dir = 'bear'; status = 'confirmed'; break; }
+        }
+        const iEnd = brk >= 0 ? brk : Math.min(V.n - 1, i1 + Math.round(span * 0.3));
+        finish(V, {
+          kind: 'broad', dir, status, conf: statusConf(0.36 + 0.2 * clamp((w1 / w0 - 1.7) / 0.8, 0, 1), status), start: i0, end: i1, brk,
+          points: W.map(q => ({ i: q.i, p: q.p, label: q.type === 'H' ? 'High' : 'Low' })),
+          lines: [{ i1: i0, p1: U.at(i0), i2: iEnd, p2: U.at(iEnd), role: 'upper' }, { i1: i0, p1: L.at(i0), i2: iEnd, p2: L.at(iEnd), role: 'lower' }],
+          level: null, neckline: null, target: brk >= 0 ? (dir === 'bull' ? U.at(brk) + w1 * 0.7 : L.at(brk) - w1 * 0.7) : null, invalidation: null,
+          stale: Math.max(12, Math.round(span * 0.3)),
+          note: 'Highs rising and lows falling: the range widened from ' + r4(w0 / a) + ' to ' + r4(w1 / a) + ' ATR. Unstable; a close outside the lines decides it.'
+        }, out);
+      }
+    }
+  }
+
+  /* CUP AND HANDLE (and, on the flipped view, the inverted one): a rounded decline and recovery back to the left rim, a short shallow pullback (the handle), then a break above the rim. */
+  function detCup(V, out) {
+    const P = V.P, n = V.n;
+    for (let k = 0; k < P.length; k++) {
+      const A = P[k]; if (A.type !== 'H') continue;
+      let minI = A.i + 1, rimI = -1;
+      for (let j = A.i + 1; j < n && j <= A.i + 190; j++) {
+        if (V.l[j] < V.l[minI]) minI = j;
+        const D = A.p - V.l[minI];
+        if (D >= 4 * V.atr[j] && j > minI + 5 && V.h[j] >= A.p - 0.12 * D) { rimI = j; break; }
+      }
+      if (rimI < 0) continue;
+      const D = A.p - V.l[minI], L = rimI - A.i, a = V.atr[rimI];
+      if (L < 20 || L > 190 || minI - A.i < 0.3 * L || minI - A.i > 0.7 * L) continue;
+      let nearBottom = 0; for (let j = A.i; j <= rimI; j++) if (V.l[j] <= V.l[minI] + 0.3 * D) nearBottom++;
+      if (nearBottom < 0.2 * L) continue;
+      const cf = quadFit(V.c, A.i, rimI); if (!cf || cf.A <= 0 || cf.r2 < 0.8) continue;
+      let peakI = rimI; for (let j = rimI; j <= Math.min(n - 1, rimI + 5); j++) if (V.h[j] > V.h[peakI]) peakI = j;
+      const rim = Math.max(A.p, V.h[peakI]);
+      if (Math.abs(A.p - V.h[peakI]) > 0.12 * D) continue;
+      let hl = -1; const hEnd = Math.min(n - 1, peakI + Math.max(8, Math.round(L * 0.4)));
+      for (let j = peakI + 1; j <= hEnd; j++) { if (V.c[j] > rim + 0.1 * a) break; if (hl < 0 || V.l[j] < V.l[hl]) hl = j; }
+      if (hl < 0 || hl - peakI < 3) continue;
+      const pull = V.h[peakI] - V.l[hl];
+      if (pull < 0.08 * D || pull > 0.4 * D || V.l[hl] < V.l[minI] + 0.5 * D) continue;
+      const sc = scan(V, hl + 1, j => V.c[j] > rim + 0.1 * a, j => V.c[j] < V.l[hl] - 0.25 * a, hl + Math.max(12, Math.round(L * 0.5)));
+      if (sc.status === 'expired') continue;
+      const round = clamp(nearBottom / (0.35 * L), 0, 1), sym = 1 - clamp(Math.abs((minI - A.i) - (rimI - minI)) / L, 0, 1);
+      finish(V, {
+        kind: 'cup', status: sc.status, conf: statusConf(0.3 + 0.15 * round + 0.15 * sym + 0.05 * clamp(L / 60, 0, 1), sc.status), start: A.i, end: hl, brk: sc.idx,
+        points: [{ i: A.i, p: A.p, label: 'Left rim' }, { i: minI, p: V.l[minI], label: 'Cup' }, { i: peakI, p: V.h[peakI], label: 'Right rim' }, { i: hl, p: V.l[hl], label: 'Handle' }],
+        lines: [{ i1: A.i, p1: rim, i2: Math.max(hl, sc.idx >= 0 ? sc.idx : n - 1), p2: rim, role: 'neckline' }],
+        level: rim, neckline: rim, target: rim + D, invalidation: V.l[hl] - 0.25 * a, stale: Math.max(10, Math.round(L * 0.5)),
+        note: 'A rounded base ' + L + ' bars wide and ' + r4(D / a) + ' ATR deep, recovered to the left rim, then a ' + r4(pull / a) + ' ATR handle. Confirmed by a close above the rim; the target is the cup depth added to the rim.'
+      }, out);
+    }
+  }
+
+  /* least-squares parabola through closes a..b on x in 0..1 */
+  function quadFit(y, a, b) {
+    const n = b - a + 1; if (n < 10) return null;
+    let s1 = 0, s2 = 0, s3 = 0, s4 = 0, t0 = 0, t1 = 0, t2 = 0;
+    for (let k = 0; k < n; k++) { const x = k / (n - 1), v = y[a + k], x2 = x * x; s1 += x; s2 += x2; s3 += x2 * x; s4 += x2 * x2; t0 += v; t1 += x * v; t2 += x2 * v; }
+    const M = [[s4, s3, s2, t2], [s3, s2, s1, t1], [s2, s1, n, t0]];
+    for (let c = 0; c < 3; c++) {
+      let piv = c; for (let r = c + 1; r < 3; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+      if (Math.abs(M[piv][c]) < 1e-12) return null;
+      [M[c], M[piv]] = [M[piv], M[c]];
+      for (let r = c + 1; r < 3; r++) { const f = M[r][c] / M[c][c]; for (let q = c; q < 4; q++) M[r][q] -= f * M[c][q]; }
+    }
+    const C = M[2][3] / M[2][2], B = (M[1][3] - M[1][2] * C) / M[1][1], A = (M[0][3] - M[0][2] * C - M[0][1] * B) / M[0][0];
+    const at = x => A * x * x + B * x + C;
+    let mean = t0 / n, ssr = 0, sst = 0;
+    for (let k = 0; k < n; k++) { const v = y[a + k], f = at(k / (n - 1)); ssr += (v - f) * (v - f); sst += (v - mean) * (v - mean); }
+    return { A, B, C, at, r2: sst > 0 ? 1 - ssr / sst : 0 };
+  }
+
+  /* ROUNDING BOTTOM (flipped view: rounding top): a smooth bowl, price easing down and back up, with the right side recovered most of the way. */
+  function detRound(V, out) {
+    const n = V.n;
+    for (const L of [30, 50, 80, 120]) {
+      for (let e = n - 1; e >= Math.max(L, n - 230); e -= 5) {
+        const s = e - L + 1, a = V.atr[e], f = quadFit(V.c, s, e);
+        if (!f || f.A <= 0 || f.r2 < 0.92) continue;
+        const xv = -f.B / (2 * f.A); if (xv < 0.35 || xv > 0.65) continue;
+        const edge = Math.max(2, Math.floor(L * 0.12));
+        let rim = -Infinity, bottom = Infinity, bi = s;
+        for (let j = s; j <= s + edge; j++) rim = Math.max(rim, V.h[j]);
+        for (let j = s; j <= e; j++) if (V.l[j] < bottom) { bottom = V.l[j]; bi = j; }
+        const D = rim - bottom; if (D < 5 * a) continue;
+        if (Math.abs(bi - (s + xv * (L - 1))) > 0.2 * L) continue;
+        if (V.c[e] < bottom + 0.7 * D) continue;
+        const sc = scan(V, bi + Math.round(0.3 * (e - bi)), j => V.c[j] > rim + 0.1 * a, j => V.c[j] < bottom - 0.25 * a, e);
+        if (sc.status === 'expired' || sc.status === 'failed') continue;
+        finish(V, {
+          kind: 'round', status: sc.status, conf: statusConf(0.3 + 0.35 * clamp((f.r2 - 0.92) / 0.08, 0, 1) + 0.1 * (1 - clamp(Math.abs(xv - 0.5) / 0.2, 0, 1)), sc.status), start: s, end: e, brk: sc.idx,
+          points: [{ i: s, p: V.c[s], label: 'Left' }, { i: bi, p: bottom, label: 'Bottom' }, { i: e, p: V.c[e], label: 'Right' }],
+          lines: [{ i1: s, p1: rim, i2: Math.max(e, sc.idx >= 0 ? sc.idx : e), p2: rim, role: 'neckline' }],
+          level: rim, neckline: rim, target: rim + D, invalidation: bottom - 0.25 * a, stale: Math.max(10, Math.round(L * 0.3)),
+          note: 'Closes follow a smooth bowl (fit ' + r4(f.r2) + ') ' + L + ' bars wide and ' + r4(D / a) + ' ATR deep, with the right side recovered ' + Math.round(100 * (V.c[e] - bottom) / D) + '% of the way. Confirmed by a close above the left rim.'
+        }, out);
+      }
+    }
+  }
+
   function overlapFrac(a, b) {
     const ov = Math.min(a.endIdx, b.endIdx) - Math.max(a.startIdx, b.startIdx);
     if (ov <= 0) return 0;
@@ -706,7 +898,7 @@
     const rawPivots = zigzag(S.h, S.l, A, opts.pivotAtr);
     const Vp = makeView(S, A, rawPivots, 1), Vm = makeView(S, A, rawPivots, -1);
     const raw = [];
-    for (const V of [Vp, Vm]) { detDouble(V, raw); detTriple(V, raw); detHS(V, raw); detTrendlines(V, raw); detFlags(V, raw); }
+    for (const V of [Vp, Vm]) { detDouble(V, raw); detTriple(V, raw); detHS(V, raw); detTrendlines(V, raw); detFlags(V, raw); detChannel(V, raw); detBroadening(V, raw); detCup(V, raw); detRound(V, raw); }
 
     // recency / age policy, confidence floor
     const last = n - 1;
