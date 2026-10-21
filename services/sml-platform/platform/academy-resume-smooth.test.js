@@ -75,3 +75,40 @@ test('the resume hooks are wired: chat reconnects with the new token, the live f
   assert.match(server, /sml-academy-resume/); assert.match(server, /abort\.abort\(\),8000/);
   assert.match(server, /ACADEMY_TAPE_WARM/);
 });
+
+test('the chat does not stay blank on a dead session: a refused socket renews the session first, then reconnects with the new token and reloads the room', async (t) => {
+  let playwright = null;
+  for (const id of ['playwright', process.env.SML_PLAYWRIGHT_PATH || '/opt/node22/lib/node_modules/playwright']) { try { playwright = require(id); break; } catch (_) { /* next */ } }
+  if (!playwright) { t.skip('Playwright is not installed here'); return; }
+  let browser; try { browser = await playwright.chromium.launch(); } catch (_) { t.skip('no browser to launch'); return; }
+  const marketHistory = { enabled: true, get: async (symbol, frame) => ({ ok: true, data: { symbol, tf: frame, bars: BARS() } }) };
+  const server = createServer({ checkDatabase: async () => true, acceptWordPressEvent: async () => 'accepted', logger: () => {}, marketHistory, pageAssets: createPageAssets() });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+    await page.addInitScript(() => {
+      try { localStorage.setItem('sml-academy-tour-v1', '1'); localStorage.setItem('sml-academy-explain', 'off'); } catch (_) { /* private mode */ }
+      window.__sockets = []; window.__reauth = 0; window.__alive = false;
+      class Fake {
+        constructor(url) { this.url = url; this.readyState = 0; this.sent = []; window.__sockets.push(this); setTimeout(() => { if (window.__alive && url.includes('token=fresh')) { this.readyState = 1; this.onopen && this.onopen(); } else { this.readyState = 3; this.onclose && this.onclose(); } }, 20); }
+        send(x) { this.sent.push(x); try { const m = JSON.parse(x); if (m.type === 'join') setTimeout(() => this.onmessage && this.onmessage({ data: JSON.stringify({ type: 'history', channel: m.channel, messages: [{ id: '1', channel: m.channel, body: 'hello again', authorName: 'Ana', discordId: '9', score: 0, at: Date.now() }] }) }), 20); } catch (_) { /* not json */ } }
+        close() { this.readyState = 3; }
+      }
+      Fake.OPEN = 1; Fake.CONNECTING = 0; Fake.CLOSING = 2; Fake.CLOSED = 3; window.WebSocket = Fake;
+    });
+    await page.goto('http://127.0.0.1:' + server.address().port + '/academy-activity/?symbol=SPY&tf=5m', { waitUntil: 'load' });
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => { window.smlAcademyReauth = async () => { window.__reauth++; window.__alive = true; window.smlAcademySessionToken = 'fresh'; return 'fresh'; }; window.smlAcademySessionToken = 'stale'; window.dispatchEvent(new CustomEvent('sml-academy-session', { detail: { sessionToken: 'stale' } })); });
+    await page.waitForFunction(() => window.__reauth >= 1 && window.__sockets.some((s) => s.url.includes('token=fresh') && s.readyState === 1), null, { timeout: 15000 });
+    const out = await page.evaluate(() => ({ reauth: window.__reauth, urls: window.__sockets.map((s) => /token=(\w+)/.exec(s.url)[1]), text: (document.querySelector('.academy-chat') || {}).textContent || '' }));
+    assert.ok(out.reauth >= 1, 'the session was renewed after the socket was refused');
+    assert.ok(out.urls.includes('stale') && out.urls.includes('fresh'));
+    await page.waitForFunction(() => /hello again/.test((document.querySelector('.academy-chat') || {}).textContent || ''), null, { timeout: 8000 });
+    // coming back after a long absence replaces a socket that only looks open
+    const before = await page.evaluate(() => window.__sockets.length);
+    await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.__h }); window.__h = true; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.evaluate(() => { window.__h = false; window.dispatchEvent(new CustomEvent('sml-academy-resume', { detail: { why: 'test' } })); });
+    await page.waitForFunction((n) => window.__sockets.length > n, before, { timeout: 8000 });
+    await page.waitForFunction(() => /hello again/.test((document.querySelector('.academy-chat') || {}).textContent || ''), null, { timeout: 8000 });
+  } finally { await browser.close(); await new Promise((r) => server.close(r)); }
+});
