@@ -208,8 +208,12 @@ test('content gate on: live data serves only the free symbols to free and anonym
     const anonymous = await (await get(base, '/academy-activity/scanner')).json();
     assert.deepEqual(anonymous.rows.map((row) => row.symbol), ['SPY', 'QQQ']);
     assert.equal(anonymous.locked, true);
+    /* what the gate withheld, so the panel can say so instead of "no verified matches" */
+    assert.equal(anonymous.lockedCount, 1);
+    assert.deepEqual(anonymous.freeSymbols, ['SPY', 'QQQ']);
     const member = await (await get(base, '/academy-activity/scanner', 'Bearer academy')).json();
     assert.deepEqual(member.rows.map((row) => row.symbol), ['SPY', 'AAPL', 'QQQ']);
+    assert.equal('lockedCount' in member, false);
     assert.equal((await get(base, '/academy-activity/scanner', 'Bearer nope')).status, 401);
   });
 });
