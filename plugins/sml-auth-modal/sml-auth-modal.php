@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 define( 'SMLX_AUTH_DIR', plugin_dir_path( __FILE__ ) );
 /* The CSS and JS live in the repo (assets/) and load from a commit-pinned CDN URL, as the site's other scripts do; a copy of the
    plugin that carries assets/ next to this file uses them inline instead. Bump the pin to ship a new version of either. */
-define( 'SMLX_AUTH_CDN', 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@__SHA__/plugins/sml-auth-modal/assets/' );
+define( 'SMLX_AUTH_CDN', 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@643db20b01e8c6454d5759379f357c82a3c8bbd6/plugins/sml-auth-modal/assets/' );
 
 function smlx_auth_markup() {
 	return <<<'HTML'
