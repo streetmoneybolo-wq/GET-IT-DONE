@@ -71,3 +71,22 @@ test('the Activity page ships the catalog, the tour and the first-use explainer,
   assert.match(server, /academy-auto-tour\.js/);
   assert.match(server, /path === '\/academy-activity\/tour-speech'/);
 });
+
+test('the tour bake records every line once, skips what is stored, waits out rate limits and stops on a dead key', async () => {
+  const { bakeTourLines } = require('./academy-bake');
+  const total = lines().length;
+  const stored = new Set(); const seen = [];
+  const voice = { configured: true, getTourAudio: async ({ kind, id, internal }) => { assert.equal(internal, true); const k = kind + ':' + id; seen.push(k); const had = stored.has(k); stored.add(k); return { cached: had }; } };
+  const store = { durable: true };
+  const first = await bakeTourLines({ voice, store, wait: async () => {} });
+  assert.deepEqual([first.done, first.skipped, first.failed], [total, 0, 0]);
+  const second = await bakeTourLines({ voice, store, wait: async () => {} });
+  assert.deepEqual([second.done, second.skipped], [0, total]);
+  let n = 0; const flaky = { configured: true, getTourAudio: async () => { n += 1; if (n === 1) { const e = new Error('x'); e.code = 'provider_rate_limited'; throw e; } return { cached: false }; } };
+  const waits = [];
+  const third = await bakeTourLines({ voice: flaky, store, wait: async (ms) => { waits.push(ms); } });
+  assert.equal(third.failed, 0); assert.ok(waits.includes(15000));
+  const dead = await bakeTourLines({ voice: { configured: true, getTourAudio: async () => { const e = new Error('bad'); e.code = 'provider_unavailable'; throw e; } }, store, wait: async () => {} });
+  assert.equal(dead.failed, 3); assert.equal(dead.stopped, 'provider_unavailable');
+  assert.equal((await bakeTourLines({ voice: { configured: false }, store })).stopped, 'provider_unconfigured');
+});

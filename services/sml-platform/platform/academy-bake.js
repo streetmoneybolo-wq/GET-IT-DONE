@@ -82,7 +82,29 @@ function createAcademyBake({ lessons = [], designer = null, voice = null, store 
   return { run, status: () => ({ running: Boolean(running), last }) };
 }
 
-module.exports = { createAcademyBake, MAX_CONSECUTIVE_FAILURES, RATE_LIMIT_WAITS };
+/* The guided tour and first-use tool lines (academy/tour-content.js): about fifty short recordings, paid for once. Safe to run on every
+ * start: a line already in the store costs one read, so after the first boot this does nothing but confirm. Rate limits are waited out. */
+async function bakeTourLines({ voice, store, logger = () => {}, wait = sleep, lines = require('./academy/tour-content').lines } = {}) {
+  const tally = { done: 0, skipped: 0, failed: 0, stopped: '' };
+  if (!voice || !voice.configured || !store || !store.durable) { tally.stopped = !voice || !voice.configured ? 'provider_unconfigured' : 'no_store'; return tally; }
+  let streak = 0;
+  for (const [key, text] of lines()) {
+    const [kind, id] = key.split(':');
+    let result = null;
+    for (let attempt = 0; attempt <= RATE_LIMIT_WAITS.length; attempt += 1) {
+      try { result = { ok: true, cached: Boolean((await voice.getTourAudio({ kind, id, userId: 'bake', internal: true })).cached) }; }
+      catch (error) { result = { ok: false, error: String((error && (error.code || error.message)) || error) }; }
+      if (result.ok || !/rate_limited|fetch failed|ECONNRESET|ETIMEDOUT|socket hang up|network|timeout/i.test(result.error) || attempt === RATE_LIMIT_WAITS.length) break;
+      await wait(RATE_LIMIT_WAITS[attempt]);
+    }
+    if (result.ok) { if (result.cached) tally.skipped += 1; else { tally.done += 1; await wait(600); } streak = 0; }
+    else { tally.failed += 1; streak += 1; logger('warn', 'academy_tour_bake_failed', { line: key, error: result.error }); if (streak >= MAX_CONSECUTIVE_FAILURES) { tally.stopped = result.error; break; } }
+  }
+  logger('info', 'academy_tour_bake_complete', tally);
+  return tally;
+}
+
+module.exports = { bakeTourLines, createAcademyBake, MAX_CONSECUTIVE_FAILURES, RATE_LIMIT_WAITS };
 
 if (require.main === module) {
   (async () => {
