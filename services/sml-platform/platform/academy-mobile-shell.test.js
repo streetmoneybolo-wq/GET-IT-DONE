@@ -1,66 +1,168 @@
 'use strict';
-
-const test = require('node:test');
+const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const shell = fs.readFileSync(path.join(__dirname, 'academy-mobile-shell.js'), 'utf8');
-const intentUi = fs.readFileSync(path.join(__dirname, 'academy-smart-intent-ui.js'), 'utf8');
-const targetsUi = fs.readFileSync(path.join(__dirname, 'academy-targets-ui.js'), 'utf8');
+const smc = fs.readFileSync(path.join(__dirname, 'academy-smart-money-ui.js'), 'utf8');
 
-/* The regression this guards: on a phone the Intent read-out was a sheet laid over the lower half of the chart (and the same went
- * for Targets), with the chart's own labels showing through it. The phone workspace puts every panel in the page flow UNDER the
- * chart; these two were never given a place. */
-
-test('the phone shell gives the Intent and Targets panels a slot under the chart and puts them back when the phone layout ends', () => {
-  assert.match(shell, /const PANELS = \['intent-panel', 'targets-panel'\]/);
-  assert.match(shell, /d\.id = 'ms-slot-tools'; chart\.appendChild\(d\)/, 'the slot is made under the chart with the SMC slot');
-  assert.match(shell, /dockPanels\(\);\s*\}/, 'docking runs with the slots, which the shell refreshes every second');
-  assert.match(shell, /undockPanels\(\);\s*const slot = byId\('ms-slot-smc'\)/, 'teardown returns them to the chart stage');
-  assert.match(shell, /\[data-ms-tab=chart\] #ms-slot-tools\{display:block/, 'visible on the Chart tab');
-  assert.match(shell, /#ms-slot-tools>#intent-panel,' \+ A \+ ' #ms-slot-tools>#targets-panel\{position:static!important/, 'in the flow, not floating');
-  /* the panels themselves still float over the stage when nothing moves them (desktop) */
-  assert.match(intentUi, /#intent-panel\{position:absolute;right:8px;top:26px/);
-  assert.match(targetsUi, /#targets-panel\{position:absolute;right:8px;top:26px/);
+test('the phone workspace has the six tabs, the sub-tabs of each, and loads in the Academy page after the phone compact pass', () => {
+  for (const tab of ["'quotes'", "'chart'", "'flow'", "'options'", "'algo'", "'talk'"]) assert.ok(shell.includes('id: ' + tab), tab);
+  // a phone opens on the chart of the stock the member last used (SPY the first time), never on a tool
+  assert.match(shell, /const S = \{ tab: 'chart'/);
+  assert.ok(!/location\.(replace|assign)\(/.test(shell), 'never reload the page: a second load inside Discord never finishes its sign-in');
+  for (const bit of ["const LAST = 'sml-last-symbol'", 'function rememberSymbol', "window.smlAcademyNavigateMarket(last)", "'Take the tour'"]) assert.ok(shell.includes(bit), bit);
+  // sub-tabs: the modules that belong together share a tab
+  for (const bit of ["'buysell-toggle'", "'darkpool-toggle'", "'shortsale-toggle'", "'sentiment-toggle'", "'mem-algo-toggle'", "'smc-toggle'", "'sire-toggle'", "'earnings-toggle'", "'catalysts-toggle'", "'paper-toggle'", "'talk-btn'", "['chain', 'CHAIN'", "['calc', 'CALCULATOR'", "['contract', 'CONTRACT'"]) assert.ok(shell.includes(bit), bit);
+  // phones only, behind a media query and a body class; desktop is never touched
+  assert.match(shell, /@media\(max-width:720px\)\{/); assert.ok(shell.includes("window.matchMedia('(max-width:720px)')"));
+  // panels that floated over the chart are in flow under it
+  for (const bit of ['#talk-panel.sheet{position:static!important', '#mem-algo-panel', '#sire-panel', '#ms-slot-smc', '#sml-scan-pop{display:none!important}', 'display:flex!important;flex-direction:column!important;grid-template-rows:none!important']) assert.ok(shell.includes(bit), bit);
+  assert.doesNotMatch(shell, /<iframe|<\/script/i);
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  assert.ok(html.includes('window.__smlMobileShell'), 'the shell ships with the page');
+  assert.ok(html.indexOf('window.__smlMobileShell') > html.indexOf('window.__smlAcademyMobileCompact'), 'after the phone compact pass');
 });
 
-test('in a phone browser the Intent panel opens under the chart, not over it, and goes back over the chart on a desktop', async (t) => {
-  let playwright = null;
-  for (const id of ['playwright', process.env.SML_PLAYWRIGHT_PATH || '/opt/node22/lib/node_modules/playwright']) { try { playwright = require(id); break; } catch (_) { /* next */ } }
-  if (!playwright) { t.skip('Playwright is not installed here'); return; }
-  let browser; try { browser = await playwright.chromium.launch(); } catch (_) { t.skip('no browser to launch'); return; }
-  try {
-    /* the panel's real floating style (first rule) and its open state, taken from the module */
-    const rule = (src, id) => { const m = new RegExp("'(#" + id + "\\{position:absolute[^']*)'").exec(src); return m ? m[1] : '#' + id + '{position:absolute;right:8px;top:26px;z-index:9;width:min(330px,calc(100% - 24px));max-height:calc(100% - 40px);display:none}'; };
-    const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#06101a;color:#e6eef2;font:14px sans-serif}
-      ${rule(intentUi, 'intent-panel')}#intent-panel.open{display:block}${rule(targetsUi, 'targets-panel')}#targets-panel.open{display:block}
-      .academy-chart-stage{position:relative;height:340px;background:#0a1620}main .chart{display:grid;grid-template-columns:minmax(0,1fr)}</style></head><body>
-      <main class="shell"><div class="bar"><strong>MEM</strong><span id="status" class="status">LIVE</span></div>
-        <section class="chart"><div class="toolbar"><input id="symbol" value="CAT"><button id="intent-btn">INTENT</button><button id="targets-toggle">TARGETS</button></div>
-          <div class="academy-chart-stage"><canvas id="chart" width="390" height="340"></canvas>
-            <aside id="intent-panel" class="open"><div class="ih"><b>INTENT</b></div><div class="ib"><p style="height:210px;margin:0">UNDECIDED, no side yet</p></div></aside>
-            <aside id="targets-panel"><div class="th"><b>TARGETS</b></div></aside></div>
-          <div class="academy-intervals"><button>1m</button><button>5m</button></div></section>
-        <div class="side"><div id="label">CAT</div><div id="price">735</div></div></main>
-      <script>${shell.replace(/<\/script>/g, '<\\/script>')}</script></body></html>`;
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });
-    const page = await ctx.newPage(); await page.setContent(html); await page.waitForTimeout(300);
-    await page.evaluate(() => window.smlMobileShell.tab('chart')); await page.waitForTimeout(1700); // the shell's own pass runs every 1.2 s
-    const geo = () => page.evaluate(() => { const r = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { top: b.top + scrollY, bottom: b.bottom + scrollY, left: b.left, right: b.right, parent: e.parentElement.id || e.parentElement.className, pos: getComputedStyle(e).position, display: getComputedStyle(e).display }; }; return { stage: r('.academy-chart-stage'), intent: r('#intent-panel'), slot: r('#ms-slot-tools') }; });
-    let g = await geo();
-    assert.equal(g.intent.parent, 'ms-slot-tools', 'moved into the slot under the chart'); assert.equal(g.intent.pos, 'static', 'in the flow');
-    assert.ok(g.intent.top >= g.stage.bottom - 1, `the panel starts below the chart (${Math.round(g.intent.top)} vs chart end ${Math.round(g.stage.bottom)})`);
-    assert.ok(g.intent.left >= -0.5 && g.intent.right <= 390.5, 'within the screen width');
-    assert.ok(g.intent.right - g.intent.left > 330, 'uses the width of the screen, not a narrow corner card');
-    /* off the Chart tab the slot is hidden, like the other chart-tab tools */
-    await page.evaluate(() => window.smlMobileShell.tab('algo')); await page.waitForTimeout(300);
-    assert.equal((await geo()).slot.display, 'none', 'hidden on other tabs'); await page.evaluate(() => window.smlMobileShell.tab('chart')); await page.waitForTimeout(300);
-    /* a desktop width: the phone layout ends and the panel is back over the chart as before */
-    await page.setViewportSize({ width: 1280, height: 800 }); await page.waitForTimeout(700);
-    g = await geo();
-    assert.equal(g.intent.parent, 'academy-chart-stage', 'back in the chart stage'); assert.equal(g.intent.pos, 'absolute', 'floating again on a desktop'); assert.equal(g.slot, null, 'the slot is gone');
-    await page.setViewportSize({ width: 390, height: 780 }); await page.waitForTimeout(1700);
-    assert.equal((await geo()).intent.parent, 'ms-slot-tools', 'and under the chart again on a phone');
-  } finally { await browser.close(); }
+test('the Smart-money map card takes the slot under the chart on a phone and groups its content into three tabs', () => {
+  assert.ok(smc.includes("document.getElementById('ms-slot-smc')"), 'the card mounts into the phone slot');
+  for (const bit of ['data-tab="read"', 'data-tab="detail"', 'data-tab="add"', 'MAP READ', 'ZONE DETAIL', 'ADD-ONS', 'data-t="add"', 'data-t="read"', 'data-t="detail"']) assert.ok(smc.includes(bit), bit);
+  assert.ok(smc.includes("card.dataset.tab = 'detail'"), 'a tapped zone opens its detail tab');
+  assert.ok(smc.includes('#smc-card:not([data-tab]) [data-t]:not([data-t=read])'), 'MAP READ is the tab until one is picked');
+});
+
+test('the first-time tour: a skippable spotlight walk-through for desktop and phone that starts once and can be replayed', () => {
+  const tour = fs.readFileSync(path.join(__dirname, 'academy-tour.js'), 'utf8');
+  for (const bit of ["const KEY = 'sml-academy-tour-v1'", 'const DESK = [', 'const PHONE_STEPS = [', 'data-a="skip"', 'Skip tour', 'window.smlTour', ".has('popout')", 'tr-hole', 'prefers-reduced-motion', "id = 'tour-btn'"]) assert.ok(tour.includes(bit), bit);
+  for (const sel of ['input#symbol', '.academy-chart-stage', '#smc-toggle', '#tool-rail .tg[data-group=flow]', '#ms-top', '#ms-nav button[data-more]']) assert.ok(tour.includes(sel), sel);
+  assert.doesNotMatch(tour, /<iframe|<\/script/i);
+  const { academyActivityHtml } = require('./server');
+  assert.ok(academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' }).includes('window.__smlTour'), 'the tour ships with the page');
+});
+
+test('the chart: the price axis is as wide as its labels and only two empty candles sit in front of the last one', () => {
+  const pro = fs.readFileSync(path.join(__dirname, 'academy-chart-pro.js'), 'utf8');
+  assert.ok(pro.includes('PAD.r = clamp(Math.ceil(labelLen * 6.2) + 12, 44, 72)'));
+  assert.ok(pro.includes('N + Math.max(2, Math.round(n * 0.02))'));
+  assert.ok(smc.includes("ctx.fillStyle = 'rgba(6,11,18,.82)'") && smc.includes('background:#0a101a;border:1px solid #3a3160'), 'SMC labels sit on a dark pill and the card is opaque');
+});
+
+test('the phone bars never show or sit in the chart grid on a wide screen, even after the window was narrow first', () => {
+  assert.ok(shell.includes("html body:not(.sml-ms) #ms-nav,html body:not(.sml-ms) #ms-sub,html body:not(.sml-ms) #ms-more,html body:not(.sml-ms) #ms-top{display:none!important}"), 'hidden whenever the phone layout is off');
+  assert.ok(shell.includes("for (const id of ['ms-top', 'ms-nav', 'ms-sub', 'ms-more'])"), 'leaving the phone layout removes the bars');
+  assert.ok(shell.includes("document.body.classList.contains('sml-ms') && top.previousElementSibling !== tb"), 'the tab strip is only placed in the chart section on a phone');
+});
+
+test('changing the ticker: the old stock never paints its price or prints under the new name', () => {
+  const live = fs.readFileSync(path.join(__dirname, 'academy-live.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  // the page: the readouts blank and the chart dims while the new candles are on their way, and the live feed is told to wait
+  for (const bit of ["window.smlNavPending=ticker;pendingUi(true)", "pendingUi(false,true)", ".sml-nav-pending canvas{opacity:.3", "const commit=(ticker,tf,payload)=>{pendingUi(false);"]) assert.ok(server.includes(bit), bit);
+  // the feed: it ignores ticks while a change is pending, drops any stream event that is not for the stock on screen, and forgets the old stock at once
+  for (const bit of ['const navPending = () => !!window.smlNavPending', 'function forgetStock()', 'const mine = () => symbol === sym() && !navPending() && sse.es === es', "if (!mine()) return; try { onTrade(", "window.addEventListener('sml-academy-market', (e) =>"]) assert.ok(live.includes(bit), bit);
+});
+
+test('the quote change is against the previous trading day\'s close, not the previous candle', () => {
+  const live = fs.readFileSync(path.join(__dirname, 'academy-live.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const stats = fs.readFileSync(path.join(__dirname, 'academy-quote-statistics.js'), 'utf8');
+  for (const bit of ['window.smlAcademyPrevClose=(ticker,price)=>', 'const prevCloseOf=bars=>', "toLocaleDateString('en-CA',{timeZone:'America/New_York'})", 'window.smlAcademyRepaintQuote=()=>', 'qc=window.smlAcademyChange?window.smlAcademyChange(symbol,+last.c):null', "window.smlAcademyPrevClose&&window.smlAcademyPrevClose(ticker);"]) assert.ok(server.includes(bit), bit);
+  assert.ok(live.includes('window.smlAcademyChange(sym(), d.last)') && !live.includes('m.bars[m.N - 2]'), 'the live readout no longer uses the previous candle');
+  assert.ok(stats.includes('window.smlAcademyPrevClose(symbol)') && !stats.includes('num(bars.at(-2)?.c)'), 'Prev Close in quote statistics is the daily close');
+});
+
+test('desktop: the quote column is a tabbed tool window and the SMC card and MEM ALGO panel sit in it instead of floating', () => {
+  const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const mem = fs.readFileSync(path.join(__dirname, 'academy-mem-algo-ui.js'), 'utf8');
+  const dock = fs.readFileSync(path.join(__dirname, 'academy-chart-dock.js'), 'utf8');
+  for (const bit of ["id: 'smc'", "id: 'algo'", "id: 'dark'", "id: 'short'", "id: 'buysell'", "id: 'sent'", "'sml-sw'", 'window.smlSideWindow', 'position:static!important']) assert.ok(sw.includes(bit), bit);
+  assert.ok(server.includes('ACADEMY_MOBILE_SHELL + ACADEMY_SIDE_WINDOW + '), 'the window is injected into the page');
+  assert.ok(smc.includes("document.body.classList.contains('sml-sw')") && smc.includes('col.appendChild(card)'), 'SMC mounts in the column');
+  assert.ok(mem.includes("document.body.classList.contains('sml-sw')") && mem.includes('col.appendChild(panel)'), 'MEM ALGO mounts in the column');
+  assert.ok(dock.includes("sel === '#smc-card' || sel === '#mem-algo-panel'"), 'the chart dock leaves those two to the column');
+});
+
+test('any number of tools can be on at once; a tap outside closes the floating SNAP and GUIDE popups', () => {
+  const one = fs.readFileSync(path.join(__dirname, 'academy-one-at-a-time.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  for (const bit of ["['smc-toggle', 'smc-card']", "['mem-algo-toggle', 'mem-algo-panel']", "['tool-guide-btn', 'tool-guide']", "addEventListener('pointerdown', away, true)", "e.key !== 'Escape'", 'window.smlOneAtATime', "ms-more"]) assert.ok(one.includes(bit), bit);
+  assert.ok(!one.includes('for (const t of TOOLS) if (t !== me) close(t)'), 'tools are not exclusive: they can all be on at once');
+  assert.ok(server.includes('ACADEMY_SIDE_WINDOW + ACADEMY_ONE_AT_A_TIME + '), 'injected into the page');
+});
+
+test('screener CALL / PUT works as a button: it opens suggested contracts right under its row and a second tap folds them away', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-screener-ui.js'), 'utf8');
+  for (const bit of ["S.busy.symbol === t.dataset.option && S.busy.side === side", 'li class="scr-card"', 'ALSO CONSIDER', 'BEST FIT', "aria-expanded", 'g.alternatives.map', 'scr-opt.on', 'scrollIntoView']) assert.ok(ui.includes(bit), bit);
+  assert.ok(!ui.includes('<div class="scr-suggest"'), 'the suggestion no longer lands in a box at the bottom of the panel');
+});
+
+test('the quote column has no duplicate tool buttons under the price (the toolbar opens each tool)', () => {
+  const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
+  assert.ok(sw.includes("' #side-win{display:none!important;"), 'tab bar hidden');
+});
+
+test('post-market percent is measured against the regular-session close from the candles, not a feed field', () => {
+  const stats = fs.readFileSync(path.join(__dirname, 'academy-quote-statistics.js'), 'utf8');
+  for (const bit of ['function postSession()', 'a.min>=960&&a.min<1200', 'a.min<960&&a.min>=570', 'postMarketPct:(postSession()||{}).pct??pick(row,[\'postMarketPct\'])']) assert.ok(stats.includes(bit), bit);
+});
+
+test('after hours the main change is the regular-session change and the extended move is shown separately', () => {
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  for (const bit of ['window.smlAcademyPostSession=()=>', 'window.smlAcademyChange=(ticker,price)=>', "'  ·  After hours '", 'smlAcademyPrevClose(ticker,ps?ps.reg:+price)']) assert.ok(server.includes(bit), bit);
+});
+
+test('desktop compaction: short broker buttons, TOUR/GUIDE in the top bar, quote-column tools fill the column, phones untouched', () => {
+  const dc = fs.readFileSync(path.join(__dirname, 'academy-desktop-compact.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const eng = fs.readFileSync(path.join(__dirname, 'academy-layout-engine.js'), 'utf8');
+  for (const bit of ["'Buy on ' + m[1] + ' ↗'", 'sml-dc-tail', 'sml-dc-chip', "max-width:720px", 'new MutationObserver', 'if (b.textContent !== t)', 'function disable()']) assert.ok(dc.includes(bit), bit);
+  assert.ok(server.includes('ACADEMY_ONE_AT_A_TIME + ACADEMY_DESKTOP_COMPACT + ACADEMY_TOUR'), 'injected');
+  assert.ok(eng.includes('scannerRows(40)'), 'the scanner list fills the column');
+});
+
+test('phone compaction: the chart takes the height a short panel leaves free, an empty chat gives its room to the quotes', () => {
+  const sh = fs.readFileSync(path.join(__dirname, 'academy-mobile-shell.js'), 'utf8');
+  const eng = fs.readFileSync(path.join(__dirname, 'academy-layout-engine.js'), 'utf8');
+  for (const bit of ['var(--ms-extra,0px)', 'function fit()', "document.body.getBoundingClientRect().bottom", "setInterval(() => { tick(); fit(); }, 1200)", "T('quotes', '.academy-chat.sml-empty')", "removeProperty('--ms-extra')"]) assert.ok(sh.includes(bit), bit);
+  assert.ok(eng.includes('connecting(?:…|\\.{2,3})'), 'the empty chat is recognised with three dots too');
+});
+
+test('the quote column stacks every tool that is on instead of showing one tab', () => {
+  const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
+  assert.ok(!sw.includes('{display:none!important}\'; // per tab') && !sw.includes("hide.add(m)"), 'no per-tab hiding');
+  assert.ok(sw.includes("[data-sw-any] main .side>.academy-side-fill{display:none!important}"), 'the scanner steps aside while a tool is on');
+  assert.ok(sw.includes("scrollIntoView({ block: 'nearest'"), 'a tool that is turned on is brought into view');
+});
+
+test('INTENT sits in the quote column with the other tools', () => {
+  const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
+  const dock = fs.readFileSync(path.join(__dirname, 'academy-chart-dock.js'), 'utf8');
+  assert.ok(sw.includes("btn: 'intent-btn', mods: ['#intent-panel']") && sw.includes("main .side>#intent-panel") && sw.includes("col.appendChild(ip)"), 'mounted in the column');
+  assert.ok(dock.includes("sel === '#intent-panel'"), 'the chart dock leaves it to the column');
+});
+
+test('TARGETS: the button, the panel in the quote column, the chart lines, the route and the learner are all wired', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-targets-ui.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
+  const nav = fs.readFileSync(path.join(__dirname, 'academy-toolbar-nav.js'), 'utf8');
+  const sh = fs.readFileSync(path.join(__dirname, 'academy-mobile-shell.js'), 'utf8');
+  for (const bit of ["btn.id = 'targets-toggle'", "/academy-activity/targets?symbol=", '[data-dir]', '[data-hz]', "'T' + t.n + ' '", "'STOP '", 'window.smlTargets']) assert.ok(ui.includes(bit), bit);
+  for (const bit of ["path === '/academy-activity/targets'", "path === '/academy-activity/targets/learning'", "'/academy-activity/alert-forensics'", 'createTargetLearner({ store: createPgStateStore', "key: 'target-learning'", 'targetLearner.settle()', 'judgeAlerts', '<script>\' + targetsUi + \'</script>', 'owner_only']) assert.ok(server.includes(bit), bit);
+  assert.ok(sw.includes("btn: 'targets-toggle', mods: ['#targets-panel']") && sw.includes('main .side>#targets-panel'), 'in the quote column');
+  assert.ok(nav.includes("'intent-btn', 'targets-toggle'") && sh.includes("['targets', 'TARGETS', 'targets-toggle']"), 'in the rail and on the phone chart tab');
+});
+
+test('the interval picked in the Indicator Engine drives the chart, and a chart interval drives the engine', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-screener-ui.js'), 'utf8');
+  for (const bit of ['function syncChart(tf)', "'.intervals button[data-tf=\"'", 'syncChart(S.tf)', 'syncChart(h.tf)', "window.addEventListener('sml-academy-market'", 'S.data.timeframes.includes(tf)']) assert.ok(ui.includes(bit), bit);
+});
+
+test('screener CALL / PUT reads fast and reliably: live token with renewal, hover warm-up, one retry when busy, share plan when there are no options', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-screener-ui.js'), 'utf8');
+  for (const bit of ["const token = () => String(window.smlAcademySessionToken || S.session || '')", "res.status === 401 && typeof window.smlAcademyReauth === 'function'", "'&warm=1'", "document.addEventListener('pointerover'", 'The options feed is busy: retrying in', 'PLAN FOR THE SHARES', 'at T1', 'at T2', 'optCache']) assert.ok(ui.includes(bit), bit);
+  assert.ok(!ui.includes("if (!S.session) { S.busy"), 'the token is no longer frozen at page load');
 });
