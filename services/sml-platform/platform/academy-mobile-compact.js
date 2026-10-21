@@ -42,6 +42,8 @@
     + 'body main .bar .status{font-size:.6rem}'
     + 'body main .bar #academy-lk-btn{padding:5px 8px;font-size:.66rem}'
     + 'body main .bar #academy-alerts-fab{position:static;padding:5px 8px;font-size:.66rem;border-radius:6px;box-shadow:none;gap:5px}body main .bar #academy-alerts-fab i{width:7px;height:7px}'
+    /* the Signals pill (owner) sits in the header beside Alerts instead of floating over the bottom nav and the indicator chips */
+    + 'body main .bar #sml-sig-fab{position:static!important;z-index:auto!important;left:auto;bottom:auto;margin:0;padding:5px 8px;font-size:.66rem;border-radius:6px;box-shadow:none;white-space:nowrap}'
     + 'body main .bar #academy-auth-notice{order:99;padding:.15rem 0 0;font-size:.66rem;line-height:1.3;gap:.4rem}'
     /* the chart stage: every pixel saved above goes to the candles */
     + 'body main{height:calc(100vh - 64px);height:calc(100svh - 64px)}body main .chart{padding:4px}body main .chart canvas#chart{min-height:260px}'
@@ -65,7 +67,7 @@
     + 'body main .chart .academy-pro-palette{left:6px;right:6px;top:auto;bottom:8px}'
     /* compact pass: every control row is ~22px tall so the candles get the screen */
     + 'body main .bar{gap:3px 4px;padding:4px 6px;flex-wrap:nowrap}body main .bar strong{font-size:.66rem;flex:0 1 auto}body main .bar .dot{width:.4rem;height:.4rem}'
-    + 'body main .bar .lesson-toggle,body main .bar #academy-lk-btn,body main .bar #academy-alerts-fab{flex:none;height:24px;padding:0 7px;font-size:.58rem;line-height:22px;border-width:1px;box-shadow:none}'
+    + 'body main .bar .lesson-toggle,body main .bar #academy-lk-btn,body main .bar #academy-alerts-fab,body main .bar #sml-sig-fab{flex:none;height:24px;padding:0 7px;font-size:.58rem;line-height:22px;border-width:1px;box-shadow:none}'
     + 'body main .bar #lesson-toggle{margin-left:auto}body main .bar .status{font-size:.5rem;flex:none}'
     + 'html.academy-discord-mobile body main .bar{flex-wrap:wrap}'
     + 'body main .bar #academy-auth-notice{flex:1 1 100%;font-size:.58rem;padding:0}'
@@ -178,6 +180,16 @@
         if (lk && lk.parentElement === bar) lk.insertAdjacentElement('afterend', fab); else bar.appendChild(fab);
       } else if (!phone && fab.parentElement === bar) {
         document.body.appendChild(fab);
+      }
+    }
+    /* the Signals pill (owner): in the header beside Alerts on a phone; a desktop floats it or docks it in the bar rail */
+    const sig = document.getElementById('sml-sig-fab');
+    if (sig && bar) {
+      if (phone && sig.parentElement !== bar) {
+        const alerts = document.getElementById('academy-alerts-fab');
+        if (alerts && alerts.parentElement === bar) alerts.insertAdjacentElement('afterend', sig); else bar.appendChild(sig);
+      } else if (!phone && sig.parentElement === bar) {
+        document.body.appendChild(sig);
       }
     }
     /* the options glossary folds shut on a phone; it opens again on a wide screen */
