@@ -51,6 +51,18 @@
   /* The chart's own state hands out a fresh copy of every candle on each call; the layers ask many times per frame, so reuse one copy for a few milliseconds. */
   let bbMemo = null, bbAt = -1e9;
   const baseBars = () => { const now = performance.now(); if (bbMemo && now - bbAt < 8) return bbMemo; let b = []; try { b = baseState().bars; } catch (_) { b = []; } bbMemo = Array.isArray(b) ? b : []; bbAt = now; return bbMemo; };
+  /* The forming candle glides to each new print (about 60 ms to settle) rather than jumping, so a busy tape reads as one smooth motion. The eased
+     values only exist for the drawing; the real candle (V.live) always holds the true prints. */
+  const shown = (L) => { const d = V.disp; return d && d.t === L.t ? Object.assign({}, L, { c: d.c, h: d.h, l: d.l }) : L; };
+  function stepDisp(now) {
+    const L = V.live; if (!L) { V.disp = null; return false; }
+    const d = V.disp;
+    if (!d || d.t !== L.t) { V.disp = { t: L.t, c: L.c, h: L.h, l: L.l, at: now }; return false; }
+    const k = 1 - Math.exp(-Math.min(100, now - d.at) / 60); d.at = now;
+    const ease = (a, b) => (Math.abs(b - a) <= Math.max(1e-9, Math.abs(b) * 2e-6) ? b : a + (b - a) * k);
+    d.c = ease(d.c, L.c); d.h = ease(d.h, L.h); d.l = ease(d.l, L.l);
+    return d.c !== L.c || d.h !== L.h || d.l !== L.l;
+  }
   /* Live prints: the forming candle is the base candle with the newest trades folded in, so the chart moves tick by tick between the periodic refreshes. */
   const rawBars = () => {
     const b = baseBars(), L = V.live;
@@ -59,8 +71,9 @@
     if (V.liveDone && V.liveDone.length) { V.liveDone = V.liveDone.filter((x) => x.t > last.t); } // tick charts: candles that filled since the last refresh
     const done = V.liveDone && V.liveDone.length ? V.liveDone : null;
     if (L.t < last.t) { V.live = null; V.liveDone = null; return b; }
-    if (L.t === last.t && !done) { const out = b.slice(0, -1); out.push(Object.assign({}, last, { h: Math.max(+last.h, L.h), l: Math.min(+last.l, L.l), c: L.c, v: Math.max(+last.v || 0, L.v) })); return out; }
-    return b.concat(done || [], L.t > last.t ? [Object.assign({}, L)] : []);
+    const Ld = shown(L); // the forming candle as it is drawn: eased toward the latest print, so the price glides instead of stepping
+    if (L.t === last.t && !done) { const out = b.slice(0, -1); out.push(Object.assign({}, last, { h: Math.max(+last.h, Ld.h), l: Math.min(+last.l, Ld.l), c: Ld.c, v: Math.max(+last.v || 0, L.v) })); return out; }
+    return b.concat(done || [], L.t > last.t ? [Object.assign({}, Ld)] : []);
   };
   const TF_MS = { '1m': 6e4, '3m': 18e4, '5m': 3e5, '10m': 6e5, '15m': 9e5, '30m': 18e5, '1h': 36e5, '2h': 72e5, '4h': 144e5 };
   function liveTick(price, size, ts) {
@@ -165,9 +178,11 @@
   /* One render pass per frame: every layer (candles, indicators, MEM ALGO, drawings) draws synchronously inside the same animation frame, so nothing trails the candles. */
   /* Live prints can arrive many times a frame on a busy tape: coalesce them so every layer repaints at a steady ~25 fps instead of
      bursting, which is what reads as a choppy tick chart. Pointer and view changes still use emit() directly. */
-  let liveTm = 0;
-  function emitLive() { if (liveTm) return; liveTm = setTimeout(() => { liveTm = 0; emit(); }, 40); }
-  function emit() { cache = null; if (raf) return; raf = requestAnimationFrame(() => { raf = 0; const t0 = performance.now(); window.dispatchEvent(new Event('sml-chart-view')); const t1 = performance.now(); drawPro(); perfSample(t0, t1 - t0, performance.now() - t1); }); }
+  /* A repaint follows each frame of the display (60 a second when the machine keeps up). The gap between repaints grows only as far as the
+     last frame's own cost needs, so a slow machine drops to fewer frames instead of lagging behind the tape. */
+  let liveTm = 0, lastEmitAt = 0, frameCost = 6;
+  function emitLive() { cache = null; if (liveTm || raf) return; const wait = Math.max(0, lastEmitAt + Math.min(90, frameCost * 1.5) - performance.now()); liveTm = setTimeout(() => { liveTm = 0; emit(); }, wait); }
+  function emit() { cache = null; if (raf) return; raf = requestAnimationFrame(() => { raf = 0; const t0 = performance.now(); const moving = stepDisp(t0); cache = null; window.dispatchEvent(new Event('sml-chart-view')); const t1 = performance.now(); drawPro(); const t2 = performance.now(); lastEmitAt = t0; frameCost = frameCost * 0.8 + (t2 - t0) * 0.2; perfSample(t0, t1 - t0, t2 - t1); if (moving) emitLive(); }); }
 
   /* ---------- frame-rate probe ----------
      While the trader drags or zooms, record how long each frame took and how long each layer took to draw. When the gesture ends, send ONE small timing summary to the server log

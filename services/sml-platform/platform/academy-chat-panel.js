@@ -337,6 +337,7 @@
     const box = document.querySelector('.academy-chat'); if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  let retry = 0;
   function connect() {
     const token = window.smlAcademySessionToken;
     if (!token) { status.textContent = 'SIGN IN FIRST'; return; }
@@ -346,7 +347,7 @@
     const url = proto + '://' + location.host + '/academy-activity/chat?token=' + encodeURIComponent(token) + '&name=' + encodeURIComponent(displayName());
     try { ws = new WebSocket(url); } catch (_) { status.textContent = 'OFFLINE'; return; }
     ws.onopen = () => { status.textContent = 'LIVE'; while (queue.length) ws.send(queue.shift()); join(current || 'global'); };
-    ws.onclose = () => { status.textContent = 'RECONNECTING'; setTimeout(connect, 3000); };
+    ws.onclose = () => { status.textContent = 'RECONNECTING'; clearTimeout(retry); retry = setTimeout(connect, 3000); };
     ws.onerror = () => {};
     ws.onmessage = (event) => {
       let msg; try { msg = JSON.parse(event.data); } catch (_) { return; }
@@ -371,5 +372,12 @@
 
   paintMuted();
   window.addEventListener('sml-academy-session', connect);
+  /* back from a minimised window: the socket may look open and be dead, and its token may have expired, so open a fresh one with the current token and reload the room */
+  window.addEventListener('sml-academy-resume', () => {
+    if (!window.smlAcademySessionToken) return;
+    const old = ws; ws = null; clearTimeout(retry);
+    if (old) { old.onclose = null; old.onmessage = null; try { old.close(); } catch (_) { /* already gone */ } }
+    connect();
+  });
   if (window.smlAcademySessionToken) connect();
 })();

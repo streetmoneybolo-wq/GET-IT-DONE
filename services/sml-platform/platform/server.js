@@ -603,12 +603,15 @@ function activeSymbols(limit = 6, withinMs = 180_000) {
 
 /* The upstream history call takes ~2 s when cold, but the Activity page only waited 650 ms for it, so a cold cache produced a page with no candles.
    Keep the busiest charts warm in the background so the first paint always has data. Errors are logged (throttled) so a dead feed is visible. */
-const ACADEMY_WARM = [['SPY', '5m'], ['QQQ', '5m'], ['SPY', '1D']];
+const ACADEMY_WARM = [['SPY', '5m'], ['QQQ', '5m'], ['SPY', '1D'], ['SPY', '1m'], ['QQQ', '1D']];
+/* the tape of the busiest symbols is collected before anyone asks, so a tick chart opens with trades already behind it */
+const ACADEMY_TAPE_WARM = ['SPY', 'QQQ', 'IWM'];
 let academyWarmFailLogged = 0;
 let academyWarmHistory = null;
-function startAcademyChartWarmers(log = logger, history = null) {
+function startAcademyChartWarmers(log = logger, history = null, massive = null) {
   academyWarmHistory = history;
   const tick = async () => {
+    if (massive && typeof massive.watch === 'function') { for (const sym of [...ACADEMY_TAPE_WARM, ...activeSymbols()]) { try { massive.watch(sym); } catch (_) { /* best effort */ } } }
     try { await getAcademyScanner(); } catch (error) { if (Date.now() - academyWarmFailLogged > 300_000) { academyWarmFailLogged = Date.now(); log('warn', 'academy_scanner_warm_failed', { error }); } }
     for (const [symbol, tf] of ACADEMY_WARM) {
       try { await getAcademyCandles(symbol, tf); }
@@ -1366,6 +1369,28 @@ const mainRenewCheck=()=>{if(document.hidden)return;if(Date.now()-mainLastAuth>1
 document.addEventListener('visibilitychange',mainRenewCheck);
 window.addEventListener('focus',mainRenewCheck);
 window.addEventListener('pageshow',mainRenewCheck);
+/* Coming back after the window was minimised or the app was in the background. Hidden pages are throttled or frozen: the live feed and chat sockets go
+   stale without telling anyone, requests in flight never finish, and the 15-minute session may have run out. So on return: renew the session if it is
+   getting old, tell every module (sml-academy-resume, and the session event most of them reload on) and let the layout settle. A gap in a one-second
+   heartbeat catches the cases where the browser never fires visibilitychange (a minimised Discord window). */
+(()=>{
+  let hiddenAt=document.hidden?Date.now():0,beat=Date.now(),busy=false,lastRun=0;
+  const resume=async(why,away)=>{
+    if(busy||document.hidden||Date.now()-lastRun<4000)return;busy=true;lastRun=Date.now();
+    try{
+      if(Date.now()-mainLastAuth>8*60*1000){mainLastAuth=Date.now();await authenticateAcademyActivity()}
+      else if(window.smlAcademySessionToken)window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken:window.smlAcademySessionToken,displayName:window.smlAcademyDisplayName||''}}));
+      window.dispatchEvent(new CustomEvent('sml-academy-resume',{detail:{why,awayMs:away}}));
+      requestAnimationFrame(()=>{window.dispatchEvent(new Event('resize'));try{window.smlChartPro&&window.smlChartPro.setView&&window.smlChartPro.setView()}catch(_){}});
+    }finally{busy=false}
+  };
+  window.smlAcademyResume=(why)=>resume(why||'manual',0);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){hiddenAt=Date.now();return}const away=hiddenAt?Date.now()-hiddenAt:0;hiddenAt=0;if(away>3000)resume('visible',away)});
+  window.addEventListener('pageshow',(e)=>{if(e.persisted)lastRun=0,resume('pageshow',0)});
+  window.addEventListener('online',()=>{lastRun=0;resume('online',0)});
+  window.addEventListener('focus',()=>{if(Date.now()-beat>8000)resume('focus',Date.now()-beat)});
+  setInterval(()=>{const now=Date.now(),gap=now-beat;beat=now;if(gap>8000&&!document.hidden)resume('gap',gap)},1000);
+})();
 void authenticateAcademyActivity();
 </script></body></html>`
     .replace("#academy-unlock{", "body.academy-tools-open .lesson{z-index:2147483600}#academy-unlock{")
@@ -1375,7 +1400,7 @@ void authenticateAcademyActivity();
     .replace("function load(){const s=esc(sym.value);location.assign(location.pathname+'?symbol='+encodeURIComponent(s))}", "function load(){window.smlAcademyNavigateMarket?.(esc(sym.value))}")
     .replace("new ResizeObserver(resize).observe(canvas);setQuote();draw()", "const chartObserver=new ResizeObserver(resize);chartObserver.observe(canvas);window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{if(!document.hidden)resize()});requestAnimationFrame(resize);setTimeout(resize,250);setTimeout(resize,1000);setQuote();draw()")
     .replace('function renderSlide()', "window.smlAcademyChartState=()=>({bars:bars.slice(),symbol,offset,scale});window.smlAcademyRepaintQuote=()=>{if(bars.length)setQuote()};window.smlAcademyApplyMarket=payload=>{if(!payload||!Array.isArray(payload.bars)||!payload.bars.length)return;bars=payload.bars.slice(-600);symbol=esc(payload.symbol||sym.value);offset=0;setQuote();resize();window.smlAcademyRefreshQuote?.();window.dispatchEvent(new CustomEvent('sml-academy-market',{detail:{bars:bars.slice(),symbol}}))};queueMicrotask(()=>window.dispatchEvent(new CustomEvent('sml-academy-market',{detail:{bars:bars.slice(),symbol}})));function renderSlide()")
-    .replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(refreshPending||(document.hidden&&window.smlAcademyChartState&&window.smlAcademyChartState().bars.length))return;const tfNow=new URLSearchParams(location.search).get('tf')||'5m';if(/T$/.test(tfNow)&&window.smlLiveTradeAt&&Date.now()-window.smlLiveTradeAt<15000&&window.smlAcademyChartState&&window.smlAcademyChartState().bars.length)return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store'}),payload=await response.json();if(!response.ok)throw new Error('market');if((new URLSearchParams(location.search).get('symbol')||'SPY')!==symbol||(new URLSearchParams(location.search).get('tf')||'5m')!==tf)return;window.smlAcademyApplyMarket?.(payload);document.getElementById('status').textContent='LIVE'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};keepWarm();setInterval(keepWarm,5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()})")
+    .replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(refreshPending||(document.hidden&&window.smlAcademyChartState&&window.smlAcademyChartState().bars.length))return;const tfNow=new URLSearchParams(location.search).get('tf')||'5m';if(/T$/.test(tfNow)&&window.smlLiveTradeAt&&Date.now()-window.smlLiveTradeAt<15000&&window.smlAcademyChartState&&window.smlAcademyChartState().bars.length)return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const abort=new AbortController(),cut=setTimeout(()=>abort.abort(),8000);let response,payload;try{response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store',signal:abort.signal});payload=await response.json()}finally{clearTimeout(cut)}if(!response.ok)throw new Error('market');if((new URLSearchParams(location.search).get('symbol')||'SPY')!==symbol||(new URLSearchParams(location.search).get('tf')||'5m')!==tf)return;window.smlAcademyApplyMarket?.(payload);document.getElementById('status').textContent='LIVE'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};keepWarm();setInterval(keepWarm,5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()});window.addEventListener('sml-academy-resume',()=>{refreshPending=false;keepWarm()})")
     .replace("page=1,sortKey='changePct'", "page=1,sortKey='changeRate3min'")
     .replace("if(k==='sire')return r.sire", "if(k==='sire')return r.changeRate3min")
     .replace("rows.map((r,i)=>({...r,sire:i+1}))", "rows.map(r=>({...r}))")
@@ -6508,7 +6533,7 @@ async function main() {
     const evolveTimer = setInterval(() => { if (academyEvolve.due()) academyEvolve.runBrief({ reason: 'scheduled' }).catch((error) => log('warn', 'academy_evolve_brief_failed', { error: String((error && error.message) || error) })); }, 10 * 60_000);
     if (evolveTimer.unref) evolveTimer.unref();
     if (memoryTimer.unref) memoryTimer.unref();
-    startAcademyChartWarmers(log, marketHistory);
+    startAcademyChartWarmers(log, marketHistory, academyMassive);
     if (academyOrderFlow) {
       academyOrderFlow.start();
     }
