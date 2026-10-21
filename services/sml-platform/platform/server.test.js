@@ -2641,3 +2641,23 @@ test('the free trial lets a member in from outside the Academy server: the pass 
   assert.ok(src.includes("if (academyPasses && await academyPasses.hasActive(userId).catch(() => false)) return 'academy';"), 'the renew check reads the pass too');
   assert.ok(!src.includes('academyPasses.configured && await academyPasses.hasActive'), 'no configured gate left on the pass read');
 });
+
+test('Auto-trade route is owner only, reports the simulated account, and a kill stops it', async () => {
+  const { OWNER_IDS } = require('./academy-free-users');
+  const owner = OWNER_IDS[0] || '100000000000000009';
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer owner' ? { ok: true, tier: 'academy', userId: owner } : a === 'Bearer member' ? { ok: true, tier: 'academy', userId: '100000000000000001' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const { createAutoTrade } = require('./academy-autotrade');
+  let v = null; const autoTrade = createAutoTrade({ broker: { configured: false }, signals: async () => [], store: { read: async () => v, write: async (n) => { v = n; } } });
+  await withServer({ academyOAuth, autoTrade }, async (base) => {
+    const o = { authorization: 'Bearer owner', 'content-type': 'application/json' };
+    assert.equal((await fetch(`${base}/academy-activity/autotrade`, { headers: { authorization: 'Bearer member' } })).status, 403);
+    assert.equal((await fetch(`${base}/academy-activity/autotrade`)).status, 401);
+    let b = await (await fetch(`${base}/academy-activity/autotrade`, { headers: o })).json();
+    assert.equal(b.env, 'SIMULATE'); assert.equal(b.settings.enabled, false); assert.equal(b.settings.mode, 'dry'); assert.equal(b.brokerConfigured, false);
+    b = await (await fetch(`${base}/academy-activity/autotrade`, { method: 'POST', headers: o, body: JSON.stringify({ enabled: true, mode: 'live', maxPositionUsd: 750 }) })).json();
+    assert.equal(b.settings.enabled, true); assert.equal(b.settings.mode, 'dry', 'there is no live mode'); assert.equal(b.settings.maxPositionUsd, 750);
+    b = await (await fetch(`${base}/academy-activity/autotrade`, { method: 'POST', headers: o, body: '{"kill":true}' })).json();
+    assert.equal(b.killed, true); assert.equal(b.settings.enabled, false);
+  });
+  await withServer({ academyOAuth }, async (base) => assert.equal((await fetch(`${base}/academy-activity/autotrade`, { headers: { authorization: 'Bearer owner' } })).status, 503));
+});
