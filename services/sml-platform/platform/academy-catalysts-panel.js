@@ -1,4 +1,5 @@
-/* CATALYSTS for the Academy Live Chart Lab: a toolbar toggle that swaps the options dock for three tabs,
+/* CATALYSTS for the Academy Live Chart Lab: a toolbar toggle that swaps the options dock for four tabs,
+ *   CALENDAR  earnings and FDA decisions on one compact calendar (three weeks), with the names that could announce any day under it
  *   EARNINGS  the best upcoming reports, what the options market prices vs what the stock has done, and the plays with their hedge
  *   FDA       upcoming decisions with an approval read, an impact read and the hedge for the play
  *   RADAR     names showing the fingerprints that precede surprise news
@@ -14,8 +15,8 @@
   const usd = (v) => (num(v) == null ? '—' : '$' + Number(v).toFixed(2));
   const sym = () => String(new URLSearchParams(location.search).get('symbol') || 'SPY').toUpperCase();
   const KEY = 'sml-catalysts-v1';
-  const S = { on: false, tab: 'earnings', session: String(window.smlAcademySessionToken || ''), data: { earnings: null, fda: null, radar: null }, err: {}, busy: {}, open: new Set(), prevTitle: '' };
-  try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.on = v.on === true; if (['earnings', 'fda', 'radar'].includes(v.tab)) S.tab = v.tab; } } catch (_) { /* storage can be blocked */ }
+  const S = { on: false, tab: 'cal', cal: { off: 0, e: true, f: true, day: '' }, session: String(window.smlAcademySessionToken || ''), data: { earnings: null, fda: null, radar: null }, err: {}, busy: {}, open: new Set(), prevTitle: '' };
+  try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.on = v.on === true; if (['cal', 'earnings', 'fda', 'radar'].includes(v.tab)) S.tab = v.tab; } } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, tab: S.tab })); } catch (_) { /* ignore */ } };
   const toolbar = document.querySelector('.toolbar'); if (!toolbar) return;
 
@@ -31,6 +32,13 @@
     + '#catalysts-panel .play{border:1px solid #3a3118;border-radius:8px;padding:8px 10px;margin:8px 0;background:#0f0d07}#catalysts-panel .play b{color:#ffd66b}#catalysts-panel .play .legs{font:700 .64rem ui-monospace,monospace;color:#d9c48a;margin:4px 0}#catalysts-panel .play .hedge{color:#9ee6cb}#catalysts-panel .play .risk{color:#c9a68a}'
     + '#catalysts-panel h3.sub{margin:12px 0 4px;font:800 .66rem ui-monospace,monospace;color:#ffd66b;letter-spacing:.08em}#catalysts-panel .tag{display:inline-block;padding:1px 6px;border-radius:4px;background:#2a2410;color:#d9c48a;font:800 .58rem ui-monospace,monospace;margin-right:4px}'
     + '#catalysts-panel .note{margin-top:10px;color:#a3936a;font-size:.62rem;line-height:1.4;font-weight:500}#catalysts-panel a.chart{color:#ffd66b;text-decoration:none;font-weight:800}';
+  style.textContent += '#catalysts-panel .cal-h{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 6px}#catalysts-panel .cal-h b{font:800 .7rem ui-monospace,monospace;color:#ffd66b}#catalysts-panel .cal-h .sp{flex:1}#catalysts-panel .cal-h button{padding:3px 9px;border:1px solid #4a3d1a;border-radius:6px;background:#1a1507;color:#d9c48a;font:800 .6rem ui-monospace,monospace;cursor:pointer}#catalysts-panel .cal-h button.on{background:#3a2f0c;color:#ffd66b;border-color:#8a6a1c}'
+    + '#catalysts-panel .cal-g{display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) repeat(2,minmax(0,.55fr));gap:3px}#catalysts-panel .cal-w{padding:2px 4px;color:#8a7a4c;font:800 .55rem ui-monospace,monospace;letter-spacing:.08em}'
+    + '#catalysts-panel .cal-d{min-height:62px;padding:3px 4px;border:1px solid #2c2610;border-radius:6px;background:#120f06;cursor:pointer;overflow:hidden}#catalysts-panel .cal-d:hover{border-color:#6b5817}#catalysts-panel .cal-d.past{opacity:.5}#catalysts-panel .cal-d.today{border-color:#ffd66b;background:#1d1708}#catalysts-panel .cal-d.sel{border-color:#52e6ad;box-shadow:0 0 0 1px #52e6ad inset}#catalysts-panel .cal-d.we{background:#0d0b05}'
+    + '#catalysts-panel .cal-n{display:flex;justify-content:space-between;color:#a3936a;font:800 .58rem ui-monospace,monospace;margin:0 0 2px}#catalysts-panel .cal-d.today .cal-n{color:#ffd66b}'
+    + '#catalysts-panel .chip{display:inline-block;margin:1px 2px 0 0;padding:0 5px;border-radius:4px;font:800 .58rem/1.5 ui-monospace,monospace;white-space:nowrap}#catalysts-panel .chip.ce{background:#10303f;color:#9ed3e6}#catalysts-panel .chip.cf{background:#35204a;color:#d9b8ff}#catalysts-panel .chip.more{background:none;color:#8a7a4c}'
+    + '#catalysts-panel .cal-det{margin:8px 0 0;padding:8px 10px;border:1px solid #3a3118;border-radius:8px;background:#15110a}#catalysts-panel .cal-det .cev{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;padding:4px 0;border-bottom:1px solid rgba(90,74,28,.35)}#catalysts-panel .cal-det .cev:last-child{border:0}#catalysts-panel .cal-det .cev .k{padding:0 6px;border-radius:4px;font:800 .56rem ui-monospace,monospace}#catalysts-panel .cal-det button{padding:2px 8px;border:1px solid #4a3d1a;border-radius:6px;background:#1a1507;color:#d9c48a;font:800 .58rem ui-monospace,monospace;cursor:pointer}'
+    + '#catalysts-panel a.chart{min-height:0!important;display:inline}#catalysts-panel .cal-any{margin:8px 0 0;color:#a3936a;font-size:.62rem}#catalysts-panel .cal-any b{color:#d9b8ff;font:800 .56rem ui-monospace,monospace;letter-spacing:.08em;margin-right:6px}';
   document.head.appendChild(style);
 
   const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'catalysts-toggle'; btn.className = 'catalysts-toggle'; btn.textContent = 'CATALYSTS'; btn.title = 'Earnings playbook, FDA decisions and the surprise-news radar'; toolbar.appendChild(btn);
@@ -38,10 +46,10 @@
 
   /* the token lives 15 minutes and the session event can fire before this script listens: always prefer the live one */
   const live = () => { const t = String(window.smlAcademySessionToken || ''); if (t) S.session = t; return S.session; };
-  const ROUTES = { earnings: '/academy-activity/earnings-playbook?days=14&limit=12', fda: '/academy-activity/fda?days=75&limit=20', radar: '/academy-activity/catalyst-radar' };
+  const ROUTES = { earnings: '/academy-activity/earnings-playbook?days=21&limit=25', fda: '/academy-activity/fda?days=75&limit=20', radar: '/academy-activity/catalyst-radar' };
   async function load(tab) {
     live();
-    if (!S.session || S.busy[tab]) return;
+    if (!ROUTES[tab] || !S.session || S.busy[tab]) return;
     S.busy[tab] = true; S.err[tab] = '';
     try {
       const go = (tok) => fetch(ROUTES[tab], { headers: { authorization: 'Bearer ' + tok }, cache: 'no-store' });
@@ -63,6 +71,15 @@
       if (dock && dock.parentElement) dock.parentElement.insertBefore(el, dock); else document.body.appendChild(el);
       el.addEventListener('click', (e) => {
         const t = e.target.closest('[data-tab]'); if (t) { S.tab = t.dataset.tab; save(); if (!S.data[S.tab]) void load(S.tab); paint(); return; }
+        const c = e.target.closest('[data-cal]');
+        if (c && !e.target.closest('a')) {
+          const a = c.dataset.cal;
+          if (a === 'prev') S.cal.off = Math.max(0, S.cal.off - 1); else if (a === 'next') S.cal.off = Math.min(4, S.cal.off + 1); else if (a === 'today') { S.cal.off = 0; S.cal.day = ''; }
+          else if (a === 'fe') S.cal.e = !S.cal.e; else if (a === 'ff') S.cal.f = !S.cal.f;
+          else if (a === 'day') S.cal.day = S.cal.day === c.dataset.day ? '' : c.dataset.day;
+          else if (a === 'go') { S.tab = c.dataset.totab; S.open.add(c.dataset.key); save(); }
+          paint(); return;
+        }
         const r = e.target.closest('tr.row'); if (r && !e.target.closest('a')) { const k = r.dataset.key; if (S.open.has(k)) S.open.delete(k); else S.open.add(k); paint(); }
       });
     }
@@ -103,6 +120,52 @@
       + '<p class="note">' + esc(d.window ? d.window.start + ' to ' + d.window.end + ', ' + d.considered + ' reports considered, ' + d.events.length + ' liquid enough to study. ' : '') + 'Click a row for the plays and the hedge for each. ' + esc(d.note || '') + '</p>';
   }
   function placeholderHtml(tab) { return '<p class="note">' + esc(S.err[tab] || 'Loading…') + '</p>'; }
+
+
+  /* ---- the calendar: earnings and FDA decisions on three weeks, one glance ---- */
+  const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function calEvents() {
+    const by = new Map(), add = (date, ev) => { if (!by.has(date)) by.set(date, []); by.get(date).push(ev); };
+    const ed = S.data.earnings, fd = S.data.fda;
+    if (S.cal.e && ed && ed.available && ed.events) for (const e of ed.events) add(e.date, { kind: 'e', sym: e.symbol, e });
+    if (S.cal.f && fd && fd.available && fd.events) for (const e of fd.events) if (e.kind !== 'anytime') add(e.date, { kind: 'f', sym: e.symbol, e });
+    return by;
+  }
+  function calHtml() {
+    const ed = S.data.earnings, fd = S.data.fda, loading = (!ed && !S.err.earnings) || (!fd && !S.err.fda);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7) + S.cal.off * 7);
+    const days = Array.from({ length: 21 }, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d; });
+    const by = calEvents(), todayKey = ymd(today);
+    const label = MON[days[0].getMonth()] + ' ' + days[0].getDate() + ' – ' + MON[days[20].getMonth()] + ' ' + days[20].getDate();
+    let h = '<div class="cal-h"><button type="button" data-cal="prev"' + (S.cal.off <= 0 ? ' disabled style="opacity:.4"' : '') + '>◀</button><b>' + esc(label) + '</b><button type="button" data-cal="next"' + (S.cal.off >= 4 ? ' disabled style="opacity:.4"' : '') + '>▶</button><button type="button" data-cal="today">TODAY</button><span class="sp"></span>'
+      + '<button type="button" class="' + (S.cal.e ? 'on' : '') + '" data-cal="fe">EARNINGS</button><button type="button" class="' + (S.cal.f ? 'on' : '') + '" data-cal="ff">FDA</button></div>';
+    h += '<div class="cal-g">' + ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].map((w) => '<div class="cal-w">' + w + '</div>').join('');
+    for (const d of days) {
+      const k = ymd(d), evs = (by.get(k) || []).slice().sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'f' ? -1 : 1)), we = d.getDay() === 0 || d.getDay() === 6;
+      h += '<div class="cal-d' + (k < todayKey ? ' past' : '') + (k === todayKey ? ' today' : '') + (S.cal.day === k ? ' sel' : '') + (we ? ' we' : '') + '" data-cal="day" data-day="' + k + '"><div class="cal-n"><span>' + (d.getDate() === 1 || (d === days[0]) ? MON[d.getMonth()] + ' ' : '') + d.getDate() + '</span>' + (evs.length ? '<span>' + evs.length + '</span>' : '') + '</div>'
+        + evs.slice(0, 3).map((x) => '<span class="chip ' + (x.kind === 'e' ? 'ce' : 'cf') + '" title="' + (x.kind === 'e' ? 'Earnings' : 'FDA decision') + '">' + (x.kind === 'f' ? '💊' : '') + esc(x.sym) + '</span>').join('') + (evs.length > 3 ? '<span class="chip more">+' + (evs.length - 3) + '</span>' : '') + '</div>';
+    }
+    h += '</div>';
+    if (S.cal.day) {
+      const evs = by.get(S.cal.day) || [], dd = new Date(S.cal.day + 'T00:00:00');
+      h += '<div class="cal-det"><b style="color:#ffd66b">' + esc(MON[dd.getMonth()] + ' ' + dd.getDate()) + '</b>' + (evs.length ? '' : ' <span style="color:#8a7a4c">nothing scheduled that day</span>');
+      for (const x of evs) {
+        if (x.kind === 'e') { const e = x.e; h += '<div class="cev"><span class="k chip ce">EARNINGS</span>' + chartLink(e.symbol) + '<span>' + esc(e.name || '') + '</span><span>' + (e.timing === 'AMC' ? 'after the close' : e.timing === 'BMO' ? 'before the open' : 'time not stated') + '</span>' + (e.implied ? '<span>priced move ' + apct(e.implied.impliedPct) + '</span>' : '') + '<button type="button" data-cal="go" data-totab="earnings" data-key="e:' + esc(e.symbol + ':' + e.date) + '">plays ▸</button></div>'; }
+        else { const e = x.e; h += '<div class="cev"><span class="k chip cf">FDA</span>' + chartLink(e.symbol) + '<span>' + esc(e.company || '') + '</span><span>decision due ' + esc(e.date) + '</span>' + (e.approval ? '<span>approval ' + e.approval.pct + '% (' + esc(e.approval.label) + ')</span>' : '') + (e.impact ? '<span>impact ' + e.impact.score + '/100</span>' : '') + '<button type="button" data-cal="go" data-totab="fda" data-key="f:' + esc(e.symbol + ':' + e.date + ':' + e.kind) + '">plays ▸</button></div>'; }
+      }
+      h += '</div>';
+    }
+    const any = S.cal.f && fd && fd.available && fd.events ? fd.events.filter((e) => e.kind === 'anytime') : [];
+    if (any.length) h += '<div class="cal-any"><b>FDA · COULD LAND ANY DAY</b>' + any.map((e) => '<span class="chip cf" title="' + esc(e.window ? e.window.label : '') + '">💊' + esc(e.symbol) + '</span>').join('') + '</div>';
+    const notes = [];
+    if (loading) notes.push('Loading the calendar…'); else {
+      if (S.err.earnings) notes.push('Earnings: ' + S.err.earnings); else if (ed && ed.window) notes.push('Earnings: the ' + ed.events.length + ' most liquid reports through ' + ed.window.end);
+      if (S.err.fda) notes.push('FDA: ' + S.err.fda); else if (fd && fd.window) notes.push('FDA: dates companies filed, through ' + fd.window.end);
+    }
+    return h + '<p class="note">' + esc(notes.join(' · ')) + ' · Tap a day for the names, then plays for the setup and the hedge. Educational context, not a trade signal.</p>';
+  }
 
   function fdaDetail(e) {
     const ap = e.approval, im = e.impact, pm = e.implied;
@@ -154,13 +217,13 @@
     if (!S.on) { const el = document.getElementById('catalysts-panel'); if (el) el.style.display = 'none'; if (dock && !(earningsEl && earningsEl.style.display !== 'none')) dock.style.display = ''; if (title && S.prevTitle) { title.textContent = S.prevTitle; S.prevTitle = ''; } return; }
     if (dock) dock.style.display = 'none';
     if (earningsEl) earningsEl.style.display = 'none';
-    if (title && !S.prevTitle) { S.prevTitle = title.textContent; title.textContent = 'CATALYSTS · EARNINGS · FDA · RADAR'; }
+    if (title && !S.prevTitle) { S.prevTitle = title.textContent; title.textContent = 'CATALYSTS · CALENDAR · EARNINGS · FDA · RADAR'; }
     const el = panel(); el.style.display = '';
-    const tabs = '<div class="tabs">' + [['earnings', 'EARNINGS'], ['fda', 'FDA'], ['radar', 'RADAR']].map(([k, l]) => '<button type="button" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>';
+    const tabs = '<div class="tabs">' + [['cal', 'CALENDAR'], ['earnings', 'EARNINGS'], ['fda', 'FDA'], ['radar', 'RADAR']].map(([k, l]) => '<button type="button" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>';
     live();
     if (!S.session) { el.innerHTML = '<h2>CATALYSTS</h2>' + tabs + '<p class="note">Unlock Academy Tools first so Discord can verify private Academy access.</p>'; return; }
-    if (!S.data[S.tab] && !S.err[S.tab] && !S.busy[S.tab]) void load(S.tab);
-    el.innerHTML = '<h2>CATALYSTS</h2>' + tabs + (S.tab === 'earnings' ? earningsHtml() : S.tab === 'fda' ? (window.smlCatalystsFda ? window.smlCatalystsFda(S) : placeholderHtml('fda')) : (window.smlCatalystsRadar ? window.smlCatalystsRadar(S) : placeholderHtml('radar')));
+    for (const t of S.tab === 'cal' ? ['earnings', 'fda'] : [S.tab]) if (!S.data[t] && !S.err[t] && !S.busy[t]) void load(t);
+    el.innerHTML = '<h2>CATALYSTS</h2>' + tabs + (S.tab === 'cal' ? calHtml() : S.tab === 'earnings' ? earningsHtml() : S.tab === 'fda' ? (window.smlCatalystsFda ? window.smlCatalystsFda(S) : placeholderHtml('fda')) : (window.smlCatalystsRadar ? window.smlCatalystsRadar(S) : placeholderHtml('radar')));
   }
   window.smlCatalystsPaint = paint; window.smlCatalystsState = S;
   const sync = () => btn.classList.toggle('on', S.on);
