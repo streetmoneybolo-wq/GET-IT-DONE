@@ -80,7 +80,9 @@ function createLiveRange({ stream = null, now = Date.now, onCross = null, logger
     }
   }
   const status = () => ({ symbols: tracked.size, buckets: [...tracked.values()].reduce((a, e) => a + e.buckets.size, 0) });
-  return { track, unwatch, range, prune, status, _record: record };
+  /* who is being tracked and how many trades' worth of minutes each holds, for the log */
+  const summary = () => [...tracked.entries()].map(([symbol, e]) => ({ symbol, minutes: e.buckets.size, watches: e.watches.size })).sort((a, b) => b.minutes - a.minutes);
+  return { track, unwatch, range, prune, status, summary, _record: record };
 }
 
 /* the two ranges together: the candles' (which see the whole bar) and the live trades' (which see it first) */

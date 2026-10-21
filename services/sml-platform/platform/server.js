@@ -5723,7 +5723,9 @@ async function main() {
         }
         liveRange.prune();
       };
-      setTimeout(syncLive, 45_000).unref(); setInterval(syncLive, 60_000).unref();
+      /* one line every ten minutes (and one at the first sync): which stocks the watcher is following on the live trade feed, how many minutes of trades each holds */
+      const logLive = () => { const sum = liveRange.summary(); log('info', 'live_range_tracking', { symbols: sum.length, withTrades: sum.filter((x) => x.minutes > 0).length, top: sum.slice(0, 8) }); };
+      setTimeout(() => { syncLive(); logLive(); }, 45_000).unref(); setInterval(syncLive, 60_000).unref(); setInterval(logLive, 10 * 60_000).unref();
     }
 
     if (academyAlerts && typeof academyAlerts.setPtLadder === 'function') academyAlerts.setPtLadder((key) => academyAutoPt.forKey(key));

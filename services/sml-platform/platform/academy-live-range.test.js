@@ -73,3 +73,12 @@ test('merging the candle range with the live range keeps the wider of each side'
   assert.deepEqual(mergeRanges({ high: 2.8, low: 2.3 }, null), { high: 2.8, low: 2.3 });
   assert.equal(mergeRanges(null, null), null);
 });
+
+test('the summary lists what is tracked for the log line', () => {
+  const t = Date.UTC(2026, 9, 20, 23, 0, 0);
+  const stream = fakeStream();
+  const lr = createLiveRange({ stream, now: () => t });
+  lr.track('AAA', t - 60_000, { key: 'd:1', side: 'long', target: 5 }); lr.track('BBB', t - 60_000);
+  stream.emit('AAA', t, 4.9); stream.emit('AAA', t + 1, 4.9); stream.emit('AAA', t + 70_000, 4.8); stream.emit('AAA', t + 70_001, 4.8);
+  assert.deepEqual(lr.summary(), [{ symbol: 'AAA', minutes: 2, watches: 1 }, { symbol: 'BBB', minutes: 0, watches: 0 }]);
+});

@@ -188,3 +188,8 @@ test('the alert watcher reads the live trade feed for its range and checks at on
   for (const bit of ["require('./academy-live-range')", 'createLiveRange({ stream: academyMassive', "ACADEMY_LIVE_RANGE", 'mergeRanges(candles, liveRange ? liveRange.range(symbol, since) : null)', 'liveRange.track(a.symbol, a.watchSince || a.at', 'academyAutoPt.tick()', 'liveRange.unwatch(']) assert.ok(server.includes(bit), bit);
   assert.ok(pt.includes('watchTarget:') && pt.includes('watchSince:'), 'the watcher says which target and since when it is waiting for');
 });
+
+test('the server logs which stocks the live range is tracking', () => {
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  for (const bit of ["'live_range_tracking'", 'liveRange.summary()', 'setInterval(logLive, 10 * 60_000)']) assert.ok(server.includes(bit), bit);
+});
