@@ -30,7 +30,43 @@
     try { var u = new URL(to, location.origin); if (to && u.origin === location.origin && u.pathname.indexOf("wp-login.php") === -1) return u.pathname + u.search; } catch (e) { /* the page they are on */ }
     var p = location.pathname; return /^\/(login|register|sign-in|sign-up|sign-up-sign-in)\/?$/.test(p) ? "/" : p + location.search;
   }
-  if (cfg.discord && discordEl) { discordEl.href = cfg.discord + "?return=" + encodeURIComponent(returnPath()); oauthEl.hidden = false; }
+  if (cfg.discord && discordEl) discordEl.href = cfg.discord + "?return=" + encodeURIComponent(returnPath());
+  else if (discordEl) discordEl.hidden = true;
+  if (cfg.discord || cfg.google) oauthEl.hidden = false;
+
+  /* ---------- Continue with Google: Google's own button; the signed token it returns is checked by the site ---------- */
+  var googleEl = qs("[data-google]"), gState = { loading: false, ready: false };
+  function googleDone(r) { say((r && r.created ? "Welcome to StockMarketLoop. " : "Welcome back. ") + "Taking you in...", false); setTimeout(function () { location.href = (r && r.redirect) || afterAuth(); }, 400); }
+  function googleCredential(resp) {
+    say("Signing you in with Google...", false);
+    api("google", { credential: resp && resp.credential || "", return_to: location.origin + returnPath() }, cfg.gapi).then(googleDone).catch(function (err) {
+      var t = errText(err, "Google sign-in didn't finish. Try again, or use your email.");
+      say(t, true);
+      var email = err && err.data && err.data.email;
+      if (err && err.code === "email_unverified_existing" && email) {
+        var b = document.createElement("button"); b.type = "button"; b.className = "smlx-link"; b.textContent = "Log in instead";
+        b.addEventListener("click", function () { forms.login.login.value = email; view("login"); focusFirst(); }); statusEl.appendChild(document.createTextNode(" ")); statusEl.appendChild(b);
+      }
+      googleNonce(); // each attempt needs a fresh single-use nonce
+    });
+  }
+  function googleNonce() {
+    return fetch(cfg.gapi + "google-nonce", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.nonce) throw new Error("no nonce");
+      window.google.accounts.id.initialize({ client_id: cfg.google, callback: googleCredential, nonce: j.nonce, auto_select: false, cancel_on_tap_outside: true, ux_mode: "popup" });
+      googleEl.innerHTML = "";
+      window.google.accounts.id.renderButton(googleEl, { type: "standard", theme: "filled_black", size: "large", text: "continue_with", shape: "rectangular", logo_alignment: "left", width: Math.max(200, Math.min(400, googleEl.parentNode.clientWidth || 340)) });
+      googleEl.hidden = false; gState.ready = true;
+    }).catch(function () { googleEl.hidden = true; });
+  }
+  function loadGoogle() {
+    if (!cfg.google || !googleEl || gState.loading || gState.ready) return;
+    gState.loading = true;
+    if (window.google && window.google.accounts && window.google.accounts.id) { googleNonce(); return; }
+    var s = document.createElement("script"); s.src = "https://accounts.google.com/gsi/client"; s.async = true; s.defer = true;
+    s.onload = function () { googleNonce(); }; s.onerror = function () { gState.loading = false; googleEl.hidden = true; };
+    document.head.appendChild(s);
+  }
   function setBusy(btn, on) { if (!btn) return; btn.disabled = !!on; btn.dataset.busy = on ? "1" : "0"; }
   function say(msg, bad) { statusEl.hidden = !msg; statusEl.textContent = msg || ""; statusEl.dataset.error = bad ? "1" : "0"; }
   function fieldErr(name, msg, input) {
@@ -40,11 +76,11 @@
   function clearErrs(form) { qsa("[data-err]", form).forEach(function (e) { e.textContent = ""; }); qsa("input", form).forEach(function (i) { i.removeAttribute("aria-invalid"); }); say(""); }
 
   /* ---------- the API (the guest nonce goes first; a stale cached one is retried without it) ---------- */
-  function api(path, body) {
+  function api(path, body, base) {
     function go(withNonce) {
       var h = { "Content-Type": "application/json" };
       if (withNonce && cfg.nonce) h["X-WP-Nonce"] = cfg.nonce;
-      return fetch(cfg.api + path, { method: "POST", credentials: "same-origin", cache: "no-store", headers: h, body: JSON.stringify(body) })
+      return fetch((base || cfg.api) + path, { method: "POST", credentials: "same-origin", cache: "no-store", headers: h, body: JSON.stringify(body) })
         .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { j = j || {}; j.status = r.status; throw j; } return j; }); });
     }
     return go(true).catch(function (e) { if (e && e.code === "rest_cookie_invalid_nonce") return go(false); throw e; });
@@ -66,7 +102,7 @@
   function view(name, keepStatus) {
     current = forms[name] ? name : "signup";
     Object.keys(forms).forEach(function (k) { forms[k].hidden = k !== current; });
-    tabsEl.hidden = current === "verify"; if (oauthEl && cfg.discord) oauthEl.hidden = current === "verify";
+    tabsEl.hidden = current === "verify"; if (oauthEl && (cfg.discord || cfg.google)) oauthEl.hidden = current === "verify";
     qsa("[data-auth-tab]", tabsEl).forEach(function (b) { var on = b.dataset.authTab === current; b.dataset.active = on ? "1" : "0"; b.setAttribute("aria-selected", on ? "true" : "false"); });
     titleEl.textContent = COPY[current][0]; subEl.textContent = COPY[current][1];
     if (!keepStatus) say("");
@@ -80,6 +116,7 @@
     view(which === "login" ? "login" : "signup");
     root.dataset.open = "1"; root.setAttribute("aria-hidden", "false");
     document.documentElement.classList.add("smlx-lock");
+    loadGoogle();
     focusFirst();
   }
   function close() {
