@@ -79,13 +79,13 @@ test('an operator refund ends the pass and returns the Loop Bucks', async () => 
   assert.equal(wallet.balance, 1000); assert.equal(await svc.hasActive(U), false);
 });
 
-test('access: a member without the Discord role gets in on a live pass, as the academy tier; otherwise the refusal stands', async () => {
+test('access: a member without the Discord role gets in on a live pass, at the trader tier; otherwise the refusal stands', async () => {
   const svc = createPassService({ wallet: fakeWallet(), prices: PRICES });
   const refused = { ok: false, status: 403, code: 'academy_role_required', userId: U };
   const access = withPasses({ verify: async () => refused }, svc);
   assert.deepEqual(await access.verify('Bearer x'), refused);
   await svc.buy({ discordId: U, plan: 'daily', orderKey: 'order-0001' });
-  assert.deepEqual(await access.verify('Bearer x'), { ok: true, userId: U, tier: 'academy' });
+  assert.deepEqual(await access.verify('Bearer x'), { ok: true, userId: U, tier: 'trader' });
   const other = { ok: false, status: 401, code: 'authorization_required' };
   assert.deepEqual(await withPasses({ verify: async () => other }, svc).verify('x'), other);
   assert.deepEqual(await withPasses({ verify: async () => ({ ok: true, userId: U, tier: 'member' }) }, svc).verify('x'), { ok: true, userId: U, tier: 'member' });
@@ -126,6 +126,22 @@ test('access: the free trial admits a member who is NOT in the Academy server ev
   assert.deepEqual(await access.verify('Bearer x'), outside, 'no pass yet');
   const t = Date.now();
   await store.add({ discordId: U, plan: 'trial', amount: 0, ref: 'acad-trial:' + U, startsAt: new Date(t).toISOString(), expiresAt: new Date(t + 15 * 86_400_000).toISOString(), product: 'academy' });
-  assert.deepEqual(await access.verify('Bearer x'), { ok: true, userId: U, tier: 'academy' }, 'the trial pass is enough');
+  assert.deepEqual(await access.verify('Bearer x'), { ok: true, userId: U, tier: 'trader' }, 'the trial pass is enough to get in');
   assert.equal(await svc.hasActive(U), true);
+});
+
+test('a pass, and so the 15-day free trial, is the Trader level and never Analyst', async () => {
+  const { ANALYST_TIERS, ENTITLED_TIERS } = require('./academy-access');
+  const refused = { verify: async () => ({ ok: false, code: 'academy_role_required', userId: '258456581000000000' }) };
+  const held = { configured: true, hasActive: async () => true };
+
+  const r = await withPasses(refused, held).verify('Bearer x');
+  assert.equal(r.ok, true);
+  assert.equal(r.tier, 'trader', 'a pass buys the desk, not the publishing side');
+  assert.ok(ENTITLED_TIERS.includes(r.tier), 'it still clears the content gate');
+  assert.equal(ANALYST_TIERS.includes(r.tier), false,
+    'a free trial must not grant the Article Desk, Click-to-Alert or the seller tools');
+
+  const none = { configured: true, hasActive: async () => false };
+  assert.equal((await withPasses(refused, none).verify('Bearer x')).ok, false, 'no pass, no access');
 });

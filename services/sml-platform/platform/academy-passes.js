@@ -123,7 +123,8 @@ function createPassService({ store = createPassStore(), wallet, prices = null, p
   return { configured, product, catalog, status, buy, refund, hasActive };
 }
 
-/* Wraps the Discord-role access check: a member without the Academy role who holds a live Loop Bucks pass gets in as tier 'academy'.
+/* Wraps the Discord-role access check: a member without the Academy role who holds a live Loop Bucks pass (or the
+   free trial, which writes one) gets in at the TRADER level.
    The member's Discord id comes from the base check's refusal (it needs identityAccess to name a non-member). */
 function withPasses(base, passes) {
   return {
@@ -131,7 +132,9 @@ function withPasses(base, passes) {
       const r = await base.verify(authorization);
       /* bought passes need the wallet to sell; a pass already held (bought earlier, or the free trial) only needs the store */
       if (r.ok || r.code !== 'academy_role_required' || !r.userId || !passes || typeof passes.hasActive !== 'function') return r;
-      if (await passes.hasActive(r.userId)) return { ok: true, userId: r.userId, tier: 'academy' };
+      /* A pass buys the desk, not the publishing side: the free trial must not hand out the Analyst tools
+         (the Article Desk, Click-to-Alert into your own server, charging others for your alert channels). */
+      if (await passes.hasActive(r.userId)) return { ok: true, userId: r.userId, tier: 'trader' };
       return r;
     }
   };

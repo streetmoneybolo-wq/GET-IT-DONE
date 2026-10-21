@@ -52,7 +52,8 @@ test('the trial link: landing, Discord sign-in with a signed state, a 15-day pas
   // the pass opens the Academy through the ordinary access path, in any server (no roles, no wallet)
   const refused = { ok: false, status: 403, code: 'academy_role_required', userId: '420000000000000042', inGuild: false };
   const access = withPasses({ verify: async () => refused }, createPassService({ store, now: () => new Date(t) }));
-  assert.deepEqual(await access.verify('Bearer x'), { ok: true, userId: '420000000000000042', tier: 'academy' });
+  /* the trial writes a pass, and a pass is the Trader level: it must not hand out the Analyst tools */
+  assert.deepEqual(await access.verify('Bearer x'), { ok: true, userId: '420000000000000042', tier: 'trader' });
   // a second attempt on the same account: no second pass
   res = fakeResponse(); await trial.handle(req('/academy-activity/trial/callback'), res, '/academy-activity/trial/callback', new URL('https://academy.example/academy-activity/trial/callback?code=abc2&state=' + encodeURIComponent(state)));
   assert.match(res.body, /Your trial is already running/);

@@ -2643,7 +2643,7 @@ test('the free trial lets a member in from outside the Academy server: the pass 
   const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
   assert.ok(src.includes('withFreeUsers(academyPasses ? withPasses(academyAccessBase, academyPasses) : academyAccessBase'), 'withPasses whenever the pass service exists');
   assert.ok(src.includes('identityAccess: config.academyBillingInDiscordLinks || academyTrial.configured || !!academyPasses ? createIdentityAccess({}) : null'), 'the member outside the server is named');
-  assert.ok(src.includes("if (academyPasses && await academyPasses.hasActive(userId).catch(() => false)) return 'academy';"), 'the renew check reads the pass too');
+  assert.ok(src.includes("if (academyPasses && await academyPasses.hasActive(userId).catch(() => false)) return 'trader';"), 'the renew check reads the pass too, at the trader level');
   assert.ok(!src.includes('academyPasses.configured && await academyPasses.hasActive'), 'no configured gate left on the pass read');
 });
 

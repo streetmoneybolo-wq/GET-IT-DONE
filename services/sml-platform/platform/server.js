@@ -5940,8 +5940,13 @@ async function main() {
     const accessRoles = config.academyAccessRoleIds.map(String);
     if (held && held.some((r) => memberRoles.includes(r))) return 'member';
     if (held && held.some((r) => accessRoles.includes(r))) return 'academy';
-    if (academyPasses && await academyPasses.hasActive(userId).catch(() => false)) return 'academy';
-    if (academyEntitlements.configured && await academyEntitlements.hasActive(userId).catch(() => false)) return 'academy';
+    /* a pass (bought with Loop Bucks, or the 15-day free trial) is the Trader level, never Analyst */
+    if (academyPasses && await academyPasses.hasActive(userId).catch(() => false)) return 'trader';
+    /* a Discord purchase grants exactly what its SKU buys: the Analyst SKU is analyst level, Trader is not */
+    if (academyEntitlements.configured) {
+      const level = await academyEntitlements.levelFor(userId).catch(() => '');
+      if (level) return level === 'analyst' ? 'academy' : 'trader';
+    }
     return held ? 'free' : 'none';
   };
   const academyAlertSources = academyAlerts && perMemberAlerts ? createAlertSources({
