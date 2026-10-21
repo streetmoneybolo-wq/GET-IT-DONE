@@ -35,13 +35,13 @@ test('the checks: new numbers, dashes, repeats, template headings, FAQ and discl
   assert.ok(W.validate({ ...good, lede: ['Short.'], sections: [{ heading: 'a', paragraphs: ['b'] }, { heading: 'c', paragraphs: ['d'] }, { heading: 'e', paragraphs: ['f'] }], bottom: 'g' }, s).reasons.some((r) => r.startsWith('too_short_')));
 });
 
-test('the house writer: every angle validates, three sections plus a close, third person only, no two seeds alike, no sentence twice', () => {
+test('the house writer: every angle validates, four sections plus a close, third person only, no two seeds alike, no sentence twice', () => {
   for (const angle of ['gamma', 'short', 'earnings', 'tape', 'structure']) {
     const st = { ...story(), angle, lean: angle === 'earnings' ? 'bearish' : 'bullish', facts: story().facts, scenario: story().scenario, timeframe: '1 to 2 weeks' };
     const s = W.factSheet({ story: st, c: base, dossier });
     const a = W.housePiece(s, 7), b = W.housePiece(s, 8);
     const v = W.validate(a, s); assert.deepEqual(v, { ok: true, reasons: [] }, angle + ' ' + v.reasons.join(','));
-    assert.equal(a.sections.length, 3); assert.ok(a.lede.length >= 2 && a.bottom && a.bull.length >= 1 && a.bear.length >= 1 && a.kill.length >= 3);
+    assert.equal(a.sections.length, 4); assert.ok(a.lede.length >= 2 && a.bottom && a.bull.length >= 1 && a.bear.length >= 1 && a.kill.length >= 3);
     assert.ok(!/\b(I|me|my|we|our|you|your)\b/.test([a.title, a.dek, ...a.lede, ...a.sections.flatMap((x) => x.paragraphs), a.bottom].join(' ')), angle + ': news has no voice, so no first or second person');
     assert.notEqual(a.title + a.dek + a.sections[0].heading, b.title + b.dek + b.sections[0].heading, angle + ' varies by seed');
     assert.ok(a.title.includes('$ABCD'));
@@ -107,7 +107,7 @@ test('fast write: a front with a number the sheet does not carry, a dash, or a w
   for (const bad of [{ ...goodFront(s), lede: [`${s.S} will hit $19.99 by Friday and I am sure.`, 'Second paragraph about the setup in plain words.'] }, { ...goodFront(s), dek: 'A dek — with a dash in it.' }, { title: 'only a title' }]) {
     const w = W.createArticleWriter({ ai: { apiKey: 'k' }, fetchImpl: frontReply(bad) });
     const out = await w.write(s, { fast: true });
-    assert.notEqual(out.source, 'house+model'); assert.equal(out.source, 'house'); assert.equal(out.sections.length, 3);
+    assert.notEqual(out.source, 'house+model'); assert.equal(out.source, 'house'); assert.equal(out.sections.length, 4);
     assert.ok(out.checked.reasons[0] === 'house_front');
   }
 });
@@ -130,7 +130,7 @@ test('fast write: with the model off it is the house writer at once, and the def
   await w.write(s, { attempts: 1 }); assert.equal(full.max_tokens, 6000, 'a scheduled piece still asks for the whole thing');
 });
 
-test('the house writer handles the narrative angle: three sections, passes the same checks, no banned phrase, names the ticker', () => {
+test('the house writer handles the narrative angle: four sections (key details, context, scenario, limits), passes the same checks, no banned phrase, names the ticker', () => {
   const bars = []; let p0 = 20; for (let i = 0; i < 80; i++) { const o = p0, c = p0 * (1 + Math.sin(i / 5) * 0.004); bars.push({ t: Date.UTC(2026, 6, 1) + i * 86_400_000, o, h: Math.max(o, c) * 1.004, l: Math.min(o, c) * 0.996, c, v: 900_000 }); p0 = c; }
   const c = { symbol: 'QUIE', name: 'Quiet Corp', price: bars[bars.length - 1].c, changePct: 0.2, relVol: 0.9, adv: 900_000, daily: bars };
   const st = E.rankStories([c], { force: true })[0];
@@ -138,7 +138,7 @@ test('the house writer handles the narrative angle: three sections, passes the s
   assert.equal(sh.angle, 'narrative'); assert.equal(sh.angleLabel, 'market narrative');
   for (let seed = 0; seed < 6; seed++) {
     const piece = W.housePiece(sh, seed);
-    assert.equal(piece.sections.length, 3); assert.ok(piece.title.includes('$QUIE'));
+    assert.equal(piece.sections.length, 4); assert.ok(piece.title.includes('$QUIE'));
     const v = W.validate(piece, sh, { minWords: 0 });
     assert.ok(!v.reasons.some((r) => /banned|dash|repeated|meta/.test(r)), v.reasons.join(','));
   }
@@ -180,4 +180,27 @@ test('no brand in the prose: a data line or a model draft that names the Academy
   const cleaned = W.normalize({ ...good, lede: ['The Making Easy Money Academy sees buyers here and the stock may run.', 'Academy tools show the Academy\'s scanner flagged it.'] });
   assert.doesNotMatch(JSON.stringify(cleaned), /academy/i); assert.match(cleaned.lede[0], /^The desk sees buyers/);
   assert.match(W.SYSTEM, /never mention the Academy/i); assert.match(W.SYSTEM, /Grandmaster-Obi/);
+});
+
+test('context from the price history: range, recent sessions, volume and the largest move come from the bars, carry their own numbers, and become the context section', () => {
+  const bars = []; let p0 = 20; for (let i = 0; i < 90; i++) { const o = p0, c = p0 * (1 + Math.sin(i / 5) * 0.01 + 0.001); bars.push({ t: Date.UTC(2026, 6, 1) + i * 86_400_000, o, h: Math.max(o, c) * 1.004, l: Math.min(o, c) * 0.996, c, v: 900_000 + (i > 84 ? 400_000 : 0) }); p0 = c; }
+  const c = { symbol: 'CTXA', name: 'Context Corp', price: bars[bars.length - 1].c, changePct: 1.1, relVol: 1.3, adv: 900_000, daily: bars };
+  const st = E.rankStories([c], { force: true })[0];
+  const sh = W.factSheet({ story: st, c, dossier: {} });
+  const L = Object.fromEntries(sh.lines.map((l) => [l.k, l.text]));
+  for (const k of ['ctxrange', 'ctxstreak', 'ctxvol', 'ctxmove']) assert.ok(L[k], k);
+  assert.match(L.ctxrange, /60-session range.*below the high of \$[\d.]+ \((?:[A-Z][a-z]{2} \d+)\).*above the low of \$[\d.]+/);
+  assert.match(L.ctxstreak, /closed (?:higher|lower) in (?:each of its last 9|\d+ of its last 9) sessions/); assert.match(L.ctxvol, /averaged \d\.\dx the twenty sessions before them/); assert.match(L.ctxmove, /largest one-day move in the past twenty sessions/);
+  for (const k of ['ctxrange', 'ctxvol']) for (const m of L[k].matchAll(/\d[\d.]*/g)) assert.ok(sh.numbers.has(m[0]) || sh.numbers.has(m[0].replace(/\.?0+$/, '')) || Number(m[0]) <= 30, 'carried: ' + m[0]);
+  for (let seed = 0; seed < 6; seed++) {
+    const piece = W.housePiece(sh, seed);
+    const ctx = piece.sections[1]; assert.match(ctx.heading, /context|sits|recent history/i);
+    assert.match(ctx.paragraphs.join(' '), /60-session range/); assert.ok(ctx.paragraphs.length >= 2);
+    const v = W.validate(piece, sh, { minWords: 0 }); assert.ok(!v.reasons.some((r) => /new_number|cadence|glossary|person|banned|repeated/.test(r)), v.reasons.join(','));
+    const words = [piece.title, piece.dek, ...piece.lede, ...piece.sections.flatMap((x) => x.paragraphs), piece.bottom].join(' ').split(/\s+/).length;
+    assert.ok(words >= 350 && words <= 1100, 'a full piece, not padded: ' + words);
+  }
+  const lens = W.housePiece(sh, 3).sections.flatMap((x) => x.paragraphs).map((x) => x.split(/\s+/).length);
+  assert.ok(Math.max(...lens) >= 2 * Math.min(...lens), 'paragraph lengths vary: ' + lens.join(','));
+  assert.match(W.SYSTEM, /CONTEXT\./); assert.match(W.SYSTEM, /RHYTHM\./); assert.match(W.SYSTEM, /single sentence/);
 });
