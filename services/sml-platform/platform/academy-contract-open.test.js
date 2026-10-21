@@ -32,3 +32,12 @@ test('the tour tells the truth about the click-through', () => {
   assert.match(PLAYBOOKS.indicators.steps.find((s) => s.k === 'suggest').b, /open it in the options chain/i);
   assert.match(PLAYBOOKS.cheap.steps.find((s) => s.k === 'screen').b, /opens that exact contract/i);
 });
+
+test('the Article Desk panel posts to Loop Letters when asked: WRITE + POST files and publishes, and says what happened', () => {
+  const ui = read('academy-article-desk-ui.js');
+  assert.match(ui, /WRITE \+ POST/);
+  assert.match(ui, /publish: !!file/);
+  assert.match(ui, /Posted to your Loop Letters/);
+  assert.match(ui, /posting failed/);
+  assert.doesNotMatch(ui, /publish: false/);
+});

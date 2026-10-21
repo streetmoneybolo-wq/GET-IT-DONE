@@ -28,7 +28,7 @@
   document.head.appendChild(css);
   var btn = document.createElement('button'); btn.type = 'button'; btn.id = 'article-btn'; btn.textContent = 'ARTICLE'; btn.title = 'Article Desk: write a market news piece on a ticker or a topic from the Academy data, with its live chart, modules, HTML, CSS and SEO head (owner)'; toolbar.appendChild(btn);
   var panel = document.createElement('section'); panel.id = 'article-panel'; panel.setAttribute('aria-label', 'Article Desk');
-  panel.innerHTML = '<header><b>ARTICLE DESK</b><input type="text" data-subject="1" placeholder="Ticker or topic (NVDA, oil, the fed)" maxlength="40"><button type="button" class="go" data-write="1">WRITE</button><button type="button" data-file="1" title="Write and file it as a Loop Letter draft under the byline">WRITE + FILE</button><button type="button" class="x" data-close="1" aria-label="Close">&times;</button></header>'
+  panel.innerHTML = '<header><b>ARTICLE DESK</b><input type="text" data-subject="1" placeholder="Ticker or topic (NVDA, oil, the fed)" maxlength="40"><button type="button" class="go" data-write="1">WRITE</button><button type="button" data-file="1" title="Write it and post it straight to your Loop Letters under the byline">WRITE + POST</button><button type="button" class="x" data-close="1" aria-label="Close">&times;</button></header>'
     + '<div class="st"></div><div class="meta"></div>'
     + '<div class="tabs"><button type="button" data-tab="preview" class="on">PREVIEW</button><button type="button" data-tab="html">HTML</button><button type="button" data-tab="css">CSS</button><button type="button" data-tab="head">SEO HEAD</button><button type="button" data-tab="page">FULL PAGE</button></div>'
     + '<div class="body"><div class="pane on" data-pane="preview"></div>'
@@ -79,9 +79,9 @@
     var subject = String(el.input.value || '').trim();
     if (!subject) { status('Type a ticker or a topic first.'); el.input.focus(); return; }
     S.busy = true; el.write.disabled = true; el.file.disabled = true;
-    status((file ? 'Writing and filing ' : 'Writing ') + subject.toUpperCase() + ': reading the Academy desks, drawing the chart, composing the piece (about 10 seconds)', true);
+    status((file ? 'Writing and posting ' : 'Writing ') + subject.toUpperCase() + ': reading the Academy desks, drawing the chart, composing the piece (about 10 seconds)', true);
     var t0 = Date.now();
-    var r = await api('/write', { symbol: subject, file: !!file, publish: false });
+    var r = await api('/write', { symbol: subject, file: !!file, publish: !!file });
     S.busy = false; el.write.disabled = false; el.file.disabled = false;
     if (!r.ok) {
       var why = r.error === 'no_data' ? 'no price history for that name' : r.error === 'no_angle' ? 'too little price history to build a read from' : r.error === 'invalid_symbol' ? 'that is not a ticker or a topic the desk knows' : r.error === 'owner_only' ? 'owner account only' : r.error === 'story_desk_off' ? 'the Article Desk is switched off on the server' : (r.error || 'failed');
@@ -89,7 +89,7 @@
       return;
     }
     paint(r);
-    status('Done in ' + (Math.round((Date.now() - t0) / 100) / 10) + ' s' + (r.timing ? ' (' + (r.timing.warm ? 'data already warm, ' : 'gathered in ' + (Math.round(r.timing.gatherMs / 100) / 10) + ' s, ') + 'written in ' + (Math.round(r.timing.writeMs / 100) / 10) + ' s)' : '') + '. ' + (file ? (r.filed && r.filed.url ? 'Filed as a draft letter.' : 'Composed; filing did not return a URL.') : 'Composed. Copy the HTML, the CSS and the SEO head from the tabs.'));
+    status('Done in ' + (Math.round((Date.now() - t0) / 100) / 10) + ' s' + (r.timing ? ' (' + (r.timing.warm ? 'data already warm, ' : 'gathered in ' + (Math.round(r.timing.gatherMs / 100) / 10) + ' s, ') + 'written in ' + (Math.round(r.timing.writeMs / 100) / 10) + ' s)' : '') + '. ' + (file ? (r.filed && r.filed.error ? 'Written, but posting failed: ' + r.filed.error + '. It is composed here; copy it or try again.' : r.filed && r.filed.published ? 'Posted to your Loop Letters' + (r.filed.url ? ': ' + r.filed.url : '.') : r.filed && r.filed.letterId ? 'Filed as a draft letter (it did not publish).' : 'Composed; posting did not return a letter.') : 'Composed. Copy the HTML, the CSS and the SEO head from the tabs.'));
   }
   function copy(k, b) {
     var a = area(k); if (!a) return;
