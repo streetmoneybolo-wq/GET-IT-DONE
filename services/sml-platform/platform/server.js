@@ -3345,7 +3345,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         if (request.method === 'GET' && path === '/academy-activity/click-alert/channels') {
           const entitlement = await academyClickAlert.entitlement(session.userId);
           if (!entitlement.entitled) { sendJson(response, 402, { ok: false, error: 'click_alert_subscription_required' }); return; }
-          const channels = await academyClickAlert.channels(session.userId, params.get('guild'));
+          const channels = await academyClickAlert.channels(session.userId, params.get('guild'), { kind: ['stock', 'option'].includes(params.get('kind')) ? params.get('kind') : '', symbol: params.get('symbol') || '', horizon: ['day', 'swing', 'mid', 'long'].includes(params.get('horizon')) ? params.get('horizon') : '' });
           if (!channels) { sendJson(response, 404, { ok: false, error: 'server_unavailable' }); return; }
           sendJson(response, 200, { ok: true, channels }); return;
         }
@@ -3363,10 +3363,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
           let input; try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
           if (!input || typeof input !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
-          const out = path.endsWith('/preview') ? await academyClickAlert.preview(session.userId, input) : await academyClickAlert.send({ userId: session.userId, displayName: session.displayName }, input);
+          const out = path.endsWith('/preview') ? await academyClickAlert.preview(session.userId, input) : Array.isArray(input.channelIds) && input.channelIds.length ? await academyClickAlert.sendMany({ userId: session.userId, displayName: session.displayName }, input) : await academyClickAlert.send({ userId: session.userId, displayName: session.displayName }, input);
           if (!out.ok) { fail(out); return; }
           // the member's own alerts in that channel now belong on their desk (their bot's posts are attributed to them); never awaited
-          if (path.endsWith('/send') && academyAlertSources && typeof academyAlertSources.followOwn === 'function') void academyAlertSources.followOwn(session.userId, input.channelId, session.displayName);
+          if (path.endsWith('/send') && academyAlertSources && typeof academyAlertSources.followOwn === 'function') for (const cid of (Array.isArray(input.channelIds) && input.channelIds.length ? input.channelIds : [input.channelId]).slice(0, 5)) void academyAlertSources.followOwn(session.userId, cid, session.displayName);
           sendJson(response, 200, out); return;
         }
         sendJson(response, 405, { ok: false, error: 'method_not_allowed' });

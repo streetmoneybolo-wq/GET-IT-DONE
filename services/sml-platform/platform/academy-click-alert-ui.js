@@ -13,7 +13,7 @@
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const toolbar = document.querySelector('.toolbar'), canvas = $('chart'), stage = document.querySelector('.academy-chart-stage');
   const KEY = 'sml-click-alert-dest';
-  const S = { asMe: true, on: false, busy: false, target: null, entry: null, side: null, data: null, status: null, guilds: [], channels: [], guildId: '', channelId: '', pingPref: true, images: true, scn: null, msg: '', msgTone: '', sent: false, symbol: '', contract: null, opt: null, mode: 'auto', smashedFor: '', optMode: false, autoTarget: false, symNote: '', kind: '', pick: { type: '', expiry: '', strike: '' }, chain: null, chainBusy: false, chainErr: '', cat: null };
+  const S = { asMe: true, on: false, busy: false, target: null, entry: null, side: null, data: null, status: null, guilds: [], channels: [], extra: {}, extraTouched: false, guildId: '', channelId: '', pingPref: true, images: true, scn: null, msg: '', msgTone: '', sent: false, symbol: '', contract: null, opt: null, mode: 'auto', smashedFor: '', optMode: false, autoTarget: false, symNote: '', kind: '', pick: { type: '', expiry: '', strike: '' }, chain: null, chainBusy: false, chainErr: '', cat: null };
   try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.guildId = String(v.guildId || ''); S.channelId = String(v.channelId || ''); } } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ guildId: S.guildId, channelId: S.channelId })); } catch (_) { /* ignore */ } };
 
@@ -329,6 +329,7 @@
       const canAsMe = !!(ch && ch.asMe);
       html += '<select data-ca="guild"><option value="">Choose a server…</option>' + S.guilds.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === S.guildId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select>';
       html += '<select data-ca="channel"' + (S.guildId ? '' : ' disabled') + '><option value="">' + (S.guildId ? (S.channels.length ? 'Choose a channel…' : 'No channel where you and the app can post') : 'Pick a server first') + '</option>' + S.channels.map((c) => '<option value="' + esc(c.id) + '"' + (c.id === S.channelId ? ' selected' : '') + '>#' + esc(c.name) + (c.category ? ' · ' + esc(c.category) : '') + '</option>').join('') + '</select>';
+      html += alsoHtml();
       const rch = S.route ? S.channels.find((c) => c.id === S.route.channelId) : null;
       html += '<div class="msg ' + (d.smashed ? 'ok' : 'info') + '">' + (d.smashed ? (d.smashed.prevTarget ? 'Your earlier alert on ' + esc(d.symbol) + ' hit its $' + price(d.smashed.prevTarget) + ' target. This posts as PT SMASHED with the new target.' : 'This posts as PT SMASHED.') : 'Posts as a new alert.')
         + (S.route ? (routeOn() ? ' It goes to <b>#' + esc(rch ? rch.name : 'the same channel') + '</b>, where that alert was posted, as a reply to it. No channel hunting.' : S.route.ok ? ' You changed the channel: it posts there as a fresh message, not a reply.' : ' ' + esc(S.route.why || '')) : '') + '</div>'
@@ -361,12 +362,29 @@
     if (S.guildId) { await loadChannels(); render(); }
     if (S.status && S.status.ok !== false && !S.status.entitled && S.status.configured !== false && !S.pass) void loadPass();
   }
+  /* the channels, ranked for this alert (options or stocks, the horizon, free-for-everyone, where the stock is already tracked): the best fit is
+     chosen for the member and the other good fits are ticked, and every one of them can be changed */
   async function loadChannels() {
-    S.channels = [];
-    if (!S.guildId) return;
-    const r = await api('channels?guild=' + encodeURIComponent(S.guildId));
+    if (!S.guildId) { S.channels = []; return; }
+    const hz = S.data && S.data.horizon ? '&horizon=' + encodeURIComponent(S.data.horizon) : '';
+    const r = await api('channels?guild=' + encodeURIComponent(S.guildId) + '&kind=' + (S.contract ? 'option' : 'stock') + (S.symbol ? '&symbol=' + encodeURIComponent(S.symbol) : '') + hz);
     S.channels = r.ok ? (r.channels || []) : [];
     if (!S.channels.some((c) => c.id === S.channelId)) S.channelId = '';
+    const top = S.channels.filter((c) => c.suggested);
+    if (!S.channelId && top.length && !(S.route && S.route.ok)) S.channelId = top[0].id;
+    if (!S.extraTouched) { S.extra = {}; for (const c of top) if (c.id !== S.channelId) S.extra[c.id] = true; }
+    for (const id of Object.keys(S.extra)) if (id === S.channelId || !S.channels.some((c) => c.id === id)) delete S.extra[id];
+  }
+  const extraIds = () => Object.keys(S.extra).filter((id) => S.extra[id] && id !== S.channelId && S.channels.some((c) => c.id === id)).slice(0, 4);
+  /* "Also post to": every other channel, the suggested ones first, with what each is for */
+  function alsoHtml() {
+    const rest = S.channels.filter((c) => c.id !== S.channelId && !c.skip);
+    if (!rest.length) return '';
+    const tag = (c) => [c.tracking ? 'tracking this stock' : '', c.free ? 'free' : c.paid ? 'paid' : '', c.kinds && c.kinds[0] && c.kinds[0] !== 'general' ? c.kinds[0] : ''].filter(Boolean).join(' · ');
+    const pick = rest.filter((c) => c.suggested || S.extra[c.id] || c.score >= 2).slice(0, 8);
+    return '<div class="also"><b>Also post to</b> <span class="muted">(picked for ' + (S.contract ? 'an options alert' : 'a stock alert') + (S.data && S.data.horizonLabel ? ' · ' + esc(S.data.horizonLabel) : '') + ')</span>'
+      + pick.map((c) => '<label class="chk"><input type="checkbox" data-ca="extra" value="' + esc(c.id) + '"' + (S.extra[c.id] ? ' checked' : '') + '> #' + esc(c.name) + (tag(c) ? ' <span class="muted">' + esc(tag(c)) + '</span>' : '') + '</label>').join('')
+      + (rest.length > pick.length ? '<div class="muted">Others are in the channel list above: choose one there to move the main post.</div>' : '') + '</div>';
   }
   async function reading() {
     S.busy = true; S.data = null; S.scn = null; S.msg = ''; S.sent = false; render();
@@ -384,6 +402,7 @@
     if (Array.isArray(r.degraded) && r.degraded.length) { S.msg = 'Read without the ' + r.degraded.map((t) => (t === '1W' ? 'weekly' : t === '1D' ? 'daily' : t)).join(' and ') + ' candles (slow feed); the horizon may be rougher.'; S.msgTone = 'info'; }
     await routeToEarlier(r.analysis);
     render(); draw();
+    if (S.guildId && !S.sent) { await loadChannels(); render(); }
   }
   /* a PT SMASHED update goes where the member's earlier alert on the stock was posted, as a reply to it: the server and channel are
      picked here so the member never hunts for the right channel (they can still change it; a different channel posts without the reply) */
@@ -448,19 +467,21 @@
       const auto = !!(S.autoTarget && S.contract);
       /* a send is tried once more only when the first attempt never got an answer; the server's duplicate check (5 minutes) means a
          retry of a post that did land comes back as duplicate_alert, which is then the confirmation */
-      const sendBody = Object.assign({ symbol: S.symbol, mode: S.mode, channelId: S.channelId, mention: !!pingOn(), images: !!S.images, asMe: !!S.asMe }, routeOn() && S.route.messageId ? { replyTo: S.route.messageId } : {}, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}, auto && S.premiumTarget > 0 ? { premiumTarget: S.premiumTarget } : {});
+      const more = extraIds();
+      const sendBody = Object.assign({ symbol: S.symbol, mode: S.mode, channelId: S.channelId, mention: !!pingOn(), images: !!S.images, asMe: !!S.asMe }, routeOn() && S.route.messageId && !more.length ? { replyTo: S.route.messageId } : {}, more.length ? { channelIds: [S.channelId].concat(more) } : {}, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}, auto && S.premiumTarget > 0 ? { premiumTarget: S.premiumTarget } : {});
       let r = await api('send', sendBody, { retry: false, timeoutMs: 25_000 });
       if (transient(r)) { S.msg = 'No answer yet; trying once more…'; S.msgTone = 'info'; render(); await new Promise((res) => setTimeout(res, 1500)); const again = await api('send', sendBody, { retry: false, timeoutMs: 25_000 }); r = again.status === 409 && (again.error === 'duplicate_alert' || again.code === 'duplicate_alert') ? { ok: true, postedAs: 'app', confirmed: true } : again; }
       S.busy = false;
       if (r.ok && auto && r.analysis && Number.isFinite(+r.analysis.target) && +r.analysis.target !== +S.target) { S.target = +r.analysis.target; draw(); }
-      if (r.ok) { S.sent = true; S.msg = (r.confirmed ? 'Posted (the first attempt had landed)' : r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.repliedTo ? ' as a reply to your earlier alert' : '') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
+      if (r.ok) { S.sent = true; S.msg = (r.confirmed ? 'Posted (the first attempt had landed)' : r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.repliedTo ? ' as a reply to your earlier alert' : '') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); if (Array.isArray(r.results) && r.results.length > 1) { const names = (id) => { const c = S.channels.find((x) => x.id === id); return c ? '#' + c.name : 'a channel'; }; S.msg = 'Posted to ' + r.results.filter((x) => x.ok).map((x) => names(x.channelId)).join(', ') + (r.failed ? '. Not posted: ' + r.results.filter((x) => !x.ok).map((x) => names(x.channelId) + ' (' + explainErr(x) + ')').join('; ') : '') + '.'; S.msgTone = r.failed ? 'info' : 'ok'; } else S.msgTone = 'ok'; save(); }
       else { S.msg = explainErr(r); S.msgTone = 'err'; }
       render();
     }
   });
   panel.addEventListener('change', async (e) => {
     const k = e.target && e.target.dataset && e.target.dataset.ca; if (!k) return;
-    if (k === 'guild') { S.guildId = e.target.value; S.channelId = ''; S.channels = []; S.sent = false; render(); await loadChannels(); save(); render(); }
+    if (k === 'guild') { S.guildId = e.target.value; S.channelId = ''; S.channels = []; S.extra = {}; S.extraTouched = false; S.sent = false; render(); await loadChannels(); save(); render(); }
+    else if (k === 'extra') { S.extra[e.target.value] = !!e.target.checked; S.extraTouched = true; S.sent = false; render(); }
     else if (k === 'channel') { S.channelId = e.target.value; S.sent = false; save(); const ch = S.channels.find((c) => c.id === S.channelId); render(); }
     else if (k === 'pexp') { S.pick.expiry = e.target.value; S.pick.strike = ''; render(); if (S.pick.expiry) void loadChain(S.pick.expiry); }
     else if (k === 'pstrike') { S.pick.strike = e.target.value; render(); pickContract(); }

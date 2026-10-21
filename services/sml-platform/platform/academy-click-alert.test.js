@@ -698,3 +698,66 @@ test('a new listing with a handful of sessions is alertable: the days are built 
   assert.equal(r.ok, true, JSON.stringify(r)); assert.equal(r.side, 'long'); assert.equal(r.confidence, 'low');
   assert.match(r.rationale[0], /SAIQ has only 4 sessions of history/); assert.ok(r.horizon, 'a horizon is still estimated'); assert.ok(Number.isFinite(r.stop) || r.stop == null);
 });
+
+/* ---------- smart routing: several channels, replies to the tracked alert, 5-day tracking that ends when sold ---------- */
+const CH2 = '222222222222222222';
+function routeService(store, posts, list = []) {
+  const directory = { guildsFor: async () => [], sendableChannels: async () => list, postingIn: async () => ({ guildId: GUILD, name: 'a', userCanSend: true, botCanSend: true, mentionEveryone: true, userCanAttach: false, botCanAttach: false }), post: async (c, body, files) => { posts.push({ channelId: c, body, files }); return { id: String(posts.length).padStart(18, '7'), channelId: c }; } };
+  return CA.createClickAlertService({
+    getBars: async (s, tf) => ({ bars: tf === '1D' ? D : tf === '1W' ? D.filter((_, i) => i % 5 === 4) : tf === '15m' ? intraday(200, lastClose, 9e5) : intraday(200, lastClose) }),
+    directory, store, freeUserIds: [USER]
+  });
+}
+const U = { userId: USER, displayName: 'Ana' };
+
+test('one alert goes to every channel the member picked, each its own post, and one failing channel does not stop the rest', async () => {
+  const posts = [], svc = routeService(CA.createClickAlertStore(), posts);
+  const out = await svc.sendMany(U, { symbol: 'TEST', target: lastClose * 1.08, mode: 'new', images: false, channelIds: [CHAN, CH2, 'junk'] });
+  assert.equal(out.ok, true); assert.equal(out.posted, 2); assert.deepEqual(posts.map((p) => p.channelId), [CHAN, CH2]);
+  assert.deepEqual(out.results.map((r) => r.channelId), [CHAN, CH2]);
+  const none = await svc.sendMany(U, { symbol: 'TEST', target: lastClose * 1.08, channelIds: ['nope'] });
+  assert.equal(none.ok, false); assert.equal(none.code, 'invalid_channel');
+});
+
+test('a second alert in a channel that tracks the stock replies to the newest alert there; a fresh-alert request does not', async () => {
+  const posts = [], svc = routeService(CA.createClickAlertStore(), posts);
+  const a = await svc.send(U, { symbol: 'TEST', target: lastClose * 1.06, mode: 'new', images: false, channelId: CHAN });
+  const b = await svc.send(U, { symbol: 'TEST', target: lastClose * 1.09, mode: 'auto', images: false, channelId: CHAN });
+  assert.equal(b.repliedTo, a.messageId); assert.equal(posts[1].body.message_reference.message_id, a.messageId);
+  const c = await svc.send(U, { symbol: 'TEST', target: lastClose * 1.12, mode: 'new', images: false, channelId: CHAN });
+  assert.equal(c.repliedTo, null);
+  const d = await svc.send(U, { symbol: 'TEST', target: lastClose * 1.06, mode: 'auto', images: false, channelId: CH2 });
+  assert.equal(d.repliedTo, null, 'nothing is tracked in the other channel');
+});
+
+test('selling the stock ends the tracking: the next update is not routed to the old alert', async () => {
+  const store = CA.createClickAlertStore(), posts = [], svc = routeService(store, posts);
+  await prior(store, { messageId: '600000000000000006' });
+  const tracked = await svc.send(U, { symbol: 'TEST', target: lastClose * 1.08, mode: 'smashed', images: false });
+  assert.equal(tracked.ok, true); assert.equal(tracked.routed, true);
+  await store.record({ userId: USER, guildId: GUILD, channelId: CHAN, messageId: '9', symbol: 'TEST exit', side: 'long', entry: 1, target: 2, stop: null, horizon: 'swing', confidence: 'n/a' });
+  const after = await svc.send(U, { symbol: 'TEST', target: lastClose * 1.2, mode: 'smashed', images: false });
+  assert.equal(after.ok, false); assert.equal(after.code, 'invalid_channel', 'no tracked alert, so no channel is chosen for the member');
+});
+
+test('a partial exit keeps the alert tracked', async () => {
+  const store = CA.createClickAlertStore(), svc = routeService(store, []);
+  await prior(store, { messageId: '600000000000000006' });
+  await store.record({ userId: USER, guildId: GUILD, channelId: CHAN, messageId: '9', symbol: 'TEST exit', side: 'long', entry: 1, target: 2, stop: null, horizon: 'swing', confidence: 'partial' });
+  const out = await svc.send(U, { symbol: 'TEST', target: lastClose * 1.08, mode: 'smashed', images: false });
+  assert.equal(out.ok, true); assert.equal(out.routed, true);
+});
+
+test('the channel list is ranked for the alert: options channels for a contract, free channels for anyone, and where the stock is tracked', async () => {
+  const store = CA.createClickAlertStore();
+  const list = [{ id: CHAN, name: 'vip-options-alerts', category: 'PAID' }, { id: CH2, name: 'free-stock-alerts', category: 'FREE' }, { id: '333333333333333333', name: 'free-options-flow', category: 'FREE' }, { id: '444444444444444444', name: 'rules', category: 'INFO' }];
+  const svc = routeService(store, [], list);
+  const stock = await svc.channels(USER, GUILD, { kind: 'stock', symbol: 'TEST', horizon: 'swing' });
+  assert.equal(stock[0].id, CH2); assert.ok(stock[0].suggested); assert.equal(stock.find((c) => c.id === '444444444444444444').suggested, false);
+  const opt = await svc.channels(USER, GUILD, { kind: 'option', symbol: 'TEST', horizon: 'day' });
+  assert.equal(opt[0].id, '333333333333333333');
+  await prior(store, { channelId: CHAN, messageId: '600000000000000006' });
+  const tracked = await svc.channels(USER, GUILD, { kind: 'stock', symbol: 'TEST', horizon: 'swing' });
+  assert.equal(tracked.find((c) => c.id === CHAN).tracking, true); assert.ok(tracked.find((c) => c.id === CHAN).suggested);
+  assert.equal((await svc.channels(USER, GUILD)).length, 4, 'without a kind the plain list comes back');
+});
