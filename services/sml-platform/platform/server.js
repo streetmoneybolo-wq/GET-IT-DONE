@@ -55,6 +55,7 @@ const { createCandleRecap } = require('./academy-candle-recap');
 const { createSessionRecap } = require('./academy-session-recap');
 const { createPersonaBots } = require('./academy-persona-bots');
 const { createEditions } = require('./academy-editions');
+const { createSeats } = require('./academy-seats');
 const { createAutoTrade, createMoomooSimBroker } = require('./academy-autotrade');
 const { createMarketDirectionV2 } = require('./academy-market-direction-v2');
 const { createStoryDesk, createLettersPublisher, createPolisher } = require('./academy-story-desk');
@@ -2069,7 +2070,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getSqueezeList = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null, academyProfileWall = null,
-  autoTrade = null, sessionRecap = null, personaRegistry = null, academyEditions = null, analystDeskFor = async () => ({ ok: false, error: 'analyst_unavailable' }), storyPublisher = null,
+  autoTrade = null, sessionRecap = null, personaRegistry = null, academyEditions = null, academySeats = null, analystDeskFor = async () => ({ ok: false, error: 'analyst_unavailable' }), storyPublisher = null,
   pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null, academySocialNotify = null, alertChartBilling = null, tradingRoom = null, alertLevels = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
@@ -4083,6 +4084,36 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
        Choosing Trader needs Academy access; choosing ANALYST needs analyst level — the Analyst SKU, or a role
        holder. Everything the Analyst edition unlocks (the Article Desk, the Alert Chart seller tools, the
        member's own bot) keys off academyEditions.get(), so this one check is what the Analyst price buys. */
+    /* Seats (academy-seats.js). GET: what this owner holds and who is in their seats.
+       POST {action:'assign'|'release', memberId}: the owner moves their own seats.
+       POST {action:'set', ownerId, seats, periodEnd, status}: OWNER ONLY, the manual grant used
+       until Stripe drives it; billing will call the same setSubscription. */
+    if (path === '/academy-activity/seats') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const me = String(session.userId);
+      if (!academySeats) { sendJson(response, 503, { ok: false, error: 'seats_unavailable' }); return; }
+      try {
+        if (request.method === 'GET') { sendJson(response, 200, await academySeats.get(me)); return; }
+        if (request.method !== 'POST') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return; }
+        const raw = await readRequestBody(request, 1024).catch(() => null);
+        let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
+        const action = String(body.action || '').toLowerCase();
+        if (action === 'set') {
+          if (!OWNER_IDS.includes(me)) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+          const out = await academySeats.setSubscription(body.ownerId, { seats: body.seats, periodEnd: body.periodEnd || null, status: body.status || 'active' });
+          sendJson(response, out.ok ? 200 : (out.status || 400), out); return;
+        }
+        if (action === 'assign' || action === 'release') {
+          const out = action === 'assign' ? await academySeats.assign(me, body.memberId) : await academySeats.release(me, body.memberId);
+          sendJson(response, out.ok ? 200 : (out.status || 400), out); return;
+        }
+        sendJson(response, 400, { ok: false, error: 'unknown_action' });
+      } catch (error) { logger('error', 'academy_seats_failed', { error }); sendJson(response, 503, { ok: false, error: 'seats_unavailable' }); }
+      return;
+    }
+
     if (path === '/academy-activity/edition') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -6011,6 +6042,12 @@ async function main() {
   void personaRegistry.load().then((r) => { if (r && r.ok && r.loaded) log('info', 'persona_bots_loaded', { loaded: r.loaded }); }).catch((error) => log('warn', 'persona_bots_load_failed', { error }));
   /* Trader or Analyst edition, chosen by the member (academy-editions.js) */
   const academyEditions = createEditions({ store: createPgStateStore({ pool: database.pool, key: 'academy-editions', defaultValue: () => ({ users: {} }), logger: log }), logger: log });
+  /* Seats (academy-seats.js): a server owner pays per seat per month and hands them to the members
+     they choose. Each seat writes an Academy pass, so a seated member is the TRADER level. */
+  const academySeats = createSeats({
+    store: createPgStateStore({ pool: database.pool, key: 'academy-seats', defaultValue: () => ({ subs: {} }), logger: log }),
+    passes: academyPassStore, logger: log
+  });
   /* an analyst's own letters publisher: the same signed service call as the owner's, made as their linked site account */
   const analystPublishers = new Map();
   const analystPublisherFor = (wpUserId) => {
@@ -6531,7 +6568,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, autoTrade, sessionRecap, personaRegistry, academyEditions, analystDeskFor, storyPublisher, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling, tradingRoom, alertLevels,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, autoTrade, sessionRecap, personaRegistry, academyEditions, academySeats, analystDeskFor, storyPublisher, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify, alertChartBilling, tradingRoom, alertLevels,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,
