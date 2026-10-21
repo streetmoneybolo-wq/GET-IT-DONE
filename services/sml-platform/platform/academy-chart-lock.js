@@ -1,8 +1,8 @@
-/* CHART LOCK, a strict rule: nothing moves or shrinks the live chart. Panels and tools float over it or live in their own
-   column; none of them may change the chart section's grid or size. The rule is on by default, everywhere the chart is drawn
+/* CHART LOCK, a strict rule: nothing moves or shrinks the live chart. Panels and tools never sit on it: they live in their own
+   column or under it; none of them may change the chart section's grid or size. The rule is on by default, everywhere the chart is drawn
    (the Activity, a window inside the Activity, a browser pop-out).
      - the chart dock (academy-chart-dock.js) asks smlChartLock before docking a panel beside the plot; locked, panels float
-     - S.I.R.E. stops taking a grid column and floats over the right edge of the chart section instead
+     - S.I.R.E. stops taking a grid column and lives in the quote column (never over the chart)
      - Ticker Talk keeps the quote column at its normal width instead of widening it
      - the CHAIN switch and the member's own Customize choices (the chart module's size, order, floating) are not touched:
        those are the member changing the layout on purpose, not a tool moving the chart
@@ -21,7 +21,8 @@
     /* S.I.R.E. floats instead of taking a column */
     + 'html body.chart-lock.sire-open main .chart{grid-template-columns:minmax(0,1fr)!important}'
     + 'html body.chart-lock.sire-open main .chart>*{grid-column:1!important}'
-    + 'html body.chart-lock #sire-panel{position:absolute!important;right:8px;top:62px;z-index:9;width:min(var(--sire-w,332px),calc(100% - 16px));max-height:calc(100% - 76px);grid-column:auto!important;margin-left:0;box-shadow:0 12px 36px rgba(0,0,0,.55)}'
+    /* nothing floats over the chart: SIRE sits in the quote column (academy-side-window.js); wherever it is not moved, it is a plain block under the plot */
+    + 'html body.chart-lock #sire-panel{position:static!important;grid-column:auto!important;margin:6px 0 0;max-height:56vh;box-shadow:none}'
     /* Ticker Talk keeps the quote column at its normal width */
     + 'html body.chart-lock.talk-open .shell{grid-template-columns:minmax(0,1fr) 238px!important}'
     /* the dock never opens under the lock (the dock script also asks, this is the belt to its braces) */
