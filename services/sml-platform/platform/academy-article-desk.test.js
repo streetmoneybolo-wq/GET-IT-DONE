@@ -105,7 +105,7 @@ test('a thin dossier still composes: the modules that have data, a topic headlin
   const thin = { ...base, gamma: null, tape: null, smc: null, earnings: null, short: { ratio: 0.55, daysToCover: 6 } };
   const st = E.rankStories([thin])[0]; assert.equal(st.angle, 'short');
   const a = D.composeArticle({ story: st, c: thin, dossier: {}, asOf: Date.UTC(2026, 9, 19, 14, 30), topic: 'crude oil' });
-  assert.match(a.title, /^Crude oil through \$ABCD: /); assert.equal(a.sections.length, 4);
+  assert.match(a.title, /^Crude oil through \$ABCD: /); assert.equal(a.sections.length, 5);
   assert.deepEqual(a.modules, ['board', 'chart', 'bullbear', 'tracker', 'killswitch', 'poll']); assert.ok(a.wordCount >= 500, String(a.wordCount));
   assert.ok(!a.blocks.some((b) => b.id === 'img-chart'), 'no poster, no chart block in the letter'); assert.ok(a.blocks.some((b) => b.type === 'heading' && b.text === 'The bull case'));
   assert.match(a.bodyHtml, /<figure class="mem-chartbox" data-symbol="ABCD">/, 'no endpoint, no live polling attribute');
