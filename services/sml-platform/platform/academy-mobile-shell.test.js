@@ -44,7 +44,7 @@ test('the first-time tour: a skippable spotlight walk-through for desktop and ph
 
 test('the chart: the price axis is as wide as its labels and only two empty candles sit in front of the last one', () => {
   const pro = fs.readFileSync(path.join(__dirname, 'academy-chart-pro.js'), 'utf8');
-  assert.ok(pro.includes('PAD.r = clamp(Math.ceil(labelLen * 6.2) + 12, 44, 72)'));
+  assert.ok(pro.includes('PAD.r = clamp(Math.ceil(labelLen * 6.5) + 12, 46, 76)'));
   assert.ok(pro.includes('N + Math.max(2, Math.round(n * 0.02))'));
   assert.ok(smc.includes("ctx.fillStyle = 'rgba(6,11,18,.82)'") && smc.includes('background:#0a101a;border:1px solid #3a3160'), 'SMC labels sit on a dark pill and the card is opaque');
 });
