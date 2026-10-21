@@ -24,6 +24,7 @@ const optionsCalc = require('./academy-options-calc');
 const { normalizeChain: normalizeAlertChain } = require('./academy-alert-options');
 const { postAlertRange } = require('./academy-alerts');
 const { checkAlert: prealertCheck } = require('./academy-prealert');
+const routing = require('./academy-alert-routing');
 const { assessCatalysts } = require('./academy-alert-catalysts');
 const RISK_ORDER = ['low', 'mid', 'mid-high', 'high', 'extreme'];
 
@@ -350,12 +351,12 @@ function createClickAlertStore({ pool = null } = {}) {
   }
   /* this member's newest alert on a symbol (to know if its target has since been hit) */
   async function last({ userId, symbol, sinceMs, channelId = null }) {
-    const toRow = (r) => ({ side: r.side, entry: Number(r.entry), target: Number(r.target), at: r.at, messageId: r.messageId ? String(r.messageId) : '', channelId: r.channelId ? String(r.channelId) : '', guildId: r.guildId ? String(r.guildId) : '' });
+    const toRow = (r) => ({ confidence: r.confidence || '', side: r.side, entry: Number(r.entry), target: Number(r.target), at: r.at, messageId: r.messageId ? String(r.messageId) : '', channelId: r.channelId ? String(r.channelId) : '', guildId: r.guildId ? String(r.guildId) : '' });
     if (db) {
       const args = [userId, symbol, String(sinceMs)]; let where = 'discord_id = $1 AND symbol = $2 AND created_at > now() - ($3 || \' milliseconds\')::interval';
       if (channelId) { args.push(String(channelId)); where += ' AND channel_id = $' + args.length; }
-      const r = await db.query('SELECT side, entry, target, created_at, message_id, channel_id, guild_id FROM academy_click_alerts WHERE ' + where + ' ORDER BY created_at DESC LIMIT 1', args);
-      const row = r.rows[0]; return row ? toRow({ side: row.side, entry: row.entry, target: row.target, at: new Date(row.created_at).getTime(), messageId: row.message_id, channelId: row.channel_id, guildId: row.guild_id }) : null;
+      const r = await db.query('SELECT side, entry, target, confidence, created_at, message_id, channel_id, guild_id FROM academy_click_alerts WHERE ' + where + ' ORDER BY created_at DESC LIMIT 1', args);
+      const row = r.rows[0]; return row ? toRow({ confidence: row.confidence, side: row.side, entry: row.entry, target: row.target, at: new Date(row.created_at).getTime(), messageId: row.message_id, channelId: row.channel_id, guildId: row.guild_id }) : null;
     }
     const cut = Date.now() - sinceMs; let hit = null;
     for (const r of mem) if (r.userId === userId && r.symbol === symbol && r.at > cut && (!channelId || r.channelId === String(channelId)) && (!hit || r.at >= hit.at)) hit = toRow(r);
@@ -370,7 +371,16 @@ function createClickAlertStore({ pool = null } = {}) {
     const cut = Date.now() - sinceMs;
     return mem.filter((x) => x.at > cut && x.userId !== 'auto' && !String(x.symbol).includes(' ')).map((x) => ({ userId: String(x.userId), channelId: x.channelId, messageId: x.messageId, symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), stop: x.stop == null ? null : Number(x.stop), at: x.at }));
   }
-  return { record, count, last, recent, persistent: !!db };
+  /* every post of one symbol (or contract) this member made since a moment ago, newest first: the alerts and the exits, one row each */
+  async function trackedPosts({ userId, symbol, sinceMs }) {
+    if (db) {
+      const r = await db.query('SELECT channel_id, guild_id, message_id, symbol, confidence, created_at FROM academy_click_alerts WHERE discord_id = $1 AND symbol = $2 AND created_at > now() - ($3 || \' milliseconds\')::interval ORDER BY created_at DESC LIMIT 50', [userId, symbol, String(sinceMs)]);
+      return r.rows.map((x) => ({ channelId: String(x.channel_id), guildId: String(x.guild_id || ''), messageId: String(x.message_id || ''), confidence: x.confidence, at: new Date(x.created_at).getTime() }));
+    }
+    const cut = Date.now() - sinceMs;
+    return mem.filter((x) => x.userId === userId && x.symbol === symbol && x.at > cut).sort((a, b) => b.at - a.at).map((x) => ({ channelId: x.channelId, guildId: x.guildId || '', messageId: x.messageId, confidence: x.confidence, at: x.at }));
+  }
+  return { record, count, last, recent, trackedPosts, persistent: !!db };
 }
 
 function createClickAlertService({ getBars, chain = null, chainExpiry = null, expirations = null, chainDetail = null, catalysts = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
@@ -644,8 +654,20 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
 
   /* Did this member already alert this ticker, and has price since reached that alert's target? Then a higher target is a PT SMASHED update.
      The update carries where that earlier alert lives (guild, channel, message) so it can go to the same channel as a reply to it. */
-  const SMASH_WINDOW_MS = 21 * 86_400_000;
-  const previousAlert = (userId, symbol) => (store.last ? budget(store.last({ userId, symbol: String(symbol || '').toUpperCase(), sinceMs: SMASH_WINDOW_MS }).catch(() => null), WAIT.db).then((v) => v || null) : Promise.resolve(null));
+  /* An alert is tracked for 5 trading days, or until the member sells it (a full exit post on the symbol after it). */
+  const trackMs = () => now() - routing.trackingSince(now());
+  async function soldAfter(userId, sym, atMs, sinceMs) {
+    if (!store.last || /\s/.test(sym)) return false;
+    const ex = await budget(store.last({ userId, symbol: sym + ' exit', sinceMs }).catch(() => null), WAIT.db);
+    return !!(ex && ex.at >= atMs && ex.confidence !== 'partial');
+  }
+  async function previousAlert(userId, symbol, channelId = null) {
+    if (!store.last) return null;
+    const sym = String(symbol || '').toUpperCase(), since = trackMs();
+    const prev = await budget(store.last({ userId, symbol: sym, sinceMs: since, channelId }).catch(() => null), WAIT.db);
+    if (!prev) return null;
+    return (await soldAfter(userId, sym, prev.at, since)) ? null : prev;
+  }
   const whereOf = (prev) => (prev ? { prevGuildId: prev.guildId || '', prevChannelId: prev.channelId || '', prevMessageId: prev.messageId || '' } : { prevGuildId: '', prevChannelId: '', prevMessageId: '' });
   async function detectSmashed(userId, analysis, mode, contract) {
     if (contract || mode === 'new') return null;
@@ -745,9 +767,37 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     const guilds = dir ? await dir.guildsFor(String(userId), SNOWFLAKE.test(String(guildId)) ? String(guildId) : '') : [];
     return guilds;
   }
-  async function channels(userId, guildId) {
+  async function channels(userId, guildId, { kind = '', symbol = '', horizon = '' } = {}) {
     if (!SNOWFLAKE.test(String(guildId))) return null;
-    return ((personas && personas[String(userId)]) || directory).sendableChannels(String(guildId), String(userId));
+    const list = await ((personas && personas[String(userId)]) || directory).sendableChannels(String(guildId), String(userId));
+    if (!list || !kind) return list;
+    /* ranked for this alert: options or stocks, the horizon, free-for-everyone channels, and where this stock is already being tracked */
+    const sym = String(symbol || '').toUpperCase(), tracked = new Map();
+    if (/^[A-Z0-9.:-]{1,10}$/.test(sym) && store.trackedPosts) {
+      const since = trackMs();
+      const posts = await budget(store.trackedPosts({ userId: String(userId), symbol: sym, sinceMs: since }).catch(() => []), WAIT.db) || [];
+      const open = posts.length && !(await soldAfter(String(userId), sym, posts[0].at, since)) ? posts : [];
+      for (const p of open) if (!tracked.has(p.channelId)) tracked.set(p.channelId, p);
+    }
+    const ranked = routing.suggest(list, { kind, horizon: horizon || 'swing', saved: [...tracked.keys()] });
+    return ranked.map((c) => ({ ...c, tracking: tracked.has(c.id), suggested: c.suggested || tracked.has(c.id) }));
+  }
+
+  /* one alert to several channels the member picked. Each channel gets its own post (and its own reply to the alert it already carries);
+     one channel failing does not stop the others. */
+  async function sendMany(user, input = {}) {
+    const ids = [...new Set((Array.isArray(input.channelIds) ? input.channelIds : []).map(String).filter((id) => SNOWFLAKE.test(id)))].slice(0, 5);
+    if (!ids.length) return { ok: false, status: 400, code: 'invalid_channel' };
+    const results = [];
+    for (const channelId of ids) {
+      const { channelIds, ...one } = input;
+      const r = await send(user, { ...one, channelId, replyTo: ids.length > 1 ? '' : one.replyTo }).catch((error) => ({ ok: false, status: 503, code: 'temporarily_unavailable', detail: String(error && error.message || error) }));
+      results.push({ channelId, ...r });
+      if (!r.ok && ['click_alert_subscription_required', 'click_alert_not_configured', 'invalid_symbol', 'no_data'].includes(r.code)) break;
+    }
+    const posted = results.filter((r) => r.ok);
+    if (!posted.length) return { ...results[0], results };
+    return { ...posted[0], ok: true, results, posted: posted.length, failed: results.length - posted.length };
   }
 
   async function send(user, { symbol, target, contract = null, mode = 'auto', autoTarget = false, premiumTarget = null, channelId, mention, images: wantImages = true, asMe = true, via = '', replyTo = '' } = {}) {
@@ -784,7 +834,9 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     if (opt && opt.error) return opt.error;
     const cat = await catalystsFor(analysis, opt && opt.oa, pre);
     const dupKey = opt ? analysis.symbol + ' ' + opt.oa.contract.occ : analysis.symbol;
-    if (await store.count({ userId, symbol: dupKey, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
+    /* an alert posted into a channel that already has a tracked alert on the same stock (or contract) replies to the newest of them, so the entry is one tap away */
+    if (!replyTo && mode !== 'new') { const before = await previousAlert(userId, dupKey, String(channelId)); if (before && before.messageId) replyTo = before.messageId; }
+    if (await store.count({ userId, channelId: String(channelId), symbol: dupKey, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert' + ' to that channel.' };
     /* a PT SMASHED update goes to everyone unless the member said otherwise */
     const wantPing = mention === undefined ? true : !!mention;
     const ping = wantPing && where.mentionEveryone;
@@ -870,7 +922,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     const price = last ? last.c : null;
     if (!(price > 0)) return { ok: false, status: 422, code: 'no_live_price' };
     const dupKey = sym + ' exit';
-    if (await store.count({ userId, symbol: dupKey, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just posted take profits on ' + sym + '.' };
+    if (await store.count({ userId, channelId: String(channelId), symbol: dupKey, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just posted take profits on ' + sym + '.' };
     // the reasons: the desk's plan first, then the chart's own read of the stock
     const lines = (Array.isArray(why) ? why : []).map((w) => String(w || '').trim()).filter(Boolean);
     let ev = null; try { ev = await evidenceFor(sym, side); } catch (_) { ev = null; }
@@ -896,7 +948,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     if (persona) { try { posted = await persona.post(String(channelId), reply.asReply(msgBody), []); postedAs = 'persona'; } catch (error) { logger('warn', 'click_alert_persona_failed', { error: String(error.message || error) }); } }
     if (!posted && viaWebhook) { try { posted = await directory.postAsMember(String(channelId), reply.asLink(msgBody), [], { userId, displayName: user.displayName }); postedAs = 'member'; } catch (error) { logger('warn', 'click_alert_webhook_failed', { error: String(error.message || error) }); } }
     if (!posted) { if (footer && (viaWebhook || persona)) msgBody.content += sentBy(); posted = await directory.post(String(channelId), reply.asReply(msgBody), []); }
-    await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, side: side === 'short' ? 'short' : 'long', entry: Number(entry), target: price, stop: Number(stop) > 0 ? Number(stop) : null, horizon: 'swing', confidence: 'n/a' }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
+    await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, side: side === 'short' ? 'short' : 'long', entry: Number(entry), target: price, stop: Number(stop) > 0 ? Number(stop) : null, horizon: 'swing', confidence: partial ? 'partial' : 'n/a' }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     logger('info', 'click_alert_sent', { symbol: sym, horizon: 'exit', guildId: where.guildId, partial: !!partial });
     return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, repliedTo: reply.id || null, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, price, entry: Number(entry), gainPct: Math.round(((side === 'short' ? Number(entry) - price : price - Number(entry)) / Number(entry)) * 1000) / 10, partial: !!partial, text };
   }
@@ -908,7 +960,21 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     if (action === 'sell') {
       const plan = alert.plan || {};
       const partial = plan.action === 'PARTIAL';
-      return takeProfits(user, { symbol: alert.symbol, channelId: alert.channelId, entry: alert.entry, side: 'long', partial, stop: partial ? plan.stop : null, why: Array.isArray(plan.reasons) ? plan.reasons.slice(0, 3) : [], mention, asMe, replyTo });
+      const sym = String(alert.symbol || '').toUpperCase();
+      const others = store.trackedPosts && /^[A-Z0-9.:-]{1,10}$/.test(sym) ? await budget(store.trackedPosts({ userId, symbol: sym, sinceMs: trackMs() }).catch(() => []), WAIT.db) : [];
+      const sold = { symbol: alert.symbol, entry: alert.entry, side: 'long', partial, stop: partial ? plan.stop : null, why: Array.isArray(plan.reasons) ? plan.reasons.slice(0, 3) : [], mention, asMe };
+      const out = await takeProfits(user, { ...sold, channelId: alert.channelId, replyTo });
+      /* SOLD closes the alert everywhere it is tracked: the other channels it was posted to get the exit too, each as a reply to its own alert */
+      if (out.ok && Array.isArray(others)) {
+        const seen = new Set([String(alert.channelId)]), also = [];
+        for (const p of others) {
+          if (seen.has(p.channelId)) continue; seen.add(p.channelId);
+          const r = await takeProfits(user, { ...sold, channelId: p.channelId, replyTo: p.messageId }).catch(() => ({ ok: false }));
+          also.push({ channelId: p.channelId, ok: !!r.ok, code: r.code || '' });
+        }
+        if (also.length) out.alsoSold = also;
+      }
+      return out;
     }
     if (action === 'pt') {
       const t = Number(target);
@@ -983,7 +1049,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   /* the target engine's learned adjustments, handed in once the learner exists (the pre-alert check suggests a first target from them) */
   let learnedFn = null;
   const setLearned = (fn) => { learnedFn = typeof fn === 'function' ? fn : null; };
-  return { setLearned, entitlement, warm, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
+  return { setLearned, entitlement, warm, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, sendMany, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, synthDaily, mergeDaily, autoTargetForContract, stockTargetForPremium, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };
