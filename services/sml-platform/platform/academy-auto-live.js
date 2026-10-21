@@ -176,9 +176,9 @@
     root.__smlAutoLive = true;
     const KEY = 'sml-auto-live-v2', token = () => String(root.smlAcademySessionToken || '');
     const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const S = { on: false, paused: false, muted: false, calls: [], seen: {}, cap: '', ch: '', phase: 'idle', focus: null, trades: 0, passed: 0, skip: false, owner: false, run: 0, queue: [], pace: 1, clean: false, voiceOk: null, fails: 0, flash: '', note: '' };
-    try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.calls = (v.calls || []).slice(-80); S.seen = v.seen || {}; S.muted = v.muted === true; S.pace = [0.8, 1, 1.25].includes(v.pace) ? v.pace : 1; S.trades = Number(v.trades) || 0; S.passed = Number(v.passed) || 0; } } catch (_) { /* storage can be blocked */ }
-    const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ calls: S.calls.slice(-80), seen: S.seen, muted: S.muted, pace: S.pace, trades: S.trades, passed: S.passed })); } catch (_) { /* fine */ } };
+    const S = { on: false, paused: false, muted: false, calls: [], seen: {}, cap: '', ch: '', phase: 'idle', focus: null, trades: 0, passed: 0, skip: false, owner: false, run: 0, queue: [], pace: 1, clean: false, caps: false, voiceOk: null, fails: 0, flash: '', note: '' };
+    try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.calls = (v.calls || []).slice(-80); S.seen = v.seen || {}; S.muted = v.muted === true; S.pace = [0.8, 1, 1.25].includes(v.pace) ? v.pace : 1; S.caps = v.caps === true; S.trades = Number(v.trades) || 0; S.passed = Number(v.passed) || 0; } } catch (_) { /* storage can be blocked */ }
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ calls: S.calls.slice(-80), seen: S.seen, muted: S.muted, caps: S.caps, pace: S.pace, trades: S.trades, passed: S.passed })); } catch (_) { /* fine */ } };
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const gone = () => !S.on;
 
@@ -338,11 +338,11 @@
     const capbody = document.createElement('div'); capbar.append(banner, capbody); document.body.append(capbar, panel);
     const st = document.createElement('style'); st.textContent = [
       '#auto-live-btn{border-color:#b48cff!important;color:#e4d3ff!important}#auto-live-btn.on{background:#3b2766!important;color:#fff!important;box-shadow:0 0 0 1px #b48cff}',
-      '#al-caption,#auto-live-panel{display:none;font-family:system-ui,-apple-system,Segoe UI,sans-serif}#al-banner{display:flex}body.al-on #al-caption{display:block}body.al-on #auto-live-panel{display:block}',
+      '#al-caption,#auto-live-panel{display:none;font-family:system-ui,-apple-system,Segoe UI,sans-serif}#al-banner{display:flex}body.al-on.al-caps #al-caption{display:block}body.al-on #auto-live-panel{display:block}',
       '#al-banner{align-items:center;gap:10px;flex-wrap:wrap;color:#fff;font-weight:800;font-size:.95rem;padding:0 0 7px;margin-bottom:7px;border-bottom:1px solid #3a2c63;transition:background .3s}',
       '#al-banner i{width:10px;height:10px;border-radius:50%;background:#ff4d6d;animation:alp 1.2s infinite;flex:none}@keyframes alp{50%{opacity:.25}}#al-banner .ph{color:#caa8ff;font:800 .72rem ui-monospace,monospace;letter-spacing:.1em}#al-banner .sym{font-size:1.15rem}#al-banner .up{color:#35e6a0}#al-banner .dn{color:#ff6b86}#al-banner .px{font:800 .9rem ui-monospace,monospace}#al-banner .pl{font:800 .8rem ui-monospace,monospace;opacity:.95}',
       '#al-caption{transition:background .3s,border-color .3s,box-shadow .3s}#al-caption.win{background:#0f3a26;border-color:#35e6a0;box-shadow:0 0 40px rgba(53,230,160,.7)}#al-caption.loss{background:#3a1220;border-color:#ff6b86;box-shadow:0 0 40px rgba(255,107,134,.6)}',
-      '#al-caption{position:fixed;left:12px;bottom:calc(var(--sml-inset-bottom,0px) + 12px);width:calc(100vw - 404px);max-width:980px;z-index:2147483002;background:rgba(8,6,18,.95);border:1px solid #6b4bb8;border-radius:14px;padding:11px 18px 13px;color:#fff;box-shadow:0 10px 34px rgba(0,0,0,.6)}',
+      '#al-caption{position:fixed!important;visibility:visible!important;opacity:1!important;left:12px;bottom:calc(var(--sml-inset-bottom,0px) + 12px);width:calc(100vw - 404px);max-width:980px;z-index:2147483647;background:rgba(8,6,18,.97);border:1px solid #6b4bb8;border-radius:14px;padding:11px 18px 13px;color:#fff;box-shadow:0 10px 34px rgba(0,0,0,.6)}',
       '#al-caption .chip{display:inline-block;background:#6b4bb8;color:#fff;font:800 .68rem ui-monospace,monospace;letter-spacing:.1em;padding:2px 9px;border-radius:5px;margin-bottom:5px}#al-caption .txt{font-weight:750;font-size:clamp(1.05rem,1.55vw,1.5rem);line-height:1.38;min-height:2.7em}',
       '#auto-live-panel{position:fixed;right:10px;bottom:calc(var(--sml-inset-bottom,0px) + 10px);z-index:2147483001;width:380px;max-height:62vh;overflow:auto;background:rgba(10,8,22,.96);border:1px solid #6b4bb8;border-radius:12px;color:#efeaff;font-weight:650;font-size:.78rem;padding:9px 11px;box-shadow:0 10px 36px rgba(0,0,0,.6)}',
       '#auto-live-panel h4{margin:0 0 5px;font:800 .66rem ui-monospace,monospace;letter-spacing:.1em;color:#caa8ff}#auto-live-panel .card{border:1px solid #3a2c63;border-radius:8px;padding:6px 8px;margin:5px 0;background:#150f2e}#auto-live-panel .card.f{border-color:#b48cff}',
@@ -351,14 +351,22 @@
       '#auto-live-panel button,#auto-live-panel select{border:1px solid #6b4bb8;background:#21163f;color:#efeaff;border-radius:6px;padding:4px 9px;font:800 .68rem system-ui,sans-serif;cursor:pointer}#auto-live-panel button.stop{border-color:#ff6b86;color:#ffb3c1}',
       '#auto-live-panel small{color:#a99bd3;font-weight:600;line-height:1.35;display:block;margin-top:5px}#auto-live-panel .sc{display:flex;gap:10px;flex-wrap:wrap;font:800 .7rem ui-monospace,monospace;margin:6px 0}#auto-live-panel .nx{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}#auto-live-panel .nx span{background:#21163f;border:1px solid #3a2c63;border-radius:5px;padding:1px 7px;font:800 .66rem ui-monospace,monospace;color:#d8c8ff}#auto-live-panel .warn{color:#ffb04a}',
       'body.al-clean #auto-live-panel{display:none}body.al-clean #al-caption{width:min(980px,calc(100vw - 24px));left:50%;transform:translateX(-50%)}#al-clean-fab{position:fixed;right:10px;bottom:calc(var(--sml-inset-bottom,0px) + 10px);z-index:2147483001;display:none;border:1px solid #6b4bb8;background:rgba(10,8,22,.8);color:#caa8ff;border-radius:8px;padding:3px 9px;font:800 .66rem system-ui;cursor:pointer;opacity:.35}#al-clean-fab:hover{opacity:1}body.al-on.al-clean #al-clean-fab{display:block}',
-      '#sml-pointer{position:fixed;left:0;top:0;z-index:2147483003;pointer-events:none;opacity:0;transition:transform .9s cubic-bezier(.3,.8,.2,1),opacity .25s;will-change:transform}#sml-pointer.on{opacity:1}',
+      'body.al-on.chart-clean #al-caption,body.al-on.chart-clean #auto-live-panel{opacity:1!important}#sml-pointer{position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;opacity:0;transition:transform .9s cubic-bezier(.3,.8,.2,1),opacity .25s;will-change:transform}#sml-pointer.on{opacity:1}',
       '#sml-pointer svg{position:absolute;left:-6px;top:-4px;filter:drop-shadow(0 2px 5px rgba(0,0,0,.8));animation:ptb 1s ease-in-out infinite}@keyframes ptb{50%{transform:translate(5px,5px)}}',
       '#sml-pointer .ring{position:absolute;left:-22px;top:-22px;width:44px;height:44px;border-radius:50%;border:3px solid #ffd166;animation:ptr 1.3s ease-out infinite}@keyframes ptr{from{transform:scale(.5);opacity:1}to{transform:scale(1.7);opacity:0}}',
       '#sml-pointer .lab{position:absolute;left:36px;top:14px;white-space:nowrap;background:#ffd166;color:#1a1204;font:800 .85rem ui-monospace,monospace;padding:3px 10px;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5)}#sml-pointer .lab:empty{display:none}',
       '@media (max-width:900px){#al-caption{width:calc(100vw - 24px);bottom:auto;top:calc(var(--sml-inset-top,0px) + 50px)}#auto-live-panel{left:8px;right:8px;width:auto;max-height:36vh;bottom:calc(var(--sml-inset-bottom,0px) + 62px)}#al-banner{font-size:.8rem}#al-caption .txt{font-size:1rem;min-height:0}}'
     ].join(''); document.head.appendChild(st);
     const fab = document.createElement('button'); fab.id = 'al-clean-fab'; fab.type = 'button'; fab.textContent = 'show desk'; fab.onclick = () => { S.clean = false; document.body.classList.remove('al-clean'); }; document.body.appendChild(fab);
-    function layoutOverlay() { document.body.classList.toggle('al-on', S.on); document.body.classList.toggle('al-clean', S.on && S.clean); }
+    function layoutOverlay() {
+      document.body.classList.toggle('al-on', S.on); document.body.classList.toggle('al-clean', S.on && S.clean); document.body.classList.toggle('al-caps', S.on && S.caps);
+      /* the caption is what viewers read, so it is kept on screen: re-attached if the page rebuilt its body, and anchored to the visible viewport (Discord's frame, phone keyboards) */
+      if (!S.on) return;
+      for (const el of [capbar, panel, fab]) if (el.parentElement !== document.body) document.body.appendChild(el);
+      try { const vv = root.visualViewport; if (vv) { const gap = Math.max(0, root.innerHeight - (vv.height + vv.offsetTop)); capbar.style.marginBottom = gap + 'px'; } } catch (_) { /* fine */ }
+    }
+    setInterval(() => { if (S.on) layoutOverlay(); }, 2000);
+    try { if (root.visualViewport) root.visualViewport.addEventListener('resize', layoutOverlay); } catch (_) { /* fine */ }
     let idleT = 0; const bump = () => { panel.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => panel.classList.add('idle'), 6000); };
     ['mousemove', 'touchstart', 'keydown'].forEach((e) => document.addEventListener(e, bump, { passive: true })); bump();
 
@@ -386,13 +394,14 @@
         + (S.queue.length ? '<small>Next up</small><div class="nx">' + S.queue.slice(0, 5).map((c) => '<span>' + esc(c.sym) + '</span>').join('') + '</div>' : '')
         + (recent.length ? '<small>' + recent.map((c) => esc(c.sym + ': ' + statusText(c))).join(' · ') + '</small>' : '')
         + (S.voiceOk === false ? '<small class="warn">Voice is blocked in this window, so the captions carry it. Press Test voice, or share with audio from a full browser tab.</small>' : '') + (S.note ? '<small class="warn">' + esc(S.note) + '</small>' : '')
-        + '<div class="row"><button id="al-pause">' + (S.paused ? 'Resume' : 'Pause') + '</button><button id="al-skip">Skip</button><button id="al-mute">' + (S.muted ? 'Voice off' : 'Voice on') + '</button><button id="al-test">Test voice</button><select id="al-pace" title="Pace"><option value="0.8"' + (S.pace === 0.8 ? ' selected' : '') + '>Slow</option><option value="1"' + (S.pace === 1 ? ' selected' : '') + '>Normal</option><option value="1.25"' + (S.pace === 1.25 ? ' selected' : '') + '>Fast</option></select><button id="al-clean">Clean view</button><button class="stop" id="al-stop">Stop</button></div>'
+        + '<div class="row"><button id="al-pause">' + (S.paused ? 'Resume' : 'Pause') + '</button><button id="al-skip">Skip</button><button id="al-mute">' + (S.muted ? 'Voice off' : 'Voice on') + '</button><button id="al-test">Test voice</button><select id="al-pace" title="Pace"><option value="0.8"' + (S.pace === 0.8 ? ' selected' : '') + '>Slow</option><option value="1"' + (S.pace === 1 ? ' selected' : '') + '>Normal</option><option value="1.25"' + (S.pace === 1.25 ? ' selected' : '') + '>Fast</option></select><button id="al-caps">' + (S.caps ? 'Captions on' : 'Captions off') + '</button><button id="al-clean">Clean view</button><button class="stop" id="al-stop">Stop</button></div>'
         + '<small>Educational simulation. Every call is logged, stopped ones too. Judged on the 1-minute candles, and when one candle touches both the stop and a target the stop counts first. No orders are placed. Not advice.</small>';
       panel.querySelector('#al-pause').onclick = () => { S.paused = !S.paused; try { if (S.audio) { S.paused ? S.audio.pause() : S.audio.play().catch(() => {}); } if (root.speechSynthesis) S.paused ? root.speechSynthesis.pause() : root.speechSynthesis.resume(); } catch (_) { /* fine */ } paint(); };
       panel.querySelector('#al-skip').onclick = () => { S.skip = true; stopMine(); try { if (root.speechSynthesis) root.speechSynthesis.cancel(); } catch (_) { /* fine */ } };
       panel.querySelector('#al-mute').onclick = () => { S.muted = !S.muted; if (S.muted) stopMine(); try { if (S.muted && root.speechSynthesis) root.speechSynthesis.cancel(); } catch (_) { /* fine */ } save(); paint(); };
       panel.querySelector('#al-test').onclick = testVoice;
       panel.querySelector('#al-pace').onchange = (e) => { S.pace = Number(e.target.value) || 1; save(); };
+      panel.querySelector('#al-caps').onclick = () => { S.caps = !S.caps; save(); layoutOverlay(); paint(); };
       panel.querySelector('#al-clean').onclick = () => { S.clean = true; layoutOverlay(); };
       panel.querySelector('#al-stop').onclick = () => stop(false);
     }
