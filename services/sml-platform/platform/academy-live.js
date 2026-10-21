@@ -143,5 +143,7 @@
     es.onerror = () => { if (es.readyState === 2) { if (sse.es === es) sse.es = null; sse.fails = Math.min(sse.fails + 1, 7); sse.retryAt = Date.now() + Math.min(300000, 3000 * 2 ** (sse.fails - 1)); } };
   }
   window.addEventListener('sml-academy-market', (e) => { const s = String((e.detail && e.detail.symbol) || '').toUpperCase(); if (s && s !== sse.symbol) { closeStream(); sse.symbol = ''; forgetStock(); openStream(); } if (s && s !== st.symbol) { st.symbol = s; forgetStock(); once(); } });
+  /* back from a minimised window: the stream may be stuck open with nothing coming, so start over and fetch the book at once */
+  window.addEventListener('sml-academy-resume', () => { closeStream(); sse.retryAt = 0; sse.fails = 0; sse.okAt = 0; st.lastT = Math.max(0, st.lastT); openStream(); void once(); });
   (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } if (!document.hidden) openStream(); const pushing = sse.es && Date.now() - sse.okAt < 5000; const base = Math.min(8000, Math.max(2000, Number(window.smlEvolveConfig && window.smlEvolveConfig.livePollMs) || 2500)); /* the cadence is an Evolve knob (academy-evolve.js) */ const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : pushing ? base : Math.min(2000, Math.max(700, base - 1800)); once().finally(() => setTimeout(loop, wait)); })();
 })();
