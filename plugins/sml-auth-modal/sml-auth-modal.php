@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Auth Modal
  * Description: The StockMarketLoop sign-up and sign-in module, redesigned. Email sign-up with a live handle check and suggestions, a password meter, a one-time-code verify step with resend cooldown, and sign-in with forgot-password. Replaces the old modal (whose Google and Facebook buttons pointed at routes that do not exist), turns the landing page's "Sign Up With Google" buttons into "Create Free Account", and removes Site Kit's Sign in with Google from every page, wp-login.php included.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: StockMarketLoop
  */
 
@@ -14,7 +14,7 @@ require_once SMLX_AUTH_DIR . 'includes/google.php';
    plugin that carries assets/ next to this file uses them inline instead. Bump the pin to ship a new version of either. */
 /* Continue with Discord: the platform's Discord sign-in (same callback as the trial link; it makes or matches the site account and signs the member in). */
 define( 'SMLX_AUTH_DISCORD', 'https://sml-platform-api.onrender.com/academy-activity/trial/signin' );
-define( 'SMLX_AUTH_CDN', 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@1035718862d8b9004c5f0601cd62813aa9e4e9a8/plugins/sml-auth-modal/assets/' );
+define( 'SMLX_AUTH_CDN', 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@e4582f2639aa627efbd1b9c3e27893202b3bd1cb/plugins/sml-auth-modal/assets/' );
 
 function smlx_auth_markup() {
 	return <<<'HTML'
