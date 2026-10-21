@@ -147,3 +147,49 @@ test('the shared trial link unfurls with the banner, a headline and what is insi
   await trial.handle(req('/academy-activity/trial/banner.jpg'), img, '/academy-activity/trial/banner.jpg', new URL('https://academy.example/academy-activity/trial/banner.jpg'));
   assert.equal(img.status, 200); assert.equal(img.headers['content-type'], 'image/jpeg'); assert.ok(Buffer.isBuffer(img.body) && img.body[0] === 0xff && img.body[1] === 0xd8 && img.body.length > 50_000, 'a real JPEG');
 });
+
+test('Continue with Discord: signs a member in to the site through the same Discord callback, starts no trial, and only ever returns to a path on the site', async () => {
+  const store = createPassStore(); let added = 0; const realAdd = store.add; store.add = async (...a) => { added += 1; return realAdd(...a); };
+  const user = { id: '420000000000000042', username: 'ana', global_name: 'Ana', email: 'ana@example.com', verified: true };
+  const fetchImpl = async (url) => {
+    if (/oauth2\/token$/.test(url)) return { ok: true, json: async () => ({ access_token: 'tok' }) };
+    if (/users\/@me$/.test(url)) return { ok: true, json: async () => user };
+    throw new Error('unexpected ' + url);
+  };
+  const registered = []; let answer = { ok: true, created: false, matched: true, verified: true, loginUrl: 'https://stockmarketloop.com/?sml_lkc_login=abc&to=%2Fnotes%2F' };
+  const bridge = { register: async (o) => { registered.push(o); return answer; } };
+  const trial = createAcademyTrial({ clientId: APP, clientSecret: 's3cret', publicUrl: 'https://academy.example/', store, fetchImpl, now: () => T0, bridge: () => bridge });
+  const go = async (path) => { const res = fakeResponse(); await trial.handle(req(path), res, path.split('?')[0], new URL('https://academy.example' + path)); return res; };
+
+  // start: a signed state that says sign-in, and the return path
+  let res = await go('/academy-activity/trial/signin?return=%2Fnotes%2Fabc%3Fx%3D1');
+  assert.equal(res.status, 302); const auth = new URL(res.headers.location);
+  assert.equal(auth.searchParams.get('scope'), 'identify email'); assert.equal(auth.searchParams.get('redirect_uri'), 'https://academy.example/academy-activity/trial/callback', 'the callback already registered with Discord');
+  const state = auth.searchParams.get('state');
+  const payload = JSON.parse(Buffer.from(state.split('.')[0], 'base64url').toString()); assert.equal(payload.mode, 'signin'); assert.equal(payload.ret, '/notes/abc?x=1');
+
+  // callback: the site account is made or matched, no trial, and the member goes through the one-time link
+  res = await go('/academy-activity/trial/callback?code=c&state=' + encodeURIComponent(state));
+  assert.equal(res.status, 302); assert.equal(res.headers.location, answer.loginUrl); assert.equal(added, 0, 'signing in is not starting a trial');
+  assert.deepEqual({ ...registered[0] }, { discordUserId: user.id, discordTag: 'ana', email: 'ana@example.com', emailVerified: true, name: 'Ana', returnTo: 'https://stockmarketloop.com/notes/abc?x=1' });
+
+  // anything that is not a path on the site becomes the home page
+  for (const bad of ['https://evil.example/x', '//evil.example', '/\\evil.example', 'javascript:alert(1)', '', '/a\r\nb']) {
+    const r = await go('/academy-activity/trial/signin?return=' + encodeURIComponent(bad));
+    const st = JSON.parse(Buffer.from(new URL(r.headers.location).searchParams.get('state').split('.')[0], 'base64url').toString());
+    assert.equal(st.ret, '/', 'return ' + JSON.stringify(bad));
+  }
+  // a login link that does not point at the site is never followed
+  answer = { ok: true, created: true, loginUrl: 'https://evil.example/?sml_lkc_login=abc' };
+  res = await go('/academy-activity/trial/callback?code=c&state=' + encodeURIComponent(state)); assert.notEqual(res.status, 302); assert.match(res.body, /did not answer|try again/i);
+  // the failures say what happened
+  answer = { ok: false, status: 409, error: 'email_unverified_existing' }; res = await go('/academy-activity/trial/callback?code=c&state=' + encodeURIComponent(state));
+  assert.equal(res.status, 409); assert.match(res.body, /already exists/); assert.match(res.body, /stockmarketloop\.com\/login\//);
+  answer = { ok: false, status: 409, error: 'discord_already_linked' }; res = await go('/academy-activity/trial/callback?code=c&state=' + encodeURIComponent(state)); assert.match(res.body, /already linked/);
+  user.email = ''; res = await go('/academy-activity/trial/callback?code=c&state=' + encodeURIComponent(state)); assert.match(res.body, /did not share an email/); assert.equal(res.status, 200);
+  // cancelled on Discord's side
+  res = await go('/academy-activity/trial/callback?error=access_denied&state=' + encodeURIComponent(state)); assert.match(res.body, /cancelled/); assert.match(res.body, /Back to sign in/);
+  // the trial path is untouched: a trial state still starts a trial
+  user.email = 'ana@example.com'; res = await go('/academy-activity/trial/start?via=site'); const ts = new URL(res.headers.location).searchParams.get('state');
+  res = await go('/academy-activity/trial/callback?code=c&state=' + encodeURIComponent(ts)); assert.equal(res.status, 200); assert.equal(added, 1);
+});

@@ -10,6 +10,7 @@
   function qsa(s, r) { return Array.prototype.slice.call((r || root).querySelectorAll(s)); }
   var card = qs(".smlx-card"), statusEl = qs("[data-auth-status]");
   var forms = { signup: qs("[data-signup-form]"), login: qs("[data-login-form]"), verify: qs("[data-verify-form]") };
+  var oauthEl = qs("[data-oauth]"), discordEl = qs("[data-discord]");
   var tabsEl = qs("[data-tabs]"), titleEl = qs("[data-auth-title]"), subEl = qs("[data-auth-sub]");
   var current = "signup", opener = null, failedLogins = 0, cooldownTimer = null;
 
@@ -23,6 +24,13 @@
     try { var u = new URL(to, location.origin); if (u.origin === location.origin && u.pathname.indexOf("wp-login.php") === -1) return u.href; } catch (e) { /* the home page */ }
     return cfg.home || "/";
   }
+  /* Continue with Discord: back to the page the member was on (never the sign-in pages themselves, never another site) */
+  function returnPath() {
+    var to = params.get("redirect_to") || params.get("redirect") || "";
+    try { var u = new URL(to, location.origin); if (to && u.origin === location.origin && u.pathname.indexOf("wp-login.php") === -1) return u.pathname + u.search; } catch (e) { /* the page they are on */ }
+    var p = location.pathname; return /^\/(login|register|sign-in|sign-up|sign-up-sign-in)\/?$/.test(p) ? "/" : p + location.search;
+  }
+  if (cfg.discord && discordEl) { discordEl.href = cfg.discord + "?return=" + encodeURIComponent(returnPath()); oauthEl.hidden = false; }
   function setBusy(btn, on) { if (!btn) return; btn.disabled = !!on; btn.dataset.busy = on ? "1" : "0"; }
   function say(msg, bad) { statusEl.hidden = !msg; statusEl.textContent = msg || ""; statusEl.dataset.error = bad ? "1" : "0"; }
   function fieldErr(name, msg, input) {
@@ -58,7 +66,7 @@
   function view(name, keepStatus) {
     current = forms[name] ? name : "signup";
     Object.keys(forms).forEach(function (k) { forms[k].hidden = k !== current; });
-    tabsEl.hidden = current === "verify";
+    tabsEl.hidden = current === "verify"; if (oauthEl && cfg.discord) oauthEl.hidden = current === "verify";
     qsa("[data-auth-tab]", tabsEl).forEach(function (b) { var on = b.dataset.authTab === current; b.dataset.active = on ? "1" : "0"; b.setAttribute("aria-selected", on ? "true" : "false"); });
     titleEl.textContent = COPY[current][0]; subEl.textContent = COPY[current][1];
     if (!keepStatus) say("");
