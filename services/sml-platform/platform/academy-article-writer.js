@@ -41,6 +41,13 @@ function barContext(c, angle = '') {
   const hiBar = seg.reduce((m, b, i) => (num(b.h, b.c) >= num(seg[m].h, seg[m].c) ? i : m), 0), loBar = seg.reduce((m, b, i) => (num(b.l, b.c) <= num(seg[m].l, seg[m].c) ? i : m), 0);
   const hi = num(seg[hiBar].h, seg[hiBar].c), lo = num(seg[loBar].l, seg[loBar].c);
   if (hi > 0 && lo > 0) out.push(['ctxrange', `Against its own ${win}-session range, ${S} is ${Math.abs((p / hi - 1) * 100).toFixed(1)}% ${p <= hi ? 'below' : 'above'} the high of ${px(hi)} (${etDay(seg[hiBar].t)}) and ${Math.abs((p / lo - 1) * 100).toFixed(1)}% above the low of ${px(lo)} (${etDay(seg[loBar].t)}).`]);
+  /* the quotable line and the numbers the narrative is built from: the close against the 20-day high and low */
+  const w20 = d.slice(n - 20), hi20 = Math.max(...w20.map((b) => num(b.h, b.c))), lo20 = Math.min(...w20.map((b) => num(b.l, b.c)));
+  const atrOf = (from, to) => { let t = 0, k = 0; for (let i = Math.max(1, from); i < to; i++) { t += Math.max(num(d[i].h, d[i].c) - num(d[i].l, d[i].c), Math.abs(num(d[i].h, d[i].c) - num(d[i - 1].c)), Math.abs(num(d[i].l, d[i].c) - num(d[i - 1].c))); k += 1; } return k ? t / k : 0; };
+  const atrNow = atrOf(n - 14, n), atrPrev = n >= 45 ? atrOf(n - 44, n - 30) : 0;
+  let upRun = 0; for (let i = n - 1; i > 0 && num(d[i].c) > num(d[i - 1].c); i--) upRun += 1;
+  const gap = (v) => (v >= 1 || p < 1 ? px(v) : '$' + v.toFixed(2));
+  out.push(['ctxquote', `${S} sits at ${px(p)}, ${gap(Math.abs(hi20 - p))} ${p <= hi20 ? 'below' : 'above'} its 20-day high of ${px(hi20)} and ${gap(Math.abs(p - lo20))} above its 20-day low of ${px(lo20)}.`]);
   const last10 = d.slice(n - 10); let up = 0; for (let i = 1; i < last10.length; i++) if (num(last10[i].c) > num(last10[i - 1].c)) up += 1;
   out.push(['ctxstreak', up === last10.length - 1 ? `${S} has closed higher in each of its last ${up} sessions.` : up === 0 ? `${S} has closed lower in each of its last ${last10.length - 1} sessions.` : `${S} closed higher in ${up} of its last ${last10.length - 1} sessions.`]);
   const v5 = d.slice(n - 5).map((b) => num(b.v, 0)), v20 = d.slice(n - 25, n - 5).map((b) => num(b.v, 0)), a5 = v5.reduce((x, y) => x + y, 0) / 5, a20 = v20.reduce((x, y) => x + y, 0) / Math.max(1, v20.length);
@@ -53,6 +60,8 @@ function barContext(c, angle = '') {
   }
   let big = null; for (let i = Math.max(1, n - 20); i < n; i++) { const m = (num(d[i].c) / num(d[i - 1].c) - 1) * 100; if (!big || Math.abs(m) > Math.abs(big.m)) big = { m, t: d[i].t }; }
   if (big && Number.isFinite(big.m)) out.push(['ctxmove', `The largest one-day move in the past twenty sessions was ${pct(big.m)} on ${etDay(big.t)}.`]);
+  const v5b = d.slice(n - 5).map((b) => num(b.v, 0)), v20b = d.slice(n - 25, n - 5).map((b) => num(b.v, 0));
+  out.metrics = { hi20, lo20, gapHi: p <= hi20 ? hi20 - p : 0, distHighPct: hi20 > 0 && p <= hi20 ? (hi20 - p) / hi20 * 100 : 0, distLowPct: lo20 > 0 ? (p - lo20) / lo20 * 100 : null, upRun, volRatio: v20b.length && v20b.reduce((x, y) => x + y, 0) > 0 ? (v5b.reduce((x, y) => x + y, 0) / 5) / (v20b.reduce((x, y) => x + y, 0) / v20b.length) : null, squeeze: atrPrev > 0 ? atrNow / atrPrev : null, relVol: num(c.relVol), changePct: num(c.changePct) };
   return out;
 }
 
@@ -97,12 +106,13 @@ function factSheet({ story: st, c, dossier = {}, record = null } = {}) {
   if (pt && pt.count) { const names = [...(pt.charts || []), ...(pt.candles || [])].map((x) => x && (x.name || x.type)).filter(Boolean).slice(0, 3); if (names.length) add('pattern', `Chart patterns on the daily: ${names.join(', ')}${pt.trend && pt.trend.dir ? ` in a ${pt.trend.dir} trend` : ''}.`); }
   if (Array.isArray(d.news) && d.news.length) add('news', `Recent headline: ${plain(d.news[0].title || '')}.`);
   if (d.company && d.company.sic_description) add('industry', `Industry: ${plain(d.company.sic_description)}.`);
-  for (const [k, text] of barContext(c, st.angle)) add(k, text);
+  const bc = barContext(c, st.angle); for (const [k, text] of bc) add(k, text);
+  const metrics = bc.metrics || null;
   const numbers = new Set();
   const harvest = (text) => { for (const m of String(text).matchAll(/\$?\d[\d,]*\.?\d*%?[KMBx]?/g)) { const t = m[0].replace(/[$,%]/g, '').replace(/[KMBx]$/, ''); numbers.add(t); if (t.includes('.')) numbers.add(t.replace(/\.?0+$/, '')); } };
   for (const l of lines) harvest(l.text);
   for (const v of [c.price, st.pt, st.stop, st.ptPct, c.changePct, c.relVol]) if (num(v) != null) { harvest(String(v)); harvest(Number(v).toFixed(2)); harvest(Number(v).toFixed(1)); harvest(Math.round(v)); }
-  return { earningsDays: er && num(er.daysAway) != null ? Number(er.daysAway) : null, symbol: c.symbol, name, S, price: c.price, pt: st.pt, ptPct: st.ptPct, stop: num(st.stop), lean: st.lean, angle: st.angle, angleLabel: ANGLE_LABEL[st.angle] || st.angle, timeframe: st.timeframe, lines, numbers, record: record && record.showable ? record : null, scenario: st.scenario, path: st.path || [] };
+  return { metrics, earningsDays: er && num(er.daysAway) != null ? Number(er.daysAway) : null, symbol: c.symbol, name, S, price: c.price, pt: st.pt, ptPct: st.ptPct, stop: num(st.stop), lean: st.lean, angle: st.angle, angleLabel: ANGLE_LABEL[st.angle] || st.angle, timeframe: st.timeframe, lines, numbers, record: record && record.showable ? record : null, scenario: st.scenario, path: st.path || [] };
 }
 const sheetText = (sheet) => sheet.lines.map((l) => `- ${l.text}`).join('\n');
 
@@ -119,7 +129,13 @@ function validate(narrative, sheet, { minWords = 450, maxWords = 1300 } = {}) {
   if (words < minWords) reasons.push('too_short_' + words); if (words > maxWords) reasons.push('too_long_' + words);
   if (/—|–/.test(all)) reasons.push('dash');
   if (/\bAcademy\b/i.test(all)) reasons.push('brand_mention');
-  if (/\b(I|I'm|I've|I'd|I'll|[Mm]e|[Mm]y|[Mm]ine|[Ww]e|[Oo]ur|[Oo]urs|[Yy]ou|[Yy]our|[Yy]ours)\b/.test(all)) reasons.push('first_or_second_person');
+  /* Grandmaster-Obi writes with an opinion: a stance, a question, a conditional call and the line that proves him wrong; he does not invent a past, a feeling or an anecdote */
+  if (!STANCES.includes(narrative.stance)) reasons.push('no_stance');
+  if (!/\?\s*$/.test(String(narrative.question || ''))) reasons.push('no_question');
+  if (!/\bif\b/i.test(String(narrative.ifRight || ''))) reasons.push('no_conditional_call');
+  if (!/\b(wrong|invalid|thesis (?:is )?(?:dead|over))/i.test(String(narrative.wrongIf || ''))) reasons.push('no_invalidation');
+  if (!/\b(I|I'm|I'd|I'll|my)\b/.test(all)) reasons.push('no_opinion');
+  if (/\b(last (?:week|month|year) I|years? ago|in my experience|I remember|I've (?:seen|traded|watched) (?:this|it) before|reminds me of|my (?:last|first) trade|when I was|I feel|I'm (?:excited|nervous|scared|thrilled)|I love|I hate)\b/i.test(all)) reasons.push('invented_experience');
   /* the machine cadence ("X happens, which means Y, and that causes Z") and the textbook aside (the reader knows the basics) */
   if (/,\s+which (?:means|implies|suggests)[^.]{3,140},\s+and (?:that|this|it) (?:causes|leads|creates|results|drives)/i.test(all)) reasons.push('ai_cadence');
   if (/\b(?:is a term for|is defined as|refers to|simply put|in other words|put simply|to put it simply)\b/i.test(all)) reasons.push('glossary_aside');
@@ -142,84 +158,135 @@ function validate(narrative, sheet, { minWords = 450, maxWords = 1300 } = {}) {
   return { ok: !reasons.length, reasons };
 }
 
-/* ---------- the house writer: a news piece, third person, from the fact sheet, with seeded variation ---------- */
-/* News does not have a voice. No first person, no jokes, no asides to the reader: a lead, the verified details, the context, the scenario labelled as
-   the desk's speculation, and what would prove it wrong. Every number comes from the sheet. */
+/* ---------- the house writer: the Grandmaster-Obi narrative, from the fact sheet, with seeded variation ---------- */
+/* Data -> anomaly -> question -> thesis -> evidence -> counterargument -> conditional prediction -> invalidation -> a closing line.
+   First person where it is an opinion ("my read", "I think", "I'm wrong"), plain statements where it is a fact; nothing is invented: every number comes from
+   the sheet, no anecdote, no feeling the data does not carry. */
+const STANCES = ['Bullish', 'Lean bullish', 'Neutral, waiting on confirmation', 'Lean bearish', 'Bearish', 'Binary, event-driven'];
+function stanceFor(sheet) {
+  const m = sheet.metrics || {}, up = sheet.lean !== 'bearish';
+  if (sheet.earningsDays != null && sheet.earningsDays >= 0 && sheet.earningsDays <= 7) return 'Binary, event-driven';
+  const confirmed = (m.volRatio != null && m.volRatio >= 1.1) || (num(m.relVol) != null && m.relVol >= 1.3);
+  const near = up ? (m.distHighPct != null && m.distHighPct <= 3) : (m.distLowPct != null && m.distLowPct <= 3);
+  if (up) return confirmed && near ? 'Bullish' : near ? 'Lean bullish' : confirmed ? 'Lean bullish' : 'Neutral, waiting on confirmation';
+  return confirmed && near ? 'Bearish' : near ? 'Lean bearish' : confirmed ? 'Lean bearish' : 'Neutral, waiting on confirmation';
+}
+/* the one unusual thing in the data, and the question it raises */
+function anomalyFor(sheet) {
+  const m = sheet.metrics || {}, up = sheet.lean !== 'bearish';
+  if (m.upRun != null && up && m.upRun >= 5 && m.volRatio != null && m.volRatio <= 1.05) return { kind: 'quietclimb', heading: ['A climb nobody seems to be chasing', 'Up every day, and quietly', 'The volume is not following the price'] };
+  if (up && m.distHighPct != null && m.distHighPct <= 3 && m.gapHi != null && m.gapHi > 0) return { kind: 'nearhigh', heading: ['The level it keeps stopping at', 'Stuck just under the high', 'One level between here and open air'] };
+  if (!up && m.distLowPct != null && m.distLowPct <= 3) return { kind: 'nearlow', heading: ['Support that has to hold', 'Sitting on the floor', 'What happens if the floor gives'] };
+  if ((num(m.relVol) != null && m.relVol >= 1.8) || (num(m.changePct) != null && Math.abs(m.changePct) >= 3)) return { kind: 'surge', heading: ['A move that needs explaining', 'Busy tape, open question', 'What the volume is saying'] };
+  if (m.squeeze != null && m.squeeze < 0.85) return { kind: 'compress', heading: ['Quiet is not the same as nothing', 'The range keeps shrinking', 'A stock holding its breath'] };
+  return { kind: 'range', heading: ['What stands out', 'The thing I keep coming back to', 'Where the stock actually sits'] };
+}
+/* the angles that carry their own story (the data found something specific); the narrative angle uses the anomaly instead */
+const ANGLE_STORY = {
+  gamma: { heading: ['The hedging nobody is looking at', 'What the options book is doing', 'Dealers have a deadline'], dek: [`Dealers who sold the calls have to hedge as price moves, and that can matter more than the chart. My read on where it leads.`, `The options book can push a stock further than opinion can. My read on the level it is pointing at.`], lede: [`The chart on {who} looks ordinary. The options book does not.`, `The people who may move {who} this week aren't traders. They're dealers hedging a book they didn't choose.`], mean1: `What I make of it: when the hedging runs the same direction as the price, it stops being background noise and starts being the move.` },
+  short: { heading: ['A short that will not fall', 'The shorts have a problem', 'Pressing into strength'], dek: [`A crowded short against a stock that refuses to fall is a position with a deadline. My read on how it ends.`, `Short volume is a clue, not a confession. My read on what it does and doesn't say about {who}.`], lede: [`Somebody is still shorting {who} into this, and the FINRA data doesn't care about anyone's opinion. It counts.`, `{who} keeps going up and the short keeps pressing. One of those has to give.`], mean1: `What I make of it: a crowded short matters only if the stock stops falling, and then covering becomes buying. Whether that starts here is the whole question.` },
+  earnings: { heading: ['The report is the story', 'Positioned before the number', 'What the tape did first'], dek: [`The estimate is public and the positioning isn't. My read on which way it leans into the {who} report.`], lede: [`{who} reports soon, and the estimate is the least interesting thing about it. The positioning going into it is what I'm watching.`, `Every preview of {who} will quote consensus. Almost none will say what the tape did before anyone was looking.`], mean1: `What I make of it: positioning going into a report shapes the reaction as much as the number does, because the market trades against what it already expects.` },
+  tape: { heading: ['Size on the tape', 'Who is working this stock', 'What the prints show'], dek: [`Sweeps and blocks aren't how retail trades. My read on who is in {who} and how big they are.`], lede: [`The chart on {who} looks ordinary. The prints behind it don't.`, `Someone is working {who} in size, and the tape is the only place it shows.`], mean1: `What I make of it: large orders are slow to hide, and a buyer working size leaves a trail in the prints before it shows up on the chart.` },
+  structure: { heading: ['The stops that got taken', 'A sweep and a reversal', 'What the sweep left behind'], dek: [`Price visited the stops, collected them and came back. My read on what that sequence implies for {who}.`], lede: [`{who} just ran the obvious level, took the stops and reversed.`, `Price in {who} went where the stops were, then left. That isn't noise.`], mean1: `What I make of it: stops sit at obvious levels, and a sweep shows they were collected. What price does next shows whether the move was a trap or a start.` }
+};
 function housePiece(sheet, seed = 0) {
-  const S = sheet.S, who = sheet.name || S, L = Object.fromEntries(sheet.lines.map((l) => [l.k, l.text]));
+  /* "NVIDIA Corporation" reads as a filing; the letter says "NVIDIA" */
+  const shortName = (n) => String(n || '').replace(/[,.]?\s+(?:Corporation|Corp\.?|Incorporated|Inc\.?|Company|Co\.?|Ltd\.?|Limited|PLC|N\.V\.|Holdings?|Group)\s*$/i, '').trim();
+  const S = sheet.S, who = shortName(sheet.name) || S, L = Object.fromEntries(sheet.lines.map((l) => [l.k, l.text]));
+  const m = sheet.metrics || {};
   const facts = sheet.lines.filter((l) => l.k === 'fact').map((l) => l.text);
   const up = sheet.lean !== 'bearish';
-  const pt = px(sheet.pt), stop = sheet.stop != null ? px(sheet.stop) : null, ptp = pct(sheet.ptPct);
-  const titles = {
-    gamma: [`${S}: Dealer Hedging May Matter More Than the Chart Near ${pt}`, `Dealers Are Short Gamma in ${S}. What That Means for ${pt}`, `${S} Has an Options Positioning Problem, and ${pt} Is Where It Shows`],
-    short: [`Shorts Are Still Pressing ${S}. The Data Says That Is a Risk for Them`, `${S}: A Crowded Short and a Stock That Will Not Fall`, `Who Is Still Shorting ${S}? The FINRA Data and the ${pt} Question`],
-    earnings: [`${S} Into Earnings: What the Positioning Shows Before the Report`, `Before ${S} Reports, the Tape Has Already Taken a Side`, `${S} Earnings: The Positioning, the Implied Move and ${pt}`],
-    tape: [`Large Orders Are Moving Through ${S}. The Prints Point Toward ${pt}`, `${S}: The Tape Shows Activity the Chart Does Not`, `Who Is Buying ${S}? Sweeps, Blocks and the Path to ${pt}`],
-    narrative: [`${S} Is Quiet. Is the Market Deciding Something?`, `Few Are Watching ${S}. The Range Suggests They May Want To`, `${S} Is Leaning on a Level, and ${pt} Is What a Break Would Imply`],
-    structure: [`${S} Swept the Stops and Reversed. What Comes Next Points to ${pt}`, `${S}: A Liquidity Sweep, a Structure Break and ${pt} in View`, `Stops Taken in ${S}: Why the Next Leg May Target ${pt}`]
-  }[sheet.angle] || [`${S}: What the Data Shows and What It Implies`];
-  const title = pick(titles, seed);
-  const deks = {
-    gamma: [`Dealers who sold calls must hedge as price moves, and ${who} is where that mechanism is most visible this week.`, `Hedging flows follow a schedule set by the options book. For ${who}, the schedule points toward a level the chart alone does not show.`],
-    short: [`A heavy short position against a stock that is not falling is a position with a deadline. Here is what the data on ${who} shows.`, `Short volume is a clue, not a confession. What the FINRA data does and does not say about ${who}.`],
-    earnings: [`Consensus estimates are public. Positioning is less visible, and it leans one way going into the ${who} report.`, `The report is a binary event. The positioning ahead of it is measurable.`],
-    tape: [`Sweeps and block trades are not typical retail activity. The prints in ${who} show who is trading and how large they are.`, `The chart shows price. The tape shows size. A look at what the prints in ${who} suggest.`],
-    narrative: [`With no single catalyst on the page, the price, range and volume of ${who} are the evidence. What they suggest, and what would disprove it.`, `Quiet trading is not the absence of a story. A measured look at what ${who} is doing and what would change the picture.`],
-    structure: [`A sweep of the lows followed by a break of structure is a recognized sequence. ${who} has just completed it.`, `Price visited the stops, collected them and reversed. What that sequence implies for ${who}, and what would undo it.`]
-  }[sheet.angle] || [`A data-driven look at ${S}.`];
-  const dek = pick(deks, seed + 1);
-  const leadFact = facts[0] ? facts[0].replace(/\.$/, '') : (L.price || '').replace(/\.$/, '');
+  const pt = px(sheet.pt), stop = sheet.stop != null ? px(sheet.stop) : null;
+  const stance = stanceFor(sheet), an = anomalyFor(sheet);
+  const gapTxt = m.gapHi != null ? (m.gapHi >= 1 || sheet.price < 1 ? px(m.gapHi) : '$' + m.gapHi.toFixed(2)) : null, hi20 = m.hi20 != null ? px(m.hi20) : null, lo20 = m.lo20 != null ? px(m.lo20) : null;
+  const trig = sheet.scenario.trigger, conf = sheet.scenario.confirm;
+  /* the headline: a curiosity gap that the article actually delivers on */
+  const byKind = {
+    quietclimb: [`${S} Keeps Climbing and the Volume Isn't Following. That's What Has My Attention`, `${S} Is Rising Without a Crowd. Who Is Buying, and Why Now?`],
+    nearhigh: gapTxt && hi20 ? [`${S} Is Only ${gapTxt} From Its 20-Day High. Here's the Level That Changes Everything`, `${S} Is Knocking on ${hi20}. Why I'm Watching ${pt} Next`] : [],
+    nearlow: lo20 ? [`${S} Is Sitting on ${lo20}. What Happens If It Gives?`, `${S} Keeps Testing ${lo20}. Is Someone Defending It?`] : [],
+    surge: [`${S} Is Moving on ${num(m.relVol) != null ? Number(m.relVol).toFixed(1) + 'x' : 'Heavy'} Volume. What Is the Market Pricing In?`, `Something Is Happening in ${S}. Here's What the Tape Says So Far`],
+    compress: [`${S} Has Gone Quiet. Is the Market Waiting for ${px(Number((trig.match(/\$([\d.]+)/) || [])[1]) || sheet.pt)}?`, `${S} Is Coiling Under Its Own Range. Which Way Does It Break?`],
+    range: [`${S}: What the Tape Is Saying Before the Next Move`, `${S} Looks Ordinary. Is It?`]
+  };
+  const byAngle = {
+    gamma: [`Dealers Are Short Gamma in ${S}. Is ${pt} the Number They Hedge Toward?`, `${S} Has an Options Problem. Is ${pt} Where It Shows?`],
+    short: [`The Shorts in ${S} Keep Pressing. Is That the Mistake?`, `${S} Is a Crowded Short That Will Not Fall. How Does This End?`],
+    earnings: [`${S} Reports Soon. What the Positioning Is Already Saying`, `Before ${S} Reports, the Tape Has Taken a Side. Which One?`],
+    tape: [`Someone Is Working Size in ${S}. What Do the Prints Say?`, `${S}: The Tape Shows What the Chart Does Not. Why It Matters`],
+    structure: [`${S} Swept the Stops and Reversed. Is ${pt} the Next Stop?`, `${S} Took the Lows, Then Took Them Back. What Comes Next?`]
+  };
+  const pool = (byAngle[sheet.angle] || byKind[an.kind] || []).filter(Boolean);
+  const title = pick(pool.length ? pool : [`${S}: What the Tape Is Saying Before the Next Move`], seed).slice(0, 110);
+  const question = (title.match(/[^.?!]*\?/) || [''])[0].trim() || ({ quietclimb: `Is the climb real if the volume isn't following?`, nearhigh: `Does ${S} clear the level, or does it back away?`, nearlow: `Does the floor in ${S} hold?`, surge: `Who is on the other side of this move?`, compress: `Which way does ${S} break?`, range: `What is ${S} telling us before the next move?` })[an.kind];
+  const AS = ANGLE_STORY[sheet.angle] || null; const fillWho = (t) => t.replace(/\{who\}/g, who);
+  const dek = AS ? fillWho(pick(AS.dek, seed + 1)) : pick({
+    quietclimb: [`The price is doing one thing and the volume another. My read on what that gap means, and the level that would prove me wrong.`, `A steady climb with no crowd behind it is either a head start or a trap. Here is which one I think this is.`],
+    nearhigh: [`The stock is close enough to force the issue. My read on whether it does, and what I need to see first.`, `One level stands between ${who} and open air. Here is what I think happens at it.`],
+    nearlow: [`Support is only support until it isn't. My read on ${who}, and the line that tells me I'm wrong.`],
+    surge: [`A move this size usually has a reason, and the reason is rarely the one in the headlines. My read on ${who}.`],
+    compress: [`The range keeps tightening, and tight ranges end. My read on which way ${who} breaks, and what would change my mind.`],
+    range: [`No headline, no catalyst. Just a stock doing something worth reading. My read on ${who}.`]
+  }[an.kind] || [`My read on ${who}, the evidence behind it, and what would prove it wrong.`], seed + 1);
+  /* the lede: the anomaly as a story, then a clean factual line a reader (or a search engine) can quote, then the stance */
   const lede = [
-    `${leadFact}${leadFact ? '.' : ''}`.trim(),
-    /trades at/.test(leadFact) ? '' : (L.price || ''),
-    `The desk's scenario, which is speculative rather than predictive, has ${S} moving ${up ? 'higher' : 'lower'} toward ${pt} (${ptp}) over ${sheet.timeframe}${stop ? `, with ${stop} as the level that would invalidate it` : ''}.`
+    AS ? fillWho(pick(AS.lede, seed + 2)) : pick({
+      quietclimb: [`${who} has been rising day after day, and almost nobody seems to be chasing it. That is the strange part. The price is moving and the volume is not.`, `The price on ${who} says buyers are in control. The volume says they are not in a hurry. I don't think both can be true for long.`],
+      nearhigh: [`${who} is sitting just beneath a level buyers haven't cleared, and the interesting part isn't the price. It's how quietly the stock got there.`, `${who} has run up to a ceiling and stopped. Whether it breaks through or backs away is the whole story.`],
+      nearlow: [`${who} is leaning on a floor it has already tested. How that floor holds is the story, not the price.`, `Support on ${who} is being asked a question it may not have a good answer to.`],
+      surge: [`${who} is moving, and the move is bigger than the news around it. When that happens I want to know who is on the other side.`, `Something changed in ${who}, and the tape noticed before the headlines did.`],
+      compress: [`${who} has gone quiet, and I don't read that as nothing. Ranges this tight don't last.`, `The swings in ${who} keep getting smaller. That is usually the setup, not the end of the story.`],
+      range: [`${who} doesn't look like much at first glance. That's the reason to look twice.`, `No catalyst, no headline, and ${who} is still worth a second look.`]
+    }[an.kind], seed + 2),
+    L.ctxquote || (L.price || ''),
+    `My read: ${stance.toLowerCase()}. ${{ 'Bullish': `Buyers are in control and the evidence backs it, though I still want the level to clear on volume.`, 'Lean bullish': `Buyers are close enough to force the issue, but I want volume before I call it a breakout.`, 'Neutral, waiting on confirmation': `I want confirmation before I call a direction.`, 'Lean bearish': `Sellers have the edge for now, but I want the floor to give before I say more.`, 'Bearish': `The weight of the evidence points down.`, 'Binary, event-driven': `This one belongs to the calendar more than the chart.` }[stance]}`
   ].filter(Boolean);
-  const s1 = [];
-  for (const f of facts.slice(1, 4)) s1.push(f);
-  if (L.intent) s1.push(L.intent.replace('Smart-money read: ', 'Order-flow analysis classifies the activity as '));
-  if (L.dark) s1.push(L.dark.replace('Dark pool: ', 'Off-exchange trading: '));
-  if (L.gamma && sheet.angle !== 'gamma') s1.push(L.gamma.replace('Options: ', 'In options, '));
-  if (L.dtc) s1.push(L.dtc);
-  if (L.shortscore) s1.push(L.shortscore);
-  if (L.earnings) s1.push(L.earnings);
-  /* context: where the stock sits against its own recent history and against the market, then the softer reads (crowd, insiders, patterns, a headline); only what the data carries */
-  const ctx = [];
-  ctx.push(sheet.angle === 'narrative' ? pick([`No single event explains the stock's position, so the history is the evidence.`, `There is no scheduled catalyst in the data. What is left is how the stock has behaved.`, `Nothing in the data points to one event. The price history does the talking.`], seed + 30) : pick([`The price history puts that reading in context.`, `The stock's recent history is the backdrop for it.`, `Set against the stock's own recent history, it looks like this.`], seed + 30));
-  for (const k of ['ctxrange', 'ctxtrend', 'ctxchg', 'ctxstreak', 'ctxvol', 'ctxmove']) if (L[k]) ctx.push(L[k]);
-  if (L.market) ctx.push(L.market.replace('Market backdrop: ', 'Across the broader market, the read is ') + (/bullish/i.test(L.market) ? ' A supportive tape helps a breakout and does not guarantee one.' : /bearish/i.test(L.market) ? ' A weak tape makes a breakout harder to hold.' : ' A mixed tape gives a breakout little help either way.'));
-  if (L.crowd) ctx.push(L.crowd.replace('Crowd sentiment: ', 'Sentiment readings show ') + ' Sentiment tends to matter most at the extremes.');
-  if (L.insiders) ctx.push(L.insiders);
-  if (L.industry) ctx.push(L.industry);
-  if (L.pattern) ctx.push(L.pattern.replace('Chart patterns on the daily: ', 'On the daily chart, technical patterns include '));
-  if (L.news) ctx.push(L.news.replace('Recent headline: ', 'A recent headline reads: ').replace(/\.$/, '') + '. It is reported here as context; this analysis does not establish that it moved the stock.');
-  /* why it matters: one plain sentence of stakes per angle, no number, no claim the data does not carry */
-  const why = { gamma: 'Dealer hedging can add to a move instead of following it. That is why positioning near the large strikes gets attention.', short: 'A crowded short matters only if the stock stops falling. Then covering becomes buying, and buying into thin trading moves the price.', earnings: 'Positioning going into a report shapes the reaction as much as the number does, because the market is trading against what it already expects.', tape: 'Large orders are slow to hide. A buyer working size leaves a trail in the prints before it shows on the chart.', narrative: 'A break on volume and a break without it are read differently. That is why the confirmation condition carries more weight than the trigger.', structure: 'Stops sit at obvious levels, and a sweep shows they were collected. What price does next shows whether the move was a trap or a start.' }[sheet.angle];
-  /* paragraphs of uneven length: the details are folded into groups of one, two or three sentences instead of one line each */
-  const fold = (items) => { const sizes = [2, 1, 3, 1, 2]; const out = []; let i = 0, k = seed % sizes.length; while (i < items.length) { const n = sizes[k % sizes.length]; out.push(items.slice(i, i + n).join(' ')); i += n; k += 1; } return out; };
-  const trig = sheet.scenario.trigger, conf = sheet.scenario.confirm, targ = sheet.scenario.target;
-  const s2 = [
-    ...(why ? [why] : []),
-    pick([
-      `The scenario depends on a sequence. First, ${lower(trig)}. Confirmation would be ${lower(conf)}. If both occur, the scenario target is ${lower(targ)}.`,
-      `Two conditions matter. The first is ${lower(trig)}. The second is ${lower(conf)}. With both in place, the scenario target is ${lower(targ)}.`,
-      `${cap(trig)} would start it, and ${lower(conf)} would confirm it. Only after both does ${lower(targ)} come into play.`
-    ], seed + 12),
-    `${pick([`The horizon is ${sheet.timeframe}.`, `The scenario is framed over ${sheet.timeframe}.`, `${cap(sheet.timeframe)} is the window.`], seed + 13)} ${pick([`Entries are defined by the trigger rather than by the current price, and a move without volume stays unconfirmed.`, `A move without volume does not count. The trigger, not today's price, defines the entry.`, `The trigger defines the entry, not today's price, and a break on thin volume is treated as unconfirmed.`], seed + 14)}`
-  ];
+  /* section one: the anomaly, with the quotable facts and then what I make of them */
+  const ev1 = [];
+  for (const k of ['ctxrange', 'ctxstreak', 'ctxvol', 'ctxmove']) if (L[k]) ev1.push(L[k]);
+  for (const f of facts.filter((x) => !/\b(?:trades|sits) at\b/.test(x)).slice(0, 2)) ev1.push(f);
+  const mean1 = { quietclimb: `What I make of it: a climb on ordinary volume can be accumulation that hasn't been noticed yet, or it can be a market with nobody left to sell. The volume is the tiebreaker, and so far it hasn't picked a side.`, nearhigh: `What I make of it: when a stock stalls under a high without selling off, the sellers up there are either exhausted or being absorbed. Either way the next push decides it.`, nearlow: `What I make of it: a floor that holds on falling volume is a good sign, and a floor that holds only because nobody has pushed it yet is not.`, surge: `What I make of it: heavy volume says someone has a view with size behind it. What I don't know yet is whether that view is right.`, compress: `What I make of it: a shrinking range stores energy, and the break tells you where it goes. I won't guess the direction from the squeeze alone.`, range: `What I make of it: nothing here is loud, and that's the point. The loud setups get crowded. This one hasn't been.` }[an.kind];
+  const s1 = [...fold2(ev1, seed), AS ? AS.mean1 : mean1];
+  /* section two: what the market looks to be pricing in */
+  const ev2 = [];
+  if (L.intent) ev2.push(L.intent.replace('Smart-money read: ', 'Order-flow analysis classifies the activity as '));
+  if (L.dark) ev2.push(L.dark.replace('Dark pool: ', 'Off-exchange trading: '));
+  if (L.gamma && sheet.angle !== 'gamma') ev2.push(L.gamma.replace('Options: ', 'In options, '));
+  if (L.gamma && sheet.angle === 'gamma') ev2.push(L.gamma.replace('Options: ', 'In options, '));
+  if (L.dtc) ev2.push(L.dtc); if (L.shortscore) ev2.push(L.shortscore);
+  if (L.earnings) ev2.push(L.earnings);
+  if (L.market) ev2.push(L.market.replace('Market backdrop: ', 'Across the broader market, the read is '));
+  if (L.crowd) ev2.push(L.crowd.replace('Crowd sentiment: ', 'Sentiment readings show '));
+  if (L.insiders) ev2.push(L.insiders);
+  if (L.pattern) ev2.push(L.pattern.replace('Chart patterns on the daily: ', 'On the daily chart, technical patterns include '));
+  if (L.news) ev2.push(L.news.replace('Recent headline: ', 'A recent headline reads: ').replace(/\.$/, '') + '. I am reporting it as context, not as the reason for the move.');
+  for (const k of ['ctxtrend', 'ctxchg']) if (L[k]) ev2.push(L[k]);
+  const mean2 = ev2.length > 1 ? `What I make of it: ${pick([`the pieces mostly point the same way as the price, which is more than I can say for most setups. None of them is proof.`, `the data agrees with itself more than it argues, and that counts for something. It still falls short of proof.`], seed + 4)}` : `What I make of it: the options and flow data are quiet on this one. That is itself information. It means the move, if it comes, hasn't been positioned for.`;
+  const s2 = ev2.length ? [...fold2(ev2.slice(0, 6), seed + 1), mean2] : [mean2];
+  /* section three: the thing traders are overlooking, chosen from what the data shows */
+  const lookP = (m.volRatio != null && m.volRatio < 1.05) ? `What I think traders are overlooking is the volume. Price can drift to a level on almost nothing, and what it does there needs real participation. Without it, a break is easy to fade.` : (L.gamma && /call wall/i.test(L.gamma)) ? `What I think traders are overlooking is how close the call wall sits to my target. The strike where the calls are stacked can pull price toward it or pin it there, and that makes it a level to watch, not a prediction.` : (L.earnings) ? `What I think traders are overlooking is the calendar. A setup that looks clean on the chart can be rearranged by a report, and the date is already on it.` : `What I think traders are overlooking is how little room the thesis needs. The line that proves it wrong is close and the level it points to is not, which is the kind of imbalance I like to see.`;
+  const s3 = [lookP, pick([`That part doesn't show up on the chart.`, `None of that is visible in the candles.`, `The price alone doesn't show it.`], seed + 5)];
+  /* section four: the conditional call, the invalidation, the counterargument */
+  const ifRight = `If ${S} ${up ? 'posts' : 'prints'} ${lower(String(trig).split(',')[0])} and volume expands, I think ${pt} becomes the next serious test.`;
+  const wrongIf = stop ? `${up ? 'Under' : 'Above'} ${stop}, I'm wrong.` : `If the invalidation level breaks, I'm wrong.`;
   const counter = pick({
-    gamma: [`Open interest shows contracts, not who holds which side, so any dealer positioning map is an inference. Strikes with heavy open interest are also passed without incident often enough that a call wall is a probability, not a barrier.`, `Dealer hedging is estimated, not observed. Flows can be absorbed by ordinary liquidity, and the strongest-looking wall can be crossed without a visible reaction.`],
-    short: [`Short volume is not a short position. A high ratio is routine for liquid names, and short sellers are sometimes simply right. Days to cover is a lagging, twice-monthly figure, and borrow costs affect who leaves first.`, `Heavy short interest does not guarantee a squeeze. A stock that fails at resistance on the same volume can fall further, and the shorts can be correct.`],
-    earnings: [`A single binary event can outweigh any structure. Guidance can move a stock through every level discussed here, and positioning inferred from price is circumstantial.`, `Earnings reactions are driven by guidance and tone, which no chart contains. Implied moves are estimates and often differ from realized ones.`],
-    tape: [`Prints do not carry intent. Large trades can be hedges, rebalances or errors, and the tick rule misclassifies direction often enough to matter. A busy tape can mean a decision or a transition.`, `Off-exchange volume includes ordinary retail flow and market-maker hedging, so a high share is suggestive rather than conclusive.`],
-    narrative: [`A build-up is easier to identify in hindsight than in real time. Many quiet ranges stay quiet, and a stock can lean on a level for weeks without breaking it. No catalyst is identified in this analysis.`, `The read depends on price and volume behavior alone. Without an event that forces the move, the scenario is a hypothesis with a defined exit rather than a conclusion.`],
-    structure: [`Structure-based readings suffer from selection bias: sweeps that worked are remembered, and those that failed are not. Any chart can be annotated to support a story after the fact.`, `A liquidity sweep is a pattern, not a guarantee. The sequence has failed often enough that the invalidation level matters more than the narrative.`]
-  }[sheet.angle] || [`Every read has limits, and this one rests on the data available at the time of writing.`], seed + 15);
-  const s3 = [`${pick([`The scenario breaks on ${lower(sheet.scenario.invalidation)}.`, `The line that matters is ${lower(sheet.scenario.invalidation)}.`], seed + 16)} ${pick([`Past that point the data no longer supports it.`, `Beyond it, the scenario has no support in the data.`, `Once that happens, the idea has failed on its own terms.`], seed + 17)}`, counter];
-  const bottom = pick([
-    `What to watch next: ${lower(sheet.scenario.trigger)}, followed by ${lower(sheet.scenario.confirm)}. A move through ${stop || 'the invalidation level'} would weaken the scenario. This is an educational analysis, not a prediction.`,
-    `The data points toward ${pt} under the conditions described, and away from it if ${stop ? stop : 'the invalidation level'} breaks. The outcome is not determined by any of the readings above.`,
-    `Investors watching ${S} will want to see the trigger, the confirmation and the volume behind both. The scenario target is ${pt}; the exit is ${stop || 'the invalidation level'}.`
-  ], seed + 19);
+    gamma: [`The honest objection is that open interest shows contracts, not who holds which side, so any dealer map is an inference. Strikes with heavy interest get crossed without a ripple more often than people admit.`],
+    short: [`The honest objection is that short volume is not a short position. A high ratio is routine in liquid names, and sometimes the shorts are simply right.`],
+    earnings: [`The honest objection is that one report can outweigh everything above. Guidance can move a stock through every level on this page.`],
+    tape: [`The honest objection is that prints don't carry intent. Large trades can be hedges or rebalances, and the tick rule misreads direction often enough to matter.`],
+    structure: [`The honest objection is selection bias. Sweeps that worked get remembered and the ones that failed don't, so any chart can be annotated into a story afterward.`],
+    narrative: [`The honest objection is that a build-up is obvious in hindsight and ambiguous in real time. Plenty of quiet ranges stay quiet, and nothing here is a catalyst.`, `The honest objection is that this reads on price and volume alone. With no event to force the move, the thesis is a hypothesis with a stop, not a conclusion.`]
+  }[sheet.angle] || [`The honest objection is that every read like this has limits, and mine rests on what the data showed at the time of writing.`], seed + 15);
+  const s4 = [`${ifRight} ${wrongIf}`, counter, `${pick([`That's the whole trade: a level to clear, a line that proves me wrong, and not much in between.`, `So the plan is simple. Wait for the level, wait for the volume, and respect the line.`, `Clear the level on volume and I'm interested. Fail below the line and I'm out of the idea.`], seed + 6)}`];
+  const bottom = pick({
+    'Bullish': [`I'm leaning on the side of the buyers here. The evidence supports it, and the line that proves me wrong is close enough to respect.`, `Of everything on the page, one thing decides it: whether volume shows up at ${hi20 || 'the level'}. I'm betting it does.`],
+    'Lean bullish': [`I lean higher, not loudly. The setup earns the lean and not the conviction, and it gets the conviction only when volume shows up.`, `Buyers are close enough to force the issue. I want the volume before I call it anything more than a lean.`],
+    'Neutral, waiting on confirmation': [`I'm neutral until the stock gives me a reason. The level is clear and so is the line that proves me wrong, so there's nothing to do until one of them gets tested.`, `No edge yet, and I'd rather say so than invent one. The confirmation is the trade.`],
+    'Lean bearish': [`I lean lower, and I'd want the floor to give before I'd say more than that.`, `Sellers have the edge for now. The edge is thin, and the line that proves me wrong is close.`],
+    'Bearish': [`I think the weight of the evidence points down, and the line that proves me wrong is near enough to trade against.`],
+    'Binary, event-driven': [`This one belongs to the calendar, not the chart. Whatever I think of the setup, the report gets a vote, and I'd size accordingly.`]
+  }[stance], seed + 19);
+  const bottomHeading = pick(['Where I land', 'My read', 'What I\'m watching'], seed + 8);
   const bull = [], bear = [];
   (up ? bull : bear).push(`${cap(sheet.angleLabel)} setup with a measured path to ${pt}`);
   if (L.intent) (/buyers|accumulation|markup/.test(L.intent) ? bull : /sellers|distribution|markdown/.test(L.intent) ? bear : bear).push(L.intent.split('.')[0].replace('Smart-money read: ', 'Order-flow read: '));
@@ -228,26 +295,28 @@ function housePiece(sheet, seed = 0) {
   if (L.crowd && /crowded/.test(L.crowd)) bear.push('Crowded positioning raises the bar');
   (up ? bear : bull).push(pick({ gamma: ['Dealer positioning is inferred, not observed', 'Strikes are often crossed without a reaction'], short: ['High short volume is routine in liquid names', 'Borrow cost decides who exits first'], earnings: ['Guidance can override structure', 'Implied moves differ from realized ones'], tape: ['Prints do not carry intent', 'Large trades can be hedges'], narrative: ['No catalyst identified', 'Quiet ranges often stay quiet'], structure: ['Failed sweeps are not remembered', 'Charts can be annotated after the fact'] }[sheet.angle] || ['Every read has limits'], seed + 23));
   const kill = [stop ? `A close through ${stop}.` : 'A break of the invalidation level.', up ? 'Selling absorbs the buying at a key level and price loses it on volume.' : 'Buying absorbs the selling at a key level and price reclaims it on volume.', 'Order flow reverses: the sweeps and blocks turn to the other side.', 'A scheduled event changes the picture before the trigger is reached.'];
-  return { title, dek, lede: lede.filter(Boolean), sections: [
-    { heading: pick([`What the data shows`, `The key details`, `Reading the data`], seed + 20), paragraphs: s1.length ? fold(s1) : [L.price || ''] },
-    { heading: pick([`The context`, `Where the stock sits`, `Against recent history`], seed + 24), paragraphs: fold(ctx) },
-    { heading: pick([`The scenario`, `What would have to happen`, `The path to ${pt}`], seed + 21), paragraphs: s2 },
-    { heading: pick([`What would change the picture`, `Risks and limits`, `Where the scenario fails`], seed + 22), paragraphs: s3 }
-  ], bottom, bull: bull.slice(0, 4), bear: bear.slice(0, 4), kill: kill.slice(0, 4), source: 'house' };
+  return { title, question, stance, dek, lede, sections: [
+    { heading: pick(AS ? AS.heading : an.heading, seed + 20), paragraphs: s1 },
+    { heading: pick([`What the market looks to be pricing in`, `What is already in the price`, `Who is positioned for what`], seed + 21), paragraphs: s2 },
+    { heading: pick([`What I think traders are overlooking`, `The part nobody is talking about`, `The detail that changes the read`], seed + 22), paragraphs: s3 },
+    { heading: pick([`If I'm right, and what proves me wrong`, `The call, and the line that breaks it`, `What happens next, and when I'm out`], seed + 24), paragraphs: s4 }
+  ], ifRight, wrongIf, bottom, bottomHeading, bull: bull.slice(0, 4), bear: bear.slice(0, 4), kill: kill.slice(0, 4), source: 'house' };
 }
+/* paragraphs of uneven length: items folded into groups of two, one, three... */
+function fold2(items, seed = 0) { const sizes = [2, 1, 3, 1, 2]; const out = []; let i = 0, k = Math.abs(seed) % sizes.length; while (i < items.length) { const n2 = sizes[k % sizes.length]; out.push(items.slice(i, i + n2).join(' ')); i += n2; k += 1; } return out; }
 
 /* ---------- the fast path (on demand): the house writer is the body, the model only writes the front ---------- */
 /* A whole piece from the model is 2,500 tokens and a minute. The house writer composes the same shape in milliseconds from the same
  * fact sheet; the model is asked only for the part a reader meets first (headline, standfirst, lede: about 300 tokens, two or three
  * seconds), under the same checks, and loses the race to a clock. Whatever the model does or does not return, the piece is whole. */
-const LEDE_SYSTEM = `You are a senior financial journalist writing under the byline Vaughn McNair (Grandmaster-Obi) for Loop Letters. Never mention the Academy, a Discord app, a data service or any tool or product by name. You rewrite only the front of a piece: the headline, the one-sentence standfirst and the two or three paragraph lede. News has no voice: third person only, never I, me, my, we, our or you, no jokes or asides. Lead with the most newsworthy development. Vary sentence length, keep paragraphs short, prefer concrete language, and keep verified facts, interpretation and uncertainty apart. Never claim a cause for a price move the sheet does not establish. Never invent quotes, sources or details. Avoid canned phrases and exaggeration (it remains to be seen, only time will tell, landscape, testament, massive, stunning, unprecedented). Include the context lines the sheet provides (range, recent sessions, volume, largest move) when they sharpen the lede. Compress data into insight: each number once, inside a sentence that says why it matters; no statistics dump; no symmetrical sentence patterns; no glossary asides; no invented experience or comparisons. The headline is specific, curious and a little contrarian (a question, a tension or a stake) but states nothing the sheet does not support.
-HARD RULES. Use only numbers that appear in the FACT SHEET, exactly as written; never add a number, level, date or statistic. No dashes of any kind (use commas or full stops). No filler words (delve, landscape, leverage, unlock, robust, seamless). No disclaimers, no definitions of basics. Never repeat a sentence. The headline is 40 to 100 characters, contains the ticker with its dollar sign and one number from the sheet. The lede takes a side in its first sentence, states the target and the line that says you are wrong, and reads like a person talking.
+const LEDE_SYSTEM = `GRANDMASTER-OBI MARKET NARRATIVE ENGINE, front only. You write for Vaughn McNair (Grandmaster-Obi) for Loop Letters, and you rewrite only the front of a piece: the headline, the one-sentence standfirst and the two or three paragraph lede. Never mention the Academy, a Discord app, a data service or any tool by name. Start with the story, not the statistics: what is unusual about this stock, what the market seems to be pricing in, what could happen next. Keep fact, interpretation and speculation apart: state a fact plainly and cleanly, then give his read in a separate sentence ("My read: ..."). First person only where it is opinion. Never invent evidence, quotes, anecdotes, memories or emotions; never claim a cause the sheet does not establish. The headline is a curiosity gap the letter delivers on (ticker plus an unusual observation plus an implied question), 40 to 110 characters, with the ticker's dollar sign and one number from the sheet. Keep the stance given. Compress data into insight, each number once, no symmetrical sentence patterns, no glossary asides, no em dashes, no canned phrases or exaggeration.
+HARD RULES. Use only numbers that appear in the FACT SHEET, exactly as written.
 OUTPUT exactly one JSON object: {"title": string, "dek": string, "lede": [string, string, optional string]}. Nothing before or after it.`;
 
 async function polishFront({ ai, fetchImpl, sheet, piece, deadlineMs }) {
   const body = {
     model: ai.fastModel || 'claude-haiku-5-5', max_tokens: 700, system: LEDE_SYSTEM,
-    messages: [{ role: 'user', content: `TICKER: ${sheet.S}\nANGLE: ${sheet.angleLabel}\nLEAN: ${sheet.lean}\nTARGET: ${px(sheet.pt)} (${pct(sheet.ptPct)}) over ${sheet.timeframe}${sheet.stop != null ? `\nINVALIDATION: ${px(sheet.stop)}` : ''}\n\nFACT SHEET:\n${sheetText(sheet)}\n\nCURRENT FRONT (rewrite it in your voice, keep every fact):\nTITLE: ${piece.title}\nDEK: ${piece.dek}\nLEDE:\n${piece.lede.join('\n')}` }]
+    messages: [{ role: 'user', content: `STANCE (keep it): ${piece.stance}\nTICKER: ${sheet.S}\nANGLE: ${sheet.angleLabel}\nLEAN: ${sheet.lean}\nTARGET: ${px(sheet.pt)} (${pct(sheet.ptPct)}) over ${sheet.timeframe}${sheet.stop != null ? `\nINVALIDATION: ${px(sheet.stop)}` : ''}\n\nFACT SHEET:\n${sheetText(sheet)}\n\nCURRENT FRONT (rewrite it in your voice, keep every fact):\nTITLE: ${piece.title}\nDEK: ${piece.dek}\nLEDE:\n${piece.lede.join('\n')}` }]
   };
   /* the clock is enforced twice: the request is aborted at the deadline, and the wait itself is raced so a stalled connection cannot hold the piece */
   let timer = null;
@@ -266,15 +335,15 @@ async function polishFront({ ai, fetchImpl, sheet, piece, deadlineMs }) {
 }
 
 /* ---------- the model writer ---------- */
-const SYSTEM = `You are a senior financial journalist writing a letter under the byline Vaughn McNair (Grandmaster-Obi) for Loop Letters. The letter is his own work: never mention the Academy, a Discord app, a data service or any tool or product by name; the analysis is simply the desk's. Write like an experienced reporter explaining a development to an intelligent general reader, not like software producing a market summary. News has no voice. Write in the third person only: never use I, me, my, we, our or you; no jokes, asides, rhetorical questions or opinions presented as the writer's own. The desk may offer a labelled scenario (a build-up, a move nobody agrees on, a rumor already in the tape); attribute it to the desk's own analysis or scenario and say plainly that it is speculation.
-JOURNALISM RULES. Lead with the most newsworthy development, not a generic introduction. Vary sentence length: concise sentences beside moderately longer explanatory ones; short paragraphs of uneven length. Prefer specific, concrete language. Explain why a move or development matters instead of listing numbers. Keep three things apart and label them in the prose: verified facts (the fact sheet), interpretation (what traders or the data are read to suggest), and uncertainty (what is not known). Never claim an event caused a price move unless the sheet establishes causation; use cautious attribution ("coincided with", "traders may be reading it as", "the data is consistent with"). Never invent quotes, analysts, sources, motives, statistics or colorful details. Keep numbers, dates and names exactly as given. Avoid canned phrases (it remains to be seen, only time will tell, rapidly evolving landscape, underscores the importance, a testament to) and exaggeration (massive, stunning, game-changing, unprecedented). Do not summarize a point twice. If two paragraphs in a row are built the same way, rewrite one. Edit your draft once before answering: cut filler, awkward transitions, restating sentences and any unnecessary conclusion.
-CRAFT. Compress raw data into insight: use each number once, inside a sentence that says why it matters, and expand only the two or three facts that carry the story. Never dump statistics or repeat a figure. No more than six sections, no repeated or template headings, no glossary or explanations of basics (the reader knows what gamma, short interest and dark pools are), one disclaimer at most. Vary rhythm and paragraph length; avoid symmetrical sentence patterns and the cadence "X happens, which means Y, and that causes Z"; vary transitions and let the story move on without a perfect bridge. Keep one consistent voice from the first line to the last. Show judgment through attribution ("the data is consistent with", "the desk reads this as", "traders watching this level will want to see"), never through invented personal experience, memories, feelings or colorful details. Reference past events or comparisons only when the fact sheet contains them.
-CONTEXT. After the lead and the key details, give the reader context: where the stock sits against its own recent history (the sheet's context lines: range, recent sessions, volume, largest move), what the broader market backdrop is, what changed lately, and a comparison only if the sheet supplies one. Say what investors have in front of them without claiming to know why anyone traded. Explain why a fact matters in a clause, not a paragraph.
-RHYTHM. Let a short declarative sentence follow a long one. Let one paragraph in the piece be a single sentence. Do not open two paragraphs in a row the same way, and do not start three sentences in a row with the same word. Keep transitions plain and different from each other.
-HEADLINE. Specific, curious and a little contrarian: a question, a tension or a stake the reader wants resolved. It may be provocative; it may not state anything the fact sheet does not support. It names the ticker with its dollar sign and one number from the sheet.
-STRUCTURE. A strong news lead; the key market and company details; the context investors are reacting to; background or comparison only if the sheet supports it; what investors may watch next, ending on the line that would prove the speculation wrong. Accuracy outranks style: do not add a fact because it would make the story better.
-HARD RULES. Use only numbers that appear in the FACT SHEET, written exactly as given; never add a number, a level, a date or a statistic that is not there. Never repeat a sentence or a phrase. No glossary, no definitions of basics (your readers know what gamma, short interest and dark pools are). No FAQ. No disclaimers of any kind (the publisher adds one). No em dashes. No bullet lists inside paragraphs. No headings like "What the data says", "Key takeaways", "Bottom line" or "Sources". Do not write "X happens, which means Y, and that is what causes Z" cadence; break symmetry. Do not describe yourself or the piece ("this piece argues with itself"). Between 650 and 1000 words in total. Three to five sections, each with a short human heading. Write plain text, no markdown.
-OUTPUT exactly one JSON object with these keys: "title" (string, 40 to 100 characters, must contain the ticker with its dollar sign, must contain one number from the sheet), "dek" (one sentence), "lede" (array of 2 or 3 paragraphs), "sections" (array of 3 to 5 objects with "heading" and "paragraphs", an array of 1 to 4 paragraphs), "bottom" (one closing paragraph of 2 or 3 sentences), "bull" (array of 2 to 4 short phrases for the bull case), "bear" (array of 2 to 4 short phrases for the bear case), "kill" (array of 3 or 4 short lines, each one thing that would end the thesis). No text outside the JSON.`;
+const SYSTEM = `GRANDMASTER-OBI MARKET NARRATIVE ENGINE. You write market letters for Vaughn McNair, whose trading identity is Grandmaster-Obi, for Loop Letters. The letter is his own thinking: never mention the Academy, a Discord app, a data service or any tool or product by name.
+The letter must not summarize market data. It uses verified facts to build one original thesis, prediction or narrative that gives the reader a reason to keep reading. Before writing, decide: what is unusual about this stock today; what the market appears to be pricing in; what could happen next; what evidence supports that reading; what evidence would prove it wrong; what would catch traders off guard. Then choose ONE central narrative and let the structure follow the story. Do not produce the same dashboard sections every time (no "Reading the data / Context / Bull case / Bear case / Scenario / Risks / Bottom line"); the widgets carry the raw numbers, the letter carries the interpretation.
+FACT, INTERPRETATION, SPECULATION. Classify every important statement. FACT is supported by the fact sheet; state it plainly and cleanly, as a sentence a reader or a search engine could quote ("NVIDIA sits at $191.77, $1.15 below its 20-day high of $192.92"), then give the commentary in a separate sentence ("My read: buyers are close enough to force the issue, but I want volume before I call it a breakout"). INTERPRETATION is what Grandmaster-Obi believes the fact means; mark it as his ("my read", "I think", "what I make of it"). SPECULATION is what could happen next if that is right; say that it is speculation. Never invent evidence to strengthen the story.
+OPINION. Give a directional stance, exactly one of: "Bullish", "Lean bullish", "Neutral, waiting on confirmation", "Lean bearish", "Bearish", "Binary, event-driven". Never end on "it could go either way". Uncertainty is fine; meaninglessness is not. Make the prediction conditional ("If NVIDIA clears $192.92 and volume finally expands, I think $199 to $200 becomes the next serious test") and name the line that proves it wrong ("Under $187.94, I'm wrong").
+HIERARCHY. What happened, what matters, what are traders overlooking, what does Grandmaster-Obi think it means, what happens if he is right, what proves him wrong. Original information gain: combine price action, volume, options positioning, gamma, flow, support and resistance, the market backdrop, the stock's own history and any catalyst into one conclusion nobody else has written; do not restate what is available everywhere.
+HEADLINE. A curiosity gap the article actually delivers on: ticker plus an unusual observation plus an implied question, or an unexpected development plus a possible consequence ("NVDA Is Only $1.15 From Its 20-Day High. Here's the Level That Changes Everything"). No fake catalyst, fake institutional activity or exaggerated certainty. 40 to 110 characters, the ticker with its dollar sign, one number from the sheet.
+VOICE. One consistent voice, first person where it is opinion, confident, plain, specific. Vary sentence length; let one paragraph be a single sentence. Do not open consecutive paragraphs the same way. No filler, no padding, no glossary or explanation of basics, one disclaimer at most (the publisher adds it), no symmetrical sentence patterns or "X happens, which means Y, and that causes Z". Do NOT invent mistakes, slang, anecdotes, memories, past trades, emotions or personal experience, and do not try to sound human on purpose: make editorial decisions instead. Never invent quotes, analysts, sources, motives or statistics, and never claim an event caused a price move unless the sheet establishes it. Use the context lines (range, recent sessions, volume, largest move) when they sharpen the story. Avoid canned phrases and exaggeration (it remains to be seen, only time will tell, landscape, testament, massive, stunning, unprecedented).
+HARD RULES. Use only numbers that appear in the FACT SHEET, written exactly as given; never add a number, a level, a date or a statistic that is not there. Never repeat a sentence or a phrase. No em dashes. No headings like "What the data says", "Key takeaways", "Bottom line" or "Sources". Write plain text, no markdown. Between 600 and 1000 words in total, three to five sections each with a short story-led heading.
+OUTPUT exactly one JSON object with these keys: "title", "question" (the one provocative question the letter answers, ending with a question mark), "stance" (one of the six values above), "dek" (one sentence), "lede" (array of 2 or 3 short paragraphs that start with the story, not the statistics), "sections" (array of 3 to 5 objects with "heading" and "paragraphs", an array of 1 to 4 paragraphs), "ifRight" (the conditional prediction, containing "if"), "wrongIf" (the line that proves the thesis wrong, containing "wrong"), "bottomHeading" (2 to 5 words), "bottom" (a memorable closing paragraph of 2 or 3 sentences), "bull" (2 to 4 short phrases), "bear" (2 to 4 short phrases), "kill" (3 or 4 short lines, each one thing that would end the thesis). No text outside the JSON.`;
 
 function userPrompt(sheet) {
   return `TICKER: ${sheet.S}${sheet.name ? ' (' + sheet.name + ')' : ''}\nANGLE: ${sheet.angleLabel}\nLEAN: ${sheet.lean}\nTARGET: ${px(sheet.pt)} (${pct(sheet.ptPct)}) over ${sheet.timeframe}${sheet.stop != null ? `\nINVALIDATION: ${px(sheet.stop)}` : ''}\n\nFACT SHEET (the only facts and the only numbers you may use):\n${sheetText(sheet)}\n\nWrite the piece now.`;
@@ -288,7 +357,7 @@ function parseJson(text) {
 function normalize(n) {
   if (!n || typeof n !== 'object') return null;
   const arr = (v) => (Array.isArray(v) ? v.map(plain).filter(Boolean) : typeof v === 'string' && v.trim() ? [plain(v)] : []);
-  return { title: plain(n.title), dek: plain(n.dek), lede: arr(n.lede), sections: (Array.isArray(n.sections) ? n.sections : []).map((s) => ({ heading: plain(s && s.heading), paragraphs: arr(s && s.paragraphs) })).filter((s) => s.heading && s.paragraphs.length), bottom: plain(n.bottom), bull: arr(n.bull).slice(0, 4), bear: arr(n.bear).slice(0, 4), kill: arr(n.kill).slice(0, 4), source: 'ai' };
+  return { title: plain(n.title), dek: plain(n.dek), lede: arr(n.lede), sections: (Array.isArray(n.sections) ? n.sections : []).map((s) => ({ heading: plain(s && s.heading), paragraphs: arr(s && s.paragraphs) })).filter((s) => s.heading && s.paragraphs.length), bottom: plain(n.bottom), stance: plain(n.stance), question: plain(n.question), ifRight: plain(n.ifRight), wrongIf: plain(n.wrongIf), bottomHeading: plain(n.bottomHeading), bull: arr(n.bull).slice(0, 4), bear: arr(n.bear).slice(0, 4), kill: arr(n.kill).slice(0, 4), source: 'ai' };
 }
 
 function createArticleWriter({ ai = null, fetchImpl = globalThis.fetch, logger = () => {}, now = Date.now, timeoutMs = 120_000, maxTokens = 6000 } = {}) {
@@ -339,4 +408,4 @@ function createArticleWriter({ ai = null, fetchImpl = globalThis.fetch, logger =
   return { enabled, write };
 }
 
-module.exports = { factSheet, validate, housePiece, createArticleWriter, parseJson, normalize, SYSTEM, userPrompt, BANNED };
+module.exports = { STANCES, stanceFor, anomalyFor, factSheet, validate, housePiece, createArticleWriter, parseJson, normalize, SYSTEM, userPrompt, BANNED };

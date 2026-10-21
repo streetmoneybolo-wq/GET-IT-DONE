@@ -35,14 +35,14 @@ test('the checks: new numbers, dashes, repeats, template headings, FAQ and discl
   assert.ok(W.validate({ ...good, lede: ['Short.'], sections: [{ heading: 'a', paragraphs: ['b'] }, { heading: 'c', paragraphs: ['d'] }, { heading: 'e', paragraphs: ['f'] }], bottom: 'g' }, s).reasons.some((r) => r.startsWith('too_short_')));
 });
 
-test('the house writer: every angle validates, four sections plus a close, third person only, no two seeds alike, no sentence twice', () => {
+test('the house writer: every angle validates, four story-led sections plus a close, with a stance, a question, a conditional call and an invalidation, no two seeds alike, no sentence twice', () => {
   for (const angle of ['gamma', 'short', 'earnings', 'tape', 'structure']) {
     const st = { ...story(), angle, lean: angle === 'earnings' ? 'bearish' : 'bullish', facts: story().facts, scenario: story().scenario, timeframe: '1 to 2 weeks' };
     const s = W.factSheet({ story: st, c: base, dossier });
     const a = W.housePiece(s, 7), b = W.housePiece(s, 8);
     const v = W.validate(a, s); assert.deepEqual(v, { ok: true, reasons: [] }, angle + ' ' + v.reasons.join(','));
     assert.equal(a.sections.length, 4); assert.ok(a.lede.length >= 2 && a.bottom && a.bull.length >= 1 && a.bear.length >= 1 && a.kill.length >= 3);
-    assert.ok(!/\b(I|me|my|we|our|you|your)\b/.test([a.title, a.dek, ...a.lede, ...a.sections.flatMap((x) => x.paragraphs), a.bottom].join(' ')), angle + ': news has no voice, so no first or second person');
+    assert.ok(/\b(I|my)\b/.test([...a.lede, ...a.sections.flatMap((x) => x.paragraphs), a.bottom].join(' ')), angle + ': Grandmaster-Obi gives an opinion'); assert.ok(W.STANCES.includes(a.stance) && /\?$/.test(a.question) && /\bif\b/i.test(a.ifRight) && /wrong/i.test(a.wrongIf), angle + ': stance, question, conditional call, invalidation');
     assert.notEqual(a.title + a.dek + a.sections[0].heading, b.title + b.dek + b.sections[0].heading, angle + ' varies by seed');
     assert.ok(a.title.includes('$ABCD'));
   }
@@ -148,16 +148,21 @@ test('the banned list now carries the cliches and exaggerations a news desk woul
   for (const phrase of ['It remains to be seen.', 'Only time will tell.', 'a rapidly evolving market', 'This underscores the importance of', 'a testament to the move', 'a stunning rally', 'an unprecedented run', 'a massive squeeze']) assert.match(phrase, W.BANNED, phrase);
 });
 
-test('the prompts carry the newsroom rules: facts vs interpretation vs uncertainty, no invented causes or quotes, a provocative but supported headline', () => {
-  for (const text of [W.SYSTEM]) for (const must of [/verified facts/i, /interpretation/i, /uncertainty/i, /caused/i, /never invent quotes/i, /contrarian/i, /edit your draft once/i, /what investors may watch next/i]) assert.match(text, must);
+test('the Grandmaster-Obi engine prompt: story first, fact vs interpretation vs speculation, a stance, a conditional call, the invalidation, a curiosity-gap headline, original synthesis, no invented past', () => {
+  for (const must of [/MARKET NARRATIVE ENGINE/, /Grandmaster-Obi/, /not summarize market data/i, /ONE central narrative/i, /FACT, INTERPRETATION, SPECULATION/, /Never invent evidence/i, /"Lean bullish"/, /"Binary, event-driven"/, /Never end on "it could go either way"/, /conditional/i, /proves it wrong|proves him wrong/i, /curiosity gap/i, /Original information gain/i, /Do NOT invent mistakes, slang, anecdotes, memories/i, /never mention the Academy/i, /"stance"/, /"question"/, /"ifRight"/, /"wrongIf"/, /no "Reading the data/i]) assert.match(W.SYSTEM, must);
 });
 
-test('news has no voice: a model draft in the first or second person is refused, and the prompts say so', () => {
+test('Grandmaster-Obi has an opinion and no invented past: a draft needs a stance, a question, a conditional call and an invalidation, and may not invent experience, memories or feelings', () => {
   const s = sheet(); const good = W.housePiece(s, 1);
-  for (const bad of ['I think this runs.', 'We expect a move.', 'My read is long.', 'You should watch the wall.', 'Your edge is the tape.']) assert.ok(W.validate({ ...good, lede: [bad, ...good.lede.slice(1)] }, s).reasons.includes('first_or_second_person'), bad);
-  assert.ok(!W.validate(good, s).reasons.includes('first_or_second_person'));
-  assert.match(W.SYSTEM, /never use I, me, my, we, our or you/i); assert.match(W.SYSTEM, /verified facts/i); assert.match(W.SYSTEM, /never invent quotes/i);
-  for (const phrase of ['It remains to be seen.', 'a stunning rally']) assert.match(phrase, W.BANNED);
+  assert.deepEqual(W.validate(good, s, { minWords: 0 }).reasons.filter((r) => /stance|question|conditional|invalidation|opinion|experience/.test(r)), []);
+  const reasons = (patch) => W.validate({ ...good, ...patch }, s, { minWords: 0 }).reasons;
+  assert.ok(reasons({ stance: 'Could go either way' }).includes('no_stance'));
+  assert.ok(reasons({ question: 'This is a statement.' }).includes('no_question'));
+  assert.ok(reasons({ ifRight: 'NVIDIA is going to $200.' }).includes('no_conditional_call'));
+  assert.ok(reasons({ wrongIf: 'It might fall.' }).includes('no_invalidation'));
+  for (const bad of ['In my experience this setup works.', 'Years ago I traded this exact pattern.', 'It reminds me of 2021.', 'I remember when this happened last time.', "I'm excited about this one.", 'Last week I bought the dip.']) assert.ok(reasons({ lede: [bad, ...good.lede.slice(1)] }).includes('invented_experience'), bad);
+  assert.ok(!reasons({}).includes('invented_experience'));
+  for (const st of W.STANCES) assert.ok(!reasons({ stance: st }).includes('no_stance'), st);
 });
 
 test('the craft rules: the machine cadence and textbook asides are refused, the prompts carry the rules, and the house body has uneven paragraphs with a plain statement of stakes', () => {
@@ -165,7 +170,7 @@ test('the craft rules: the machine cadence and textbook asides are refused, the 
   assert.ok(W.validate({ ...good, lede: ['Dealers hedge as price rises, which means they must buy more shares, and that causes a feedback loop in the stock.', ...good.lede.slice(1)] }, s).reasons.includes('ai_cadence'));
   for (const bad of ['Gamma refers to the rate of change of delta.', 'Short interest is defined as the number of shares sold short.', 'Put simply, the stock is cheap.']) assert.ok(W.validate({ ...good, lede: [bad, ...good.lede.slice(1)] }, s).reasons.includes('glossary_aside'), bad);
   assert.ok(!W.validate(good, s).reasons.some((r) => /cadence|glossary/.test(r)));
-  for (const must of [/compress raw data into insight/i, /each number once|use each number once/i, /no more than six sections/i, /one disclaimer at most/i, /symmetrical/i, /consistent voice/i, /never through invented personal experience/i]) assert.match(W.SYSTEM, must);
+  for (const must of [/one disclaimer at most/i, /symmetrical/i, /consistent voice/i, /no filler, no padding/i, /glossary/i]) assert.match(W.SYSTEM, must);
   const lens = good.sections[0].paragraphs.map((p) => p.split(/\s+/).length); assert.ok(new Set(lens).size >= 2, 'paragraph lengths vary: ' + lens);
   assert.ok(good.sections[0].paragraphs.join(' ').length > 100);
   assert.ok(good.sections.length <= 6 && good.sections.length >= 3);
@@ -194,13 +199,38 @@ test('context from the price history: range, recent sessions, volume and the lar
   for (const k of ['ctxrange', 'ctxvol']) for (const m of L[k].matchAll(/\d[\d.]*/g)) assert.ok(sh.numbers.has(m[0]) || sh.numbers.has(m[0].replace(/\.?0+$/, '')) || Number(m[0]) <= 30, 'carried: ' + m[0]);
   for (let seed = 0; seed < 6; seed++) {
     const piece = W.housePiece(sh, seed);
-    const ctx = piece.sections[1]; assert.match(ctx.heading, /context|sits|recent history/i);
-    assert.match(ctx.paragraphs.join(' '), /60-session range/); assert.ok(ctx.paragraphs.length >= 2);
+    const ctx = piece.sections[0]; assert.match(ctx.paragraphs.join(' '), /60-session range/); assert.ok(ctx.paragraphs.length >= 2);
+    assert.ok(!/^(Reading the data|The context|Bull case|Bear case|Risks and limits)$/i.test(ctx.heading), 'the heading follows the story, not the template: ' + ctx.heading);
     const v = W.validate(piece, sh, { minWords: 0 }); assert.ok(!v.reasons.some((r) => /new_number|cadence|glossary|person|banned|repeated/.test(r)), v.reasons.join(','));
     const words = [piece.title, piece.dek, ...piece.lede, ...piece.sections.flatMap((x) => x.paragraphs), piece.bottom].join(' ').split(/\s+/).length;
     assert.ok(words >= 350 && words <= 1100, 'a full piece, not padded: ' + words);
   }
   const lens = W.housePiece(sh, 3).sections.flatMap((x) => x.paragraphs).map((x) => x.split(/\s+/).length);
   assert.ok(Math.max(...lens) >= 2 * Math.min(...lens), 'paragraph lengths vary: ' + lens.join(','));
-  assert.match(W.SYSTEM, /CONTEXT\./); assert.match(W.SYSTEM, /RHYTHM\./); assert.match(W.SYSTEM, /single sentence/);
+  assert.match(W.SYSTEM, /context lines/i); assert.match(W.SYSTEM, /single sentence/);
+});
+
+test('the narrative is built from an anomaly in the data: the stance follows volume and distance, the headline delivers on what the letter contains, the facts are quotable and the opinion is separate', () => {
+  const mk = (vol, closes, extra = {}) => { const bars = []; let p0 = 100; for (let i = 0; i < 80; i++) { const o = p0, c = closes(i, p0); bars.push({ t: Date.UTC(2026, 6, 1) + i * 86_400_000, o, h: Math.max(o, c) * 1.003, l: Math.min(o, c) * 0.997, c, v: vol(i) }); p0 = c; } return { symbol: 'ANOM', name: 'Anomaly Inc', price: bars[bars.length - 1].c, changePct: 0.3, relVol: 0.9, adv: 1_000_000, daily: bars, ...extra }; };
+  /* a steady climb on flat volume: the quiet climb */
+  const quiet = mk(() => 1_000_000, (i, p) => (i < 60 ? p * (1 + Math.sin(i / 3) * 0.004) : p * 1.004));
+  const sq = E.rankStories([quiet], { force: true })[0]; const sh = W.factSheet({ story: sq, c: quiet, dossier: {} });
+  assert.ok(sh.metrics.upRun >= 5 && sh.metrics.volRatio <= 1.05, JSON.stringify(sh.metrics));
+  assert.equal(W.anomalyFor(sh).kind, 'quietclimb');
+  const piece = W.housePiece(sh, 0);
+  assert.match(piece.title, /Volume|Rising Without a Crowd/); assert.match(piece.lede.join(' '), /volume/i);
+  assert.ok(['Lean bullish', 'Neutral, waiting on confirmation', 'Bullish'].includes(piece.stance));
+  /* the quotable fact is its own sentence, with the numbers, and the opinion comes after it as a separate sentence */
+  const fact = piece.lede.find((l) => /20-day high of \$[\d.]+ and \$[\d.]+ above its 20-day low/.test(l)); assert.ok(fact, 'a clean factual passage: ' + piece.lede.join(' | '));
+  assert.ok(!/\b(I|my)\b/.test(fact), 'the fact has no opinion in it'); assert.match(piece.lede[piece.lede.length - 1], /^My read: /);
+  assert.match(piece.ifRight, /^If \$ANOM .* and volume expands, I think \$[\d.]+ becomes the next serious test\.$/); assert.match(piece.wrongIf, /^(Under|Above) \$[\d.]+, I'm wrong\.$/);
+  assert.equal(W.validate(piece, sh, { minWords: 0 }).reasons.filter((r) => /new_number|stance|question|conditional|invalidation|opinion|experience|brand|cadence/.test(r)).length, 0);
+  /* stance rules: event inside a week is binary; unconfirmed and far from the level is neutral */
+  assert.equal(W.stanceFor({ ...sh, earningsDays: 3 }), 'Binary, event-driven');
+  assert.equal(W.stanceFor({ lean: 'bullish', metrics: { distHighPct: 9, volRatio: 0.8, relVol: 0.9 } }), 'Neutral, waiting on confirmation');
+  assert.equal(W.stanceFor({ lean: 'bullish', metrics: { distHighPct: 1.2, volRatio: 1.3, relVol: 1.5 } }), 'Bullish');
+  assert.equal(W.stanceFor({ lean: 'bearish', metrics: { distLowPct: 1.2, volRatio: 1.3, relVol: 1.5 } }), 'Bearish');
+  assert.equal(W.stanceFor({ lean: 'bearish', metrics: { distLowPct: 2, volRatio: 0.8, relVol: 0.9 } }), 'Lean bearish');
+  /* no template headings, and the sections differ from article to article only by story */
+  for (const seed of [0, 1, 2, 3]) for (const sec of W.housePiece(sh, seed).sections) assert.ok(!/^(Reading the data|The context|The key details|The scenario|Risks and limits|Bull case|Bear case)$/i.test(sec.heading), sec.heading);
 });
