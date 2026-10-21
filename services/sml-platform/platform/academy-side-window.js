@@ -37,6 +37,8 @@
   rules.push(A + '[data-sw-any] main .side>.academy-side-fill{display:none!important}');
   /* the two cards that floated: now ordinary blocks in the column */
   rules.push(A + ' main .side>#smc-card,' + A + ' main .side>#mem-algo-panel,' + A + ' main .side>#intent-panel,' + A + ' main .side>#targets-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;height:auto!important;max-height:none!important;margin:6px 0 10px!important;z-index:auto!important;box-shadow:none!important}');
+  /* S.I.R.E. lives in the column too, as an ordinary block (it used to float over the chart: nothing may sit on the chart) */
+  rules.push(A + ' main .side>#sire-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;max-width:none;height:auto;max-height:56vh;margin:8px 0 0!important;grid-column:auto!important;box-shadow:none}');
   rules.push('#side-win{display:none}');
   rules.push(A + ' #side-win{display:none!important;flex-wrap:wrap;gap:4px;margin:8px 0 6px;padding:0 0 8px;border-bottom:1px solid #16303b}');
   rules.push(A + ' #side-win button{padding:5px 8px;border:1px solid #2b4b5a;border-radius:7px;background:#0d1b25;color:#a9c3d0;font:800 .58rem ui-monospace,monospace;letter-spacing:.05em;cursor:pointer;white-space:nowrap}');
@@ -46,7 +48,11 @@
   const style = document.createElement('style'); style.id = 'academy-side-window'; style.textContent = rules.join('\n'); document.head.appendChild(style);
 
   let bar = null, obs = null;
+  /* the SIRE panel is made inside the chart section by its own script; here it is moved into the quote column, where it takes no chart space */
+  function adoptSire() { const col = side(), sp = byId('sire-panel'); if (col && sp && sp.parentElement !== col && !MQ.matches) col.appendChild(sp); }
+  let adoptTries = 0; (function adoptLoop() { adoptSire(); if (++adoptTries < 120) setTimeout(adoptLoop, 500); })();
   function build() {
+    adoptSire();
     const col = side(); if (!col) return false;
     if (!bar) {
       bar = document.createElement('div'); bar.id = 'side-win'; bar.setAttribute('role', 'tablist'); bar.setAttribute('aria-label', 'Quote and tools');

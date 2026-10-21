@@ -51,6 +51,10 @@
       els[0].parentElement.insertBefore(wrap, els[0]);
     }
     for (const el of els) if (el.parentElement !== wrap) wrap.appendChild(el);
+    /* directly under the chart (desktop): Market Direction, the VIX block and Unusual Volume come before the Indicator Engine and everything else below the chart.
+       The Indicator Engine mounts right after <main> too, so this runs again whenever something lands there. Phones keep them where the phone workspace puts them. */
+    const main = document.querySelector('main');
+    if (main && main.parentElement && !window.matchMedia('(max-width:720px)').matches && wrap.previousElementSibling !== main) main.after(wrap);
   }
 
   /* 1b. Market Direction: the short strip by default, MORE opens the full read (remembered) */
@@ -140,6 +144,7 @@
   function schedule() { if (pending) return; pending = setTimeout(run, 250); }
   run();
   const mo = new MutationObserver(schedule);
+  mo.observe(document.body, { childList: true });
   for (const sel of ['main .side', '#academy-below', '.academy-intelligence']) { const el = document.querySelector(sel); if (el) mo.observe(el, { childList: true, subtree: true, characterData: true }); }
   window.addEventListener('resize', schedule);
   setInterval(paintFill, 12_000);
