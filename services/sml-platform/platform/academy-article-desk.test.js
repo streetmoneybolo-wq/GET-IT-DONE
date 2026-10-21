@@ -35,13 +35,13 @@ test('a topic or a ticker resolves to a subject', () => {
 
 test('the composed piece is a letter, not a report: a lede with a side, at most six sections, the numbers inside sentences, one disclaimer, no glossary, no FAQ, no sentence twice', () => {
   const a = compose();
-  assert.ok(a.sections.length >= 4 && a.sections.length <= 6, 'sections: ' + a.sections.join(' | ')); assert.equal(a.sections[a.sections.length - 1], 'Bottom line');
+  assert.ok(a.sections.length >= 4 && a.sections.length <= 6, 'sections: ' + a.sections.join(' | ')); assert.ok(['Where I land', 'My read', "What I'm watching"].includes(a.sections[a.sections.length - 1]), 'the close is a story-led heading, not Bottom line: ' + a.sections[a.sections.length - 1]);
   assert.ok(!a.sections.some((h) => /what the data says|key takeaways|questions readers ask|glossary|sources|the crowd|insiders and filings/i.test(h)), 'no template headings');
   assert.deepEqual(a.modules, ['board', 'chart', 'countdown', 'bullbear', 'tracker', 'killswitch', 'poll']);
   assert.ok(a.wordCount >= 700 && a.wordCount <= 1500, 'a readable length: ' + a.wordCount);
   const text = a.textHtml.replace(/<[^>]+>/g, ' ').replace(/&#39;/g, "'").replace(/\s+/g, ' ');
   assert.equal((text.match(/not financial advice/gi) || []).length, 1, 'one disclaimer'); assert.ok(!/Not a forecast|LABELLED SPECULATION|argues with itself/i.test(a.bodyHtml), 'no stacked disclaimers, no meta');
-  assert.ok(!/\b(I|me|my|we|our|you|your)\b/.test(text.replace(/\$[A-Z]+ [^.]*\./g, '')), 'news has no voice: no first or second person'); assert.ok(!/—/.test(text), 'no em dash'); assert.ok(!/\b(delve|tapestry|landscape|in conclusion)\b/i.test(text));
+  assert.ok(/\bI(?:'m| think| am)?\b|\bmy read\b/i.test(text), 'Grandmaster-Obi has an opinion'); assert.match(text, /If \$ABCD .* I think/); assert.match(text, /I'm wrong/); assert.ok(!/—/.test(text), 'no em dash'); assert.ok(!/\b(delve|tapestry|landscape|in conclusion)\b/i.test(text));
   const sentences = text.split(/(?<=[.!?])\s+/).map((x) => x.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '')).filter((x) => x.split(' ').length >= 6);
   assert.equal(new Set(sentences).size, sentences.length, 'no sentence appears twice');
   assert.match(a.bodyHtml, /<svg class="mem-chart"/); assert.match(a.bodyHtml, /data-live-endpoint="https:\/\/sml-platform-api\.onrender\.com\/academy-activity\/article-chart"/);
@@ -56,9 +56,9 @@ test('the composed piece is a letter, not a report: a lede with a side, at most 
 test('a narrative from the model is laid out as given: its title, its headings, its bull and bear lines, its kill list', () => {
   const W = require('./academy-article-writer');
   const sheet = W.factSheet({ story: story(), c: base, dossier });
-  const n = { ...W.housePiece(sheet, 5), title: '$ABCD: dealers are short gamma and $13.00 is the strike that matters', dek: 'A dek of my own.', sections: [{ heading: 'What I am watching', paragraphs: ['Paragraph one about $ABCD at $12.40.'] }, { heading: 'Where it goes', paragraphs: ['The path to $13.00.'] }, { heading: 'What makes me wrong', paragraphs: ['A close under $11.80.'] }], bull: ['Dealers short gamma'], bear: ['Earnings in 6 days'], kill: ['Loses $11.80', 'Tape flips', 'Volume dies'], source: 'ai', checked: { ok: true, reasons: [] } };
+  const n = { ...W.housePiece(sheet, 5), title: '$ABCD: dealers are short gamma and $13.00 is the strike that matters', dek: 'A dek of my own.', bottomHeading: 'Where I land', sections: [{ heading: 'What I am watching', paragraphs: ['Paragraph one about $ABCD at $12.40.'] }, { heading: 'Where it goes', paragraphs: ['The path to $13.00.'] }, { heading: 'What makes me wrong', paragraphs: ['A close under $11.80.'] }], bull: ['Dealers short gamma'], bear: ['Earnings in 6 days'], kill: ['Loses $11.80', 'Tape flips', 'Volume dies'], source: 'ai', checked: { ok: true, reasons: [] } };
   const a = compose({ narrative: n });
-  assert.equal(a.title, n.title); assert.equal(a.dek, 'A dek of my own.'); assert.deepEqual(a.sections, ['What I am watching', 'Where it goes', 'What makes me wrong', 'Bottom line']); assert.equal(a.narrative.source, 'ai');
+  assert.equal(a.title, n.title); assert.equal(a.dek, 'A dek of my own.'); assert.deepEqual(a.sections, ['What I am watching', 'Where it goes', 'What makes me wrong', 'Where I land']); assert.equal(a.narrative.source, 'ai');
   assert.match(a.bodyHtml, /<li>Dealers short gamma<\/li>/); assert.match(a.bodyHtml, /<li>Earnings in 6 days<\/li>/); assert.match(a.bodyHtml, /<span>Loses \$11\.80<\/span>/);
   const killAt = a.bodyHtml.indexOf('KILL SWITCH'), wrongAt = a.bodyHtml.indexOf('<h2>What makes me wrong</h2>'); assert.ok(killAt > wrongAt, 'the kill switch sits under the section that names the exit');
 });
@@ -85,7 +85,7 @@ test('the Loop Letters blocks keep dead space out: one tight frame for the figur
   assert.match(glance.css, /\.mem-track-bar i\{left:[\d.]+%\}/); assert.ok(glance.css.startsWith(a.css)); assert.match(glance.css, /\.mem-glance \.mem-board\{grid-template-columns:repeat\(3,1fr\)/);
   assert.equal(glance.height, 131 + 67 + 161 + 16, 'board + countdown + tracker + their gaps, measured at the phone width');
   const thinGlance = compose({ story: story() }); assert.ok(thinGlance.blocks[0].height >= 300);
-  assert.ok(a.blocks.some((b) => b.type === 'heading' && b.text === 'Bottom line')); assert.ok(a.blocks.some((b) => b.type === 'heading' && b.level === 2 && b.text === a.sections[0]));
+  assert.ok(a.blocks.some((b) => b.type === 'heading' && /^(?:Where I land|My read|What I'm watching)$/.test(b.text))); assert.ok(a.blocks.some((b) => b.type === 'heading' && b.level === 2 && b.text === a.sections[0]));
   for (const b of a.blocks.filter((x) => x.type === 'custom_code')) assert.ok(!/<svg|<iframe|<script|<input|<details|style="/.test(b.html), b.id + ' is sanitizer-safe');
   assert.ok(!a.blocks.some((b) => b.type === 'image' || b.id === 'img-chart' || b.id === 'mod-chart'), 'no chart in the body: the cover image at the top is the same scenario poster');
   assert.equal(a.modules.includes('chart'), true, 'the standalone page keeps its live chart');
