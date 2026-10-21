@@ -4141,6 +4141,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           const held = await academySeats.get(me);
           /* ids alone are unreadable, so each seat is labelled where a bot can see the member */
           if (held.ok && held.members.length && academySeatNames) held.members = await academySeatNames(held.members);
+          /* the panel must not guess the team size limits: they are billing's, and configurable */
+          if (held.ok && academySeatsBilling) {
+            held.minSeats = academySeatsBilling.minSeats;
+            held.maxSeats = academySeatsBilling.maxSeats;
+            held.forSale = academySeatsBilling.configured;
+          }
           sendJson(response, 200, held); return;
         }
         if (request.method !== 'POST') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return; }

@@ -2659,6 +2659,9 @@ test('team seats: the owner buys them, hands them out by Discord id, and only th
   const billingCalls = [];
   const academySeatsBilling = {
     webhookConfigured: true,
+    configured: true,
+    minSeats: 5,
+    maxSeats: 1000,
     MAX_BODY_BYTES: 1024,
     checkout: async (ownerId, seats) => { billingCalls.push(['checkout', ownerId, seats]); return { ok: true, url: 'https://checkout.stripe.com/c/pay/cs_1', seats }; },
     portal: async () => ({ ok: false, status: 404, code: 'no_subscription' }),
@@ -2675,6 +2678,8 @@ test('team seats: the owner buys them, hands them out by Discord id, and only th
     let r = await fetch(`${base}/academy-activity/seats`, { headers: h });
     let b = await r.json();
     assert.equal(r.status, 200); assert.equal(b.seats, 0); assert.equal(b.live, false);
+    /* the panel must not guess the team size limits: billing owns them and they are configurable */
+    assert.equal(b.minSeats, 5); assert.equal(b.maxSeats, 1000); assert.equal(b.forSale, true);
 
     /* buying goes through Stripe, and the URL is handed back for the browser to open */
     r = await fetch(`${base}/academy-activity/seats/checkout`, { method: 'POST', headers: j, body: '{"seats":3}' });

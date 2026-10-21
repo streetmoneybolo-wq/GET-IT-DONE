@@ -17,6 +17,7 @@
  *   SML_ACADEMY_SEATS_STRIPE_KEY      falls back to SML_ACADEMY_BILLING_STRIPE_KEY
  *   SML_ACADEMY_SEATS_WEBHOOK_SECRET  comma-separated during a rotation
  *   SML_ACADEMY_SEATS_RETURN_URL      where Checkout and the portal come back to
+ *   SML_ACADEMY_SEATS_MIN             smallest team that can be bought (default 5)
  *
  * The buyer's Discord id travels in subscription metadata
  * (`mem_seats_discord_owner`), so the webhook can bind a subscription to an
@@ -51,6 +52,11 @@ const GRACE_HOURS = 24;
 const LIVE_STATUSES = Object.freeze(['active', 'trialing', 'past_due']);
 /* Checkout links die after this; Stripe's own minimum is 30 minutes. */
 const SESSION_TTL_MINUTES = 35;
+/* The smallest team that can be bought. A floor exists so seats are a TEAM product and never a
+   cheaper way to put one person on Trader: at any sane per-seat price, a team of this size costs
+   more than an individual Trader plan, which is what keeps the two from competing.
+   SML_ACADEMY_SEATS_MIN moves it without a deploy. */
+const DEFAULT_MIN_SEATS = 5;
 
 const text = (v) => String(v == null ? '' : v).trim();
 const csv = (v) => text(v).split(',').map((s) => s.trim()).filter(Boolean);
@@ -58,15 +64,16 @@ const csv = (v) => text(v).split(',').map((s) => s.trim()).filter(Boolean);
 /* PURE: the Checkout Session parameters, so the shape is testable without Stripe.
    `sml_kind` is its own value ('mem_academy_seats'), never the Academy engine's
    'mem_academy', so neither engine's reconciler can mistake the other's rows. */
-function checkoutParams({ priceId, ownerId, seats, maxSeats, returnUrl, nowSeconds }) {
+function checkoutParams({ priceId, ownerId, seats, minSeats = 1, maxSeats, returnUrl, nowSeconds }) {
   const metadata = { sml_kind: 'mem_academy_seats', mem_seats_discord_owner: String(ownerId), mem_seats_v: '1' };
   return {
     mode: 'subscription',
     line_items: [{
       price: priceId,
       quantity: seats,
-      /* the buyer can size the team before paying as well as after */
-      adjustable_quantity: { enabled: true, minimum: 1, maximum: maxSeats }
+      /* the buyer can size the team before paying as well as after, but not below the floor:
+         Stripe enforces this on its own page, so the quantity that comes back is always valid */
+      adjustable_quantity: { enabled: true, minimum: minSeats, maximum: maxSeats }
     }],
     /* no promotion codes: Discord's price-parity rule covers the Academy line */
     allow_promotion_codes: false,
@@ -109,6 +116,12 @@ function createSeatsBilling({ env = process.env, seats = null, stripe = null, no
   const webhookSecrets = csv(env.SML_ACADEMY_SEATS_WEBHOOK_SECRET);
   const returnUrl = text(env.SML_ACADEMY_SEATS_RETURN_URL) || 'https://stockmarketloop.com/academy/';
   const maxSeats = (seats && seats.MAX_SEATS) || 1000;
+  const minSeats = (() => {
+    const raw = Number(text(env.SML_ACADEMY_SEATS_MIN));
+    if (!text(env.SML_ACADEMY_SEATS_MIN)) return DEFAULT_MIN_SEATS;
+    if (!Number.isInteger(raw) || raw < 1 || raw > maxSeats) { logger('warn', 'academy_seats_min_invalid', { value: text(env.SML_ACADEMY_SEATS_MIN).slice(0, 12) }); return DEFAULT_MIN_SEATS; }
+    return raw;
+  })();
 
   const priceOk = PRICE_ID.test(priceId);
   if (priceId && !priceOk) logger('warn', 'academy_seats_price_invalid', { priceId: priceId.slice(0, 24) });
@@ -137,14 +150,14 @@ function createSeatsBilling({ env = process.env, seats = null, stripe = null, no
     if (!configured) return { ok: false, status: 503, code: 'seats_billing_unconfigured' };
     if (!SNOWFLAKE.test(owner)) return { ok: false, status: 400, code: 'invalid_owner' };
     const count = Number(wanted);
-    if (!Number.isInteger(count) || count < 1 || count > maxSeats) return { ok: false, status: 400, code: 'invalid_seats' };
+    if (!Number.isInteger(count) || count < minSeats || count > maxSeats) return { ok: false, status: 400, code: 'invalid_seats', minSeats, maxSeats };
 
     const held = await seats.get(owner);
     if (held.ok && held.live) return { ok: false, status: 409, code: 'already_subscribed', seats: held.seats };
 
     try {
       const session = await api().createCheckoutSession(
-        checkoutParams({ priceId, ownerId: owner, seats: count, maxSeats, returnUrl, nowSeconds: Math.floor(now() / 1000) }),
+        checkoutParams({ priceId, ownerId: owner, seats: count, minSeats, maxSeats, returnUrl, nowSeconds: Math.floor(now() / 1000) }),
         /* one open session per owner per seat count per hour */
         `seats-checkout-${owner}-${count}-${Math.floor(now() / 3600_000)}`
       );
@@ -254,9 +267,9 @@ function createSeatsBilling({ env = process.env, seats = null, stripe = null, no
   }
 
   return Object.freeze({
-    configured, webhookConfigured, priceId: priceOk ? priceId : null, returnUrl, graceHours: GRACE_HOURS,
+    configured, webhookConfigured, priceId: priceOk ? priceId : null, returnUrl, graceHours: GRACE_HOURS, minSeats, maxSeats,
     checkout, portal, webhook, applySubscription, resync, MAX_BODY_BYTES
   });
 }
 
-module.exports = { createSeatsBilling, checkoutParams, readSubscription, GRACE_HOURS, LIVE_STATUSES };
+module.exports = { createSeatsBilling, checkoutParams, readSubscription, GRACE_HOURS, LIVE_STATUSES, DEFAULT_MIN_SEATS };

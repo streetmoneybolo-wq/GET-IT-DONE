@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createSeatsBilling, checkoutParams, readSubscription, GRACE_HOURS } = require('./academy-seats-billing');
+const { createSeatsBilling, checkoutParams, readSubscription, GRACE_HOURS, DEFAULT_MIN_SEATS } = require('./academy-seats-billing');
 const { createSeats, refFor } = require('./academy-seats');
 const { createPassStore } = require('./academy-passes');
 const { sign } = require('./stripe-webhook');
@@ -57,9 +57,10 @@ const envelope = (type, object, created = Math.floor(NOW / 1000)) =>
 const activeFor = (passStore, memberId, at = new Date(NOW)) => passStore.active(memberId, at, 'academy');
 
 test('the Checkout Session sells the seat count as the quantity, and can be resized before paying', () => {
-  const params = checkoutParams({ priceId: PRICE, ownerId: OWNER, seats: 5, maxSeats: 1000, returnUrl: 'https://x.test/a', nowSeconds: 1000 });
+  const params = checkoutParams({ priceId: PRICE, ownerId: OWNER, seats: 5, minSeats: 5, maxSeats: 1000, returnUrl: 'https://x.test/a', nowSeconds: 1000 });
   assert.equal(params.mode, 'subscription');
-  assert.deepEqual(params.line_items, [{ price: PRICE, quantity: 5, adjustable_quantity: { enabled: true, minimum: 1, maximum: 1000 } }]);
+  assert.deepEqual(params.line_items, [{ price: PRICE, quantity: 5, adjustable_quantity: { enabled: true, minimum: 5, maximum: 1000 } }],
+    'Stripe enforces the floor on its own page, so the quantity that comes back is always valid');
   assert.equal(params.metadata.mem_seats_discord_owner, OWNER);
   assert.equal(params.subscription_data.metadata.mem_seats_discord_owner, OWNER, 'the binding must live on the subscription, which is what the webhook sees');
   assert.equal(params.metadata.sml_kind, 'mem_academy_seats', 'never the Academy engine\'s own sml_kind');
@@ -202,25 +203,55 @@ test('another product on the same webhook endpoint is ignored, not failed', asyn
 
 test('checkout refuses a second subscription and points at the portal instead', async () => {
   const { billing, seats } = harness();
-  const fresh = await billing.checkout(OWNER, 3);
+  const fresh = await billing.checkout(OWNER, 5);
   assert.equal(fresh.ok, true);
   assert.ok(fresh.url.startsWith('https://checkout.stripe.com/'));
 
-  await deliver(billing, envelope('customer.subscription.created', stripeSub({ quantity: 3 })));
-  const again = await billing.checkout(OWNER, 5);
+  await deliver(billing, envelope('customer.subscription.created', stripeSub({ quantity: 6 })));
+  const again = await billing.checkout(OWNER, 9);
   assert.equal(again.ok, false);
   assert.equal(again.code, 'already_subscribed');
-  assert.equal(again.seats, 3, 'and says what they already have');
-  assert.equal((await seats.get(OWNER)).seats, 3);
+  assert.equal(again.seats, 6, 'and says what they already have');
+  assert.equal((await seats.get(OWNER)).seats, 6);
 });
 
 test('checkout and the portal refuse nonsense', async () => {
   const { billing } = harness();
-  assert.equal((await billing.checkout('nope', 1)).code, 'invalid_owner');
+  assert.equal((await billing.checkout('nope', 5)).code, 'invalid_owner');
   assert.equal((await billing.checkout(OWNER, 0)).code, 'invalid_seats');
-  assert.equal((await billing.checkout(OWNER, 1.5)).code, 'invalid_seats');
+  assert.equal((await billing.checkout(OWNER, 5.5)).code, 'invalid_seats');
   assert.equal((await billing.checkout(OWNER, 99999)).code, 'invalid_seats');
   assert.equal((await billing.portal(OWNER)).code, 'no_subscription', 'nobody to send to Stripe yet');
+});
+
+test('seats are a team product: a team smaller than the floor cannot be bought, and the floor is configurable', async () => {
+  const { billing } = harness();
+  assert.equal(billing.minSeats, DEFAULT_MIN_SEATS);
+  assert.equal(DEFAULT_MIN_SEATS, 5, 'five is the shipped floor');
+
+  /* one or two seats would undercut an individual Trader plan, so Stripe is never asked */
+  for (const n of [1, 2, 3, 4]) {
+    const out = await billing.checkout(OWNER, n);
+    assert.equal(out.ok, false, String(n));
+    assert.equal(out.code, 'invalid_seats');
+    assert.equal(out.minSeats, 5, 'the refusal says what the floor is, so the panel can too');
+  }
+  assert.equal((await billing.checkout(OWNER, 5)).ok, true);
+
+  /* and it moves without a deploy */
+  const ten = harness({ env: { ...ENV, SML_ACADEMY_SEATS_MIN: '10' } });
+  assert.equal(ten.billing.minSeats, 10);
+  assert.equal((await ten.billing.checkout(OWNER, 9)).code, 'invalid_seats');
+  assert.equal((await ten.billing.checkout(OWNER, 10)).ok, true);
+  const [, params] = ten.calls.find(([kind]) => kind === 'checkout');
+  assert.equal(params.line_items[0].adjustable_quantity.minimum, 10);
+
+  /* a bad value falls back to the shipped floor rather than letting anything through */
+  for (const bad of ['0', '-3', 'lots', '2.5', '999999']) {
+    const h = harness({ env: { ...ENV, SML_ACADEMY_SEATS_MIN: bad } });
+    assert.equal(h.billing.minSeats, DEFAULT_MIN_SEATS, bad);
+    assert.ok(h.logs.some(([event]) => event === 'academy_seats_min_invalid'), bad);
+  }
 });
 
 test('the portal opens on the customer Stripe told us about', async () => {
@@ -274,7 +305,7 @@ test('a Stripe outage during checkout is reported, not swallowed as success', as
       retrieveSubscription: async () => stripeSub()
     }
   });
-  const out = await billing.checkout(OWNER, 2);
+  const out = await billing.checkout(OWNER, 6);
   assert.equal(out.ok, false);
   assert.equal(out.code, 'checkout_failed');
   assert.ok(logs.includes('academy_seats_checkout_failed'));

@@ -24,7 +24,10 @@
 
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ID = /^\d{15,25}$/;
-  const S = { open: false, busy: false, msg: '', data: null, loaded: '', want: 5 };
+  /* the floor and the ceiling come from the server (billing owns them); these are only what to
+     show before the first answer arrives */
+  const S = { open: false, busy: false, msg: '', data: null, loaded: '', want: 5, min: 5, max: 200 };
+  const lo = () => S.min, hi = () => S.max;
 
   const css = document.createElement('style');
   css.textContent = '#seats-btn{margin-left:4px;padding:5px 9px;border:1px solid #1f6a52;border-radius:7px;background:#08201a;color:#7fe8c0;font:800 .64rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer;display:none}#seats-btn.on{display:inline-block}#seats-btn b{color:#fff}'
@@ -82,7 +85,12 @@
   async function load(force) {
     const t = token(); if (!t || (!force && S.loaded === t)) return;
     const r = await api('seats');
-    if (r && r.ok) { S.loaded = t; S.data = r; if (r.seats > 0) S.want = r.seats; }
+    if (r && r.ok) {
+      S.loaded = t; S.data = r;
+      if (Number.isInteger(r.minSeats) && r.minSeats > 0) S.min = r.minSeats;
+      if (Number.isInteger(r.maxSeats) && r.maxSeats > 0) S.max = r.maxSeats;
+      S.want = Math.min(hi(), Math.max(lo(), r.seats > 0 ? r.seats : S.want));
+    }
     reflect();
     if (S.open) paint();
   }
@@ -128,7 +136,7 @@
       html += '<h6>WHAT A SEAT IS</h6>'
         + '<p class="empty">One seat is one member, for a month. They get the <b>Trader</b> edition: the chart, every desk, the scanner, the alerts and the rooms — everything that reads the market. Seats do not include the Analyst side (publishing, Click-to-Alert into your own server, the Article Desk, charging for your alerts), so your people can still buy that themselves.</p>'
         + '<h6>HOW MANY</h6>'
-        + '<div class="qty"><input data-want type="number" min="1" max="200" value="' + esc(S.want) + '"><small>seats, billed monthly. You can change this later; Stripe prorates it.</small></div>'
+        + '<div class="qty"><input data-want type="number" min="' + lo() + '" max="' + hi() + '" value="' + esc(S.want) + '"><small>seats, billed monthly, ' + lo() + ' at the least. You can change this later; Stripe prorates it.</small></div>'
         + '<div class="row"><button data-buy="1">BUY SEATS</button></div>'
         + '<p class="note">You pick who sits in them after you pay, and you can move a seat to someone else at any time. Payment is taken by Stripe in your browser, not in Discord.</p>';
     }
@@ -153,7 +161,7 @@
       no_active_subscription: 'There is no live seat subscription on this account.',
       no_subscription: 'Nothing to manage yet — buy seats first.',
       invalid_member: 'That is not a Discord user id. Right-click the member in Discord and Copy User ID.',
-      invalid_seats: 'Pick between 1 and 200 seats.',
+      invalid_seats: 'Pick between ' + lo() + ' and ' + hi() + ' seats.',
       no_session: 'Sign in to the Academy first.',
       no_connection: 'No connection. Try again.'
     };
@@ -169,7 +177,7 @@
     if (t.dataset.buy) {
       const input = card.querySelector('[data-want]');
       const n = Math.round(Number(input && input.value));
-      if (!Number.isFinite(n) || n < 1 || n > 200) { S.msg = 'Pick between 1 and 200 seats.'; paint(); return; }
+      if (!Number.isFinite(n) || n < lo() || n > hi()) { S.msg = 'Pick between ' + lo() + ' and ' + hi() + ' seats.'; paint(); return; }
       S.want = n;
       void act(async () => {
         const r = await api('seats/checkout', 'POST', { seats: n });
