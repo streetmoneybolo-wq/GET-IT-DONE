@@ -812,3 +812,39 @@ test('the Analyst level carries Click-to-Alert, with no subscription role', asyn
   const off = createClickAlertService({ ...base });
   assert.equal((await off.entitlement('258456581000000000')).configured, false);
 });
+
+/* ---------- the midday report ---------- */
+test('the midday report reads today\'s alerts from entry to now, marks targets and stops, and posts with a four-sentence free-trial pitch', async () => {
+  const store = CA.createClickAlertStore(), posts = [];
+  const directory = { guildsFor: async () => [], sendableChannels: async () => [], postingIn: async () => ({ guildId: GUILD, userCanSend: true, botCanSend: true, mentionEveryone: true, userCanAttach: false, botCanAttach: false }), post: async (c, body) => { posts.push({ channelId: c, body }); return { id: String(posts.length).padStart(18, '8'), channelId: c }; } };
+  const svc = CA.createClickAlertService({
+    getBars: async (s, tf) => ({ bars: tf === '1D' ? D : tf === '1W' ? D.filter((_, i) => i % 5 === 4) : tf === '15m' ? intraday(200, lastClose, 9e5) : intraday(200, lastClose) }),
+    directory, store, freeUserIds: [USER], trialLink: 'https://example.test/academy-activity/trial'
+  });
+  await store.record({ userId: USER, guildId: GUILD, channelId: CHAN, messageId: '1', symbol: 'TEST', side: 'long', entry: lastClose * 0.9, target: lastClose * 0.95, stop: lastClose * 0.5, horizon: 'swing', confidence: 'medium' });
+  await store.record({ userId: USER, guildId: GUILD, channelId: CH2, messageId: '2', symbol: 'TEST', side: 'long', entry: lastClose * 0.9, target: lastClose * 1.3, stop: null, horizon: 'swing', confidence: 'medium' });
+  await store.record({ userId: USER, guildId: GUILD, channelId: CHAN, messageId: '3', symbol: 'TEST exit', side: 'long', entry: 1, target: 2, stop: null, horizon: 'swing', confidence: 'n/a' });
+  await store.record({ userId: 'someone-else', guildId: GUILD, channelId: CHAN, messageId: '4', symbol: 'OTHER', side: 'long', entry: 5, target: 6, stop: null, horizon: 'swing', confidence: 'medium' });
+  const pre = await svc.middayReport(U, {});
+  assert.equal(pre.ok, true); assert.equal(pre.stats.alerts, 1, 'one line per stock, only this member\'s alerts, no exit rows');
+  assert.equal(pre.stats.up, 1); assert.deepEqual(pre.channels.map((c) => c.id).sort(), [CHAN, CH2].sort());
+  assert.match(pre.text, /𝐌𝐈𝐃𝐃𝐀𝐘 𝐑𝐄𝐏𝐎𝐑𝐓/); assert.match(pre.text, /𝐓𝐄𝐒𝐓/); assert.ok(!/OTHER/.test(pre.text)); assert.ok(!pre.text.startsWith('@everyone'));
+  assert.equal(posts.length, 0, 'a preview posts nothing');
+  const promo = pre.text.split('\n').find((l) => l.startsWith('🔥 ')).slice(3);
+  assert.equal(promo.split(/(?<=[.?!])\s+/).length, 4, 'four sentences');
+  assert.match(promo, /free trial/); assert.match(promo, /entire Discord server/); assert.match(promo, /MEM Academy/); assert.match(promo, /\$1K to \$100K challenge/);
+  assert.match(pre.text, /https:\/\/example\.test\/academy-activity\/trial/);
+  const sent = await svc.middayReport(U, { post: true, mention: true });
+  assert.equal(sent.ok, true); assert.equal(sent.posted, 2); assert.deepEqual(posts.map((p) => p.channelId).sort(), [CHAN, CH2].sort());
+  assert.ok(posts[0].body.content.startsWith('@everyone')); assert.equal(posts[0].body.message_reference, undefined, 'a report is not a reply');
+  const none = await svc.middayReport({ userId: USER + '9', displayName: 'X' }, { post: true });
+  assert.equal(none.ok, false);
+});
+
+test('a quiet morning still gets a report, and the format caps the list', () => {
+  const F = require('./academy-alert-format');
+  const empty = F.formatMiddayReport({ rows: [], mention: false });
+  assert.match(empty, /No alerts went out/); assert.match(empty, /free trial/);
+  const many = F.formatMiddayReport({ rows: Array.from({ length: 25 }, (_, i) => ({ ticker: 'T' + String.fromCharCode(65 + i), side: 'long', entry: 10, price: 10 + i / 10, target: 12, movePct: i, state: 'open', progress: 10 })) });
+  assert.match(many, /…and 15 more\./); assert.ok(many.length < 2000, 'fits a Discord message: ' + many.length);
+});

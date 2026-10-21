@@ -3359,6 +3359,26 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
        (day / swing / mid / long), and the alert is posted to a channel the member can post in, in GrandMaster-Obi's layout. */
     /* The alerts desk's two buttons: New PT (a PT SMASHED post with a higher target) and Sell (TAKE PROFITS), posted to the alert's own
        channel as a reply to the newest post on that stock. The member's own alerts, or any alert for the owner. */
+    /* The midday report button on the alerts desk: a preview of what today's alerts did, then (post: true) the same text posted to the channels they went to */
+    if (request.method === 'POST' && path === '/academy-activity/click-alert/midday') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!academyClickAlert || typeof academyClickAlert.middayReport !== 'function') { sendJson(response, 503, { ok: false, error: 'click_alert_disabled' }); return; }
+      if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+      const body = await readRequestBody(request, 2048);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      let input; try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+      try {
+        const out = await academyClickAlert.middayReport({ userId: session.userId, displayName: session.displayName }, { post: !!(input && input.post), channelIds: input && input.channelIds, mention: !!(input && input.mention), asMe: !(input && input.asMe === false) });
+        if (!out.ok) { sendJson(response, out.status || 400, { ok: false, error: out.code, ...(out.detail ? { detail: out.detail } : {}) }); return; }
+        sendJson(response, 200, out);
+      } catch (error) {
+        logger('error', 'academy_midday_report_failed', { error });
+        sendJson(response, 503, { ok: false, error: 'temporarily_unavailable' });
+      }
+      return;
+    }
     if (request.method === 'POST' && path === '/academy-activity/click-alert/desk') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -5993,6 +6013,7 @@ async function main() {
   };
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
     getBars: getAcademyCandles, directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
+    trialLink: academyTrial && academyTrial.configured ? academyTrial.link : '',
     /* Click-to-Alert rides with the Analyst level: an Analyst posts it into their own server, so paying for
        Analyst is entitlement enough and the separate subscription role is no longer the only way in. The tier
        is read live (roles, Loop Bucks pass, Discord entitlement), so an ended Analyst stops posting at once. */
