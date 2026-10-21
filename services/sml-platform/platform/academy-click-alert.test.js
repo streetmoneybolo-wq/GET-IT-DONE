@@ -792,3 +792,23 @@ test('after a dragged PT the next update is routed from the new target, and a sa
   const after = await svc.send(U, { symbol: 'TEST', target: lastClose * 1.3, mode: 'smashed', images: false });
   assert.equal(after.code, 'invalid_channel', 'closed: no tracked alert to route to');
 });
+
+test('the Analyst level carries Click-to-Alert, with no subscription role', async () => {
+  const { createClickAlertService } = require('./academy-click-alert');
+  const base = { getBars: async () => [], directory: null, academyGuildId: '', roleIds: [], passes: null };
+
+  /* an Analyst is entitled on their level alone */
+  const yes = createClickAlertService({ ...base, analyst: async () => true });
+  const okRes = await yes.entitlement('258456581000000000');
+  assert.equal(okRes.configured, true, 'an analyst checker alone configures the service');
+  assert.equal(okRes.entitled, true);
+  assert.equal(okRes.via, 'analyst');
+
+  /* a Trader is not */
+  const no = createClickAlertService({ ...base, analyst: async () => false });
+  assert.equal((await no.entitlement('258456581000000000')).entitled, false);
+
+  /* and with no analyst checker and nothing else set, the service stays off as before */
+  const off = createClickAlertService({ ...base });
+  assert.equal((await off.entitlement('258456581000000000')).configured, false);
+});

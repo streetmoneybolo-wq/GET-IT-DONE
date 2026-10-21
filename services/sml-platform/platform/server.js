@@ -22,7 +22,7 @@ const paypalWebhookModule = require('./paypal-webhook');
 const discordInteractionsModule = require('./discord-interactions');
 const dailySocialPayoutsModule = require('./dsp-interactions');
 const connectMigration = require('./connect-migration');
-const { createAcademyAccess, createIdentityAccess, createAcademyContentGate } = require('./academy-access');
+const { createAcademyAccess, createIdentityAccess, createAcademyContentGate, ANALYST_TIERS } = require('./academy-access');
 const { createLoopKickBridge } = require('./loop-kick-bridge');
 const { createLoopKickConnect } = require('./loop-kick-connect');
 const { createAcademyOAuth, createBillingHandoff } = require('./academy-oauth');
@@ -2105,9 +2105,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     return session && session.ok ? (session.tier || 'member') : null;
   };
   const tierEntitled = (tier) => tier === 'member' || tier === 'academy' || tier === 'trader';
-  /* Analyst level: the institutional data, the member's own alert chart and the right to charge for it.
-     Role holders (member/academy) keep everything they had; a 'trader' SKU buyer does not reach these. */
-  const tierAnalyst = (tier) => tier === 'member' || tier === 'academy';
+  /* Analyst level: the publishing side — the member's own alert chart and seller tools, Click-to-Alert into
+     their own server, and the Article Desk. Role holders (member/academy) keep everything they had; a
+     'trader' SKU buyer reads the market but does not reach these. ANALYST_TIERS is shared with main(). */
+  const tierAnalyst = (tier) => ANALYST_TIERS.includes(tier);
   /* True when a live-data request may continue; otherwise the refusal is sent. */
   const allowGatedSymbol = (request, response, symbol) => {
     if (!contentGateOn) return true;
@@ -5967,6 +5968,10 @@ async function main() {
   };
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
     getBars: getAcademyCandles, directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
+    /* Click-to-Alert rides with the Analyst level: an Analyst posts it into their own server, so paying for
+       Analyst is entitlement enough and the separate subscription role is no longer the only way in. The tier
+       is read live (roles, Loop Bucks pass, Discord entitlement), so an ended Analyst stops posting at once. */
+    analyst: async (userId) => ANALYST_TIERS.includes(await academyTierLive(String(userId || '')).catch(() => '')),
     /* posting caps (Discord posts, per member per hour / per day, per channel per hour); unset = the service defaults, 0 = no cap */
     limits: { userHour: process.env.SML_CLICK_ALERT_USER_HOUR, userDay: process.env.SML_CLICK_ALERT_USER_DAY, channelHour: process.env.SML_CLICK_ALERT_CHANNEL_HOUR },
     /* the member is waiting on this chain: ask the site directly at interactive priority rather than through the alert desk's

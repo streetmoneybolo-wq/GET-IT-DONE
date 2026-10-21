@@ -383,7 +383,7 @@ function createClickAlertStore({ pool = null } = {}) {
   return { record, count, last, recent, trackedPosts, persistent: !!db };
 }
 
-function createClickAlertService({ getBars, chain = null, chainExpiry = null, expirations = null, chainDetail = null, catalysts = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
+function createClickAlertService({ getBars, chain = null, chainExpiry = null, expirations = null, chainDetail = null, catalysts = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, analyst = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
   limits = {}, waits = {} } = {}) {
   /* ---------- reliability: every input a read waits on has a budget ----------
      A read used to wait as long as its slowest input took (a stuck candle feed, a slow Discord role lookup, a database that was
@@ -402,8 +402,11 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   const capOf = (v, dflt) => (v === 0 || v === '0' ? 0 : Number(v) > 0 ? Number(v) : dflt);
   const lim = { userHour: capOf(limits.userHour, 30), userDay: capOf(limits.userDay, 200), channelHour: capOf(limits.channelHour, 90) };
   const byRole = !!(SNOWFLAKE.test(String(academyGuildId)) && roles.size), byPass = !!(passes && passes.configured);
+  /* The Analyst edition carries Click-to-Alert: an Analyst runs it in their own server, so paying for that level
+     is entitlement enough and no separate subscription role is needed. */
+  const byAnalyst = typeof analyst === 'function';
   const free = freeUserIds instanceof Set ? freeUserIds : new Set(freeUserIds || []);
-  const configured = byRole || byPass || free.size > 0;
+  const configured = byRole || byPass || byAnalyst || free.size > 0;
 
   /* ---------- speed: one answer per question, shared and remembered briefly ----------
      Every read used to ask Discord, the bars, the options chain, earnings and news again, one after another. Now a question already
@@ -450,6 +453,8 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     if (free.has(String(userId))) return { configured: true, entitled: true, via: 'owner' };
     /* a live Loop Bucks pass is as good as the subscription role */
     if (byPass && await passes.hasActive(userId).catch(() => false)) return { configured: true, entitled: true, via: 'loopbucks' };
+    /* so is the Analyst level, which includes Click-to-Alert */
+    if (byAnalyst && await analyst(userId).catch(() => false)) return { configured: true, entitled: true, via: 'analyst' };
     if (!byRole) return { configured: true, entitled: false };
     if (!directory || typeof directory.memberRolesLive !== 'function') return { configured: true, entitled: false, reason: 'directory_unavailable' };
     let held, late = false;

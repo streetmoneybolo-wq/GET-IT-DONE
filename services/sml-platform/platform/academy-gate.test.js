@@ -757,8 +757,10 @@ test('a Trader session reads the market but cannot take the Analyst edition or s
   const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
   assert.ok(src.includes("const tierEntitled = (tier) => tier === 'member' || tier === 'academy' || tier === 'trader';"),
     'a trader buyer reads the market like any paid member');
-  assert.ok(src.includes("const tierAnalyst = (tier) => tier === 'member' || tier === 'academy';"),
-    'analyst level is separate');
+  assert.ok(src.includes('const tierAnalyst = (tier) => ANALYST_TIERS.includes(tier);'),
+    'analyst level is separate, from the one shared list');
+  assert.ok(src.includes('analyst: async (userId) => ANALYST_TIERS.includes(await academyTierLive('),
+    'Click-to-Alert accepts the Analyst level, read live');
   assert.ok(src.includes("if (String(body.edition || '').toLowerCase() === 'analyst' && !tierAnalyst(session.tier))"),
     'choosing the Analyst edition needs analyst level');
   assert.ok(src.includes("if (tier && !tierAnalyst(tier)) return { ok: false, error: 'academy_analyst_required' };"),
