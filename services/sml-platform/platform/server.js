@@ -105,6 +105,10 @@ const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
 const { createClickAlertService, createClickAlertStore } = require('./academy-click-alert');
 const { createAutoPtService } = require('./academy-auto-pt');
+const { createTargetLearner, suggestTargets: suggestPriceTargets, autoDirection: pickDirection } = require('./academy-target-engine');
+const alertForensics = require('./academy-alert-forensics');
+const ignitionRead = require('./academy-ignition');
+let fallbackTargetLearner = null; // an in-memory learner for a server started without the database-backed one (tests)
 const { createHedgeService } = require('./academy-hedge');
 /* every member's paper trading account starts with this much; the owner's 1K -> 100K Challenge account keeps its own $1,000 */
 const PAPER_START_CASH = require('./academy-paper').RULES.startCash;
@@ -757,6 +761,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const clickAlertUi = fs.readFileSync(pathModule.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
     const snapshotUi = fs.readFileSync(pathModule.join(__dirname, 'academy-snapshot-ui.js'), 'utf8');
     const tickerTalkUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-ticker-talk-ui.js'), 'utf8'); } catch (_) { return ''; } })();
+    const targetsUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-targets-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const smartIntentUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-smart-intent-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const patternLiveUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-pattern-live-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const trialCountdownUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-trial-countdown.js'), 'utf8'); } catch (_) { return ''; } })();
@@ -805,7 +810,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (earningsInsightUi ? '<script>' + earningsInsightUi + '</script>' : '') + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (squeezeListUi ? '<script>' + squeezeListUi + '</script>' : '') + (articleDeskUi ? '<script>' + articleDeskUi + '</script>' : '') + (evolveUi ? '<script>' + evolveUi + '</script>' : '') + (alertChartUi ? '<script>' + alertChartUi + '</script>' : '') + (communityUi ? '<script>' + communityUi + '</script>' : '') + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script><script>' + targetsUi + '</script>' : '') + (patternLiveUi ? '<script>' + patternLiveUi + '</script>' : '') + (trialCountdownUi ? '<script>' + trialCountdownUi + '</script>' : '') + (chartLockUi ? '<script>' + chartLockUi + '</script>' : '') + '<script>' + belowCycle + '</script>' + (layoutEngine ? '<script>' + layoutEngine + '</script>' : ''),
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -1991,7 +1996,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyHedge = null, academyPush = null, academyWideScanner = null, academyMentions = null, academySignals = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, targetLearner = null, academyHedge = null, academyPush = null, academyWideScanner = null, academyMentions = null, academySignals = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAsk = null, academyTrial = null, academyAppId = '', academyGate = null,
@@ -4549,6 +4554,67 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       } catch (error) { logger('warn', 'academy_intent_failed', { symbol, error: String(error && error.message || error) }); sendJson(response, 503, { ok: false, error: 'intent_unavailable' }); }
       return;
     }
+    /* Price-target suggestion for the direction a member picks (academy-target-engine.js): three targets with odds, a stop, and the
+       reasoning, from the stock's own history, the other tools, and the engine's own track record. direction=long|short|auto. */
+    if (request.method === 'GET' && path === '/academy-activity/targets') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const tl = targetLearner || (fallbackTargetLearner || (fallbackTargetLearner = createTargetLearner({})));
+      const tq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(tq.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      const wantDir = ['long', 'short'].includes(tq.get('direction')) ? tq.get('direction') : 'auto';
+      const horizon = ['day', 'swing', 'position'].includes(tq.get('horizon')) ? tq.get('horizon') : 'swing';
+      try {
+        if (academyMassive && typeof academyMassive.watch === 'function') academyMassive.watch(symbol);
+        const [p5, p1] = await Promise.all([settledValue(getAcademyCandles(symbol, '5m'), 4_000), settledValue(getAcademyCandles(symbol, '1D'), 4_000)]);
+        const bars5 = p5 && Array.isArray(p5.bars) ? p5.bars : [], daily = p1 && Array.isArray(p1.bars) ? p1.bars : [];
+        if (!bars5.length && !daily.length) { sendJson(response, 503, { ok: false, error: 'no_candles' }); return; }
+        const peek = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(symbol) : null;
+        const last = bars5.length ? bars5[bars5.length - 1] : daily[daily.length - 1];
+        const price = peek && Number(peek.last) > 0 ? Number(peek.last) : Number(last.c);
+        /* what the other tools say, for each direction (MEM ALGO horizons, smart-money intent if it was read lately, sentiment, trend) */
+        const evFor = async (side) => (academyClickAlert ? settledValue(academyClickAlert.evidenceFor(symbol, side), 4_000) : null);
+        const [evLong, evShort] = wantDir === 'auto' ? await Promise.all([evFor('long'), evFor('short')]) : [wantDir === 'long' ? await evFor('long') : null, wantDir === 'short' ? await evFor('short') : null];
+        const intentHit = smartIntentCache.get(symbol + '|5m'), intent = intentHit && intentHit.payload && intentHit.payload.intent ? intentHit.payload.intent : null;
+        const sent = academySentiment ? await settledValue(Promise.resolve(academySentiment.get(symbol)), 2_500) : null;
+        const sma20 = daily.length >= 20 ? daily.slice(-20).reduce((a, b) => a + Number(b.c), 0) / 20 : null;
+        const auto = pickDirection({ alignLong: evLong && Number.isFinite(evLong.alignment) ? evLong.alignment : null, alignShort: evShort && Number.isFinite(evShort.alignment) ? evShort.alignment : null, intentSide: intent ? intent.side : null, intentStrength: intent ? intent.strength : 0, sentiment: sent && sent.available !== false && Number.isFinite(sent.score) ? Number(sent.score) : null, trend: sma20 ? Math.max(-1, Math.min(1, (price / sma20 - 1) * 10)) : null });
+        const direction = wantDir === 'auto' ? auto.direction : wantDir;
+        const ev = direction === 'long' ? evLong : evShort;
+        const align = ev && Number.isFinite(ev.alignment) ? ev.alignment : null;
+        const result = suggestPriceTargets({ symbol, direction, horizon, price, bars5, daily, align, learned: tl.learned() });
+        if (!result.ok) { sendJson(response, 422, { ok: false, error: result.reason, symbol, detail: result.reason === 'not_enough_history' ? (horizon === 'day' ? 'The day horizon needs about a week of 5-minute candles for this stock; try swing.' : 'Not enough daily history for this stock yet.') : '' }); return; }
+        const ignition = bars5.length ? ignitionRead.read(bars5, { now: Date.now() }) : null;
+        if (ignition && ignition.active && ignition.direction === direction && (ignition.state === 'extended' || ignition.state === 'fading')) result.notes.unshift('A volume burst started ' + ignition.minutesAgo + ' minutes ago and price is already ' + ignition.fromClosePct + '% from the close: ' + (ignition.state === 'fading' ? 'volume is fading, so favour the nearer targets.' : 'this is a chase, so wait for a pull-back to a level.'));
+        void tl.log(result).catch(() => {});
+        const learning = tl.summary();
+        sendJson(response, 200, { ...result, requested: wantDir, auto: wantDir === 'auto' ? auto : null, align, ignition, learning: { suggestionsOpen: learning.open, judged: learning.settled, bucketJudged: (learning.buckets.find((b) => b.bucket === result.bucket) || { n: 0 }).n } });
+      } catch (error) { logger('warn', 'academy_targets_failed', { symbol, error: String(error && error.message || error) }); sendJson(response, 503, { ok: false, error: 'targets_unavailable' }); }
+      return;
+    }
+    /* Owner only: what the target engine has learned, and the forensics of the desk alerts on a symbol. */
+    if (request.method === 'GET' && (path === '/academy-activity/targets/learning' || path === '/academy-activity/alert-forensics')) {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!OWNER_IDS.includes(String(session.userId))) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+      const tl = targetLearner || (fallbackTargetLearner || (fallbackTargetLearner = createTargetLearner({})));
+      if (path === '/academy-activity/targets/learning') { sendJson(response, 200, { ok: true, ...tl.summary() }); return; }
+      const symbol = String(new URL(request.url || '/', 'http://localhost').searchParams.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      try {
+        const [p5, p1] = await Promise.all([settledValue(getAcademyCandles(symbol, '5m'), 6_000), settledValue(getAcademyCandles(symbol, '1D'), 6_000)]);
+        const list = academyAutoPt ? academyAutoPt.snapshot().filter((a) => a.symbol === symbol).sort((x, y) => y.at - x.at).slice(0, 5) : [];
+        const reports = list.map((a) => ({ key: a.key, status: a.status, report: alertForensics.analyzeAlert({ symbol, side: a.side, entry: a.entry, target: a.target, stop: a.stop, at: a.at, bars5: p5 && p5.bars, daily: p1 && p1.bars, detectedAt: a.hitAt }) }));
+        sendJson(response, 200, { ok: true, symbol, alerts: reports });
+      } catch (error) { logger('warn', 'academy_forensics_failed', { symbol, error: String(error && error.message || error) }); sendJson(response, 503, { ok: false, error: 'forensics_unavailable' }); }
+      return;
+    }
     if (request.method === 'GET' && path === '/academy-activity/gamma') {
       if (!academyOAuth || !academyGamma) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -5555,6 +5621,28 @@ async function main() {
     void academyAutoPt.load().catch(() => {});
     if (academyAlerts && typeof academyAlerts.setPtLadder === 'function') academyAlerts.setPtLadder((key) => academyAutoPt.forKey(key));
   }
+  /* The target learner (academy-target-engine.js): every price-target suggestion served is judged when its horizon has run, and every desk alert
+     the watcher followed is read by the forensics module, so the next suggestion starts from what actually happened. ACADEMY_TARGET_LEARNING=off keeps the
+     suggestions but stops the judging. */
+  const targetLearner = createTargetLearner({ store: createPgStateStore({ pool: database.pool, key: 'target-learning', defaultValue: () => ({}), logger: log }), candles: (symbol, tf) => sentimentCandles(symbol, tf), logger: log });
+  void targetLearner.load().catch(() => {});
+  if (String(process.env.ACADEMY_TARGET_LEARNING || 'on').toLowerCase() !== 'off') {
+    setInterval(() => { targetLearner.settle().then((r) => { if (r && r.settled) log('info', 'target_learner_settled', r); }).catch((error) => log('warn', 'target_learner_settle_failed', { error })); }, 10 * 60_000).unref();
+    const judgeAlerts = async () => {
+      if (!academyAutoPt) return;
+      const t = Date.now(), seen = targetLearner._state().alerts.analyzed;
+      const todo = academyAutoPt.snapshot().filter((a) => a.symbol && a.entry > 0 && a.at && !seen[a.key] && t - a.at > 3 * 3_600_000 && t - a.at < 9 * 86_400_000).sort((x, y) => y.at - x.at).slice(0, 4);
+      for (const a of todo) {
+        try {
+          const [p5, p1] = await Promise.all([sentimentCandles(a.symbol, '5m').catch(() => null), sentimentCandles(a.symbol, '1D').catch(() => null)]);
+          const rep = alertForensics.analyzeAlert({ symbol: a.symbol, side: a.side, entry: a.entry, target: a.target, stop: a.stop, at: a.at, bars5: p5 && p5.bars, daily: p1 && p1.bars, detectedAt: a.hitAt });
+          if (rep.ok) { await targetLearner.ingestAlert(a.key, rep); log('info', 'alert_forensics', { key: a.key, symbol: a.symbol, session: rep.session, latencyMin: rep.latencyMin, runBeforePct: rep.runBeforeAlertPct, hit: rep.features.hit, lessons: rep.lessons.map((l) => l.code) }); }
+          else await targetLearner.ingestAlert(a.key, { ok: true, at: a.at, symbol: a.symbol, side: a.side, features: { session: 'unknown' }, lessons: [{ code: 'no_candles' }] });
+        } catch (error) { log('warn', 'alert_forensics_failed', { symbol: a.symbol, error: String(error && error.message || error) }); }
+      }
+    };
+    setTimeout(() => { judgeAlerts().catch(() => {}); setInterval(() => { judgeAlerts().catch(() => {}); }, 15 * 60_000).unref(); }, 3 * 60_000).unref();
+  }
   /* Signal radar: MEM ALGO buy signals across the wide scanner's universe, for the owner (OWNER_IDS + SML_ACADEMY_SIGNAL_USER_IDS).
      ACADEMY_SIGNAL_RADAR=off removes it. Reads 25 symbols a minute through Massive REST (sentimentCandles), so a 300-name universe
      is covered about every 12 minutes in the regular session; outside it only the daily (swing) read runs. */
@@ -5851,7 +5939,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyAsk, academyTrial, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyHedge, academyWideScanner, academyPush, academyMentions, academySignals,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyAsk, academyTrial, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, targetLearner, academyHedge, academyWideScanner, academyPush, academyMentions, academySignals,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

@@ -28,7 +28,7 @@
     } catch (_) {}
   }
   send({ kind: 'visit' });
-  const TOOL_IDS = /^(depth-walls|depth-cost|heat-toggle|smc-toggle|intent-btn|buysell-toggle|darkpool-toggle|shortsale-toggle|sentiment-toggle|squeeze-btn|chain-toggle|mem-algo-toggle|sire-toggle|earnings-toggle|catalysts-toggle|paper-toggle|challenge-toggle|talk-btn|snap-toggle|click-alert-toggle|tool-guide-btn|tool-quote-btn|academy-alerts-fab|academy-profile-btn|aa-btn|sml-settings-btn|academy-ask-btn|lesson-toggle|academy-lk-btn|evolve-btn|academy-pro-draw|academy-pro-patterns|academy-select-range|academy-screener-toggle)$/;
+  const TOOL_IDS = /^(depth-walls|depth-cost|heat-toggle|smc-toggle|intent-btn|targets-toggle|buysell-toggle|darkpool-toggle|shortsale-toggle|sentiment-toggle|squeeze-btn|chain-toggle|mem-algo-toggle|sire-toggle|earnings-toggle|catalysts-toggle|paper-toggle|challenge-toggle|talk-btn|snap-toggle|click-alert-toggle|tool-guide-btn|tool-quote-btn|academy-alerts-fab|academy-profile-btn|aa-btn|sml-settings-btn|academy-ask-btn|lesson-toggle|academy-lk-btn|evolve-btn|academy-pro-draw|academy-pro-patterns|academy-select-range|academy-screener-toggle)$/;
   document.addEventListener('click', (e) => {
     const b = e.target && e.target.closest ? e.target.closest('button[id]') : null; if (!b || !TOOL_IDS.test(b.id)) return;
     setTimeout(() => send({ kind: 'tool', id: b.id, on: !(b.classList.contains('on') === false && b.getAttribute('aria-pressed') === 'false') }), 60);

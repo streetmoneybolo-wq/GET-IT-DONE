@@ -34,7 +34,7 @@
   ];
   /* sub-tabs. `btn` is the tool's own toggle (turned on when the sub-tab opens); on the CHART tab the chips are the toggles themselves */
   const SUBS = {
-    chart: [['walls', 'WALLS', 'depth-walls'], ['cost', 'COST', 'depth-cost'], ['heat', 'HEAT', 'heat-toggle'], ['smc', 'SMC', 'smc-toggle'], ['intent', 'INTENT', 'intent-btn']],
+    chart: [['walls', 'WALLS', 'depth-walls'], ['cost', 'COST', 'depth-cost'], ['heat', 'HEAT', 'heat-toggle'], ['smc', 'SMC', 'smc-toggle'], ['intent', 'INTENT', 'intent-btn'], ['targets', 'TARGETS', 'targets-toggle']],
     flow: [['quote', 'QUOTE · BOOK', ''], ['buysell', 'BUY/SELL', 'buysell-toggle'], ['dark', 'DARK POOL', 'darkpool-toggle'], ['short', 'SHORT SALE', 'shortsale-toggle'], ['sent', 'SENTIMENT', 'sentiment-toggle'], ['squeeze', 'SQUEEZE', 'squeeze-btn']],
     options: [['chain', 'CHAIN', ''], ['calc', 'CALCULATOR', ''], ['contract', 'CONTRACT', '']],
     algo: [['mem', 'MEM ALGO', 'mem-algo-toggle'], ['smc', 'SMC', 'smc-toggle'], ['sire', 'SIRE', 'sire-toggle'], ['market', 'MARKET', ''], ['earn', 'EARNINGS', 'earnings-toggle'], ['cat', 'CATALYSTS', 'catalysts-toggle'], ['paper', 'PAPER', 'paper-toggle'], ['chal', 'CHALLENGE', 'challenge-toggle']],

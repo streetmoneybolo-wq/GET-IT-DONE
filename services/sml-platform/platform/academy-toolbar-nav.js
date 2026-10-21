@@ -3,7 +3,7 @@
  * trader could follow. This file does no analysis of its own: it reparents the buttons those files already created into
  * one TOOL RAIL of four labeled groups, in the order a trader reaches for them, and keeps every tool visible:
  *
- *   CHART  what is drawn on the candles          WALLS · COST · HEAT · SMC · INTENT
+ *   CHART  what is drawn on the candles          WALLS · COST · HEAT · SMC · INTENT · TARGETS
  *   FLOW   who is buying and selling             BUY/SELL · DARK POOL · SHORT SALE · SENTIMENT · SQUEEZE (owner)
  *   DESK   the panels that take the lower deck   CHAIN · MEM ALGO · SIRE · EARNINGS · CATALYSTS · PAPER · CHALLENGE (owner)
  *   SHARE  talk about it, post it, be told       TALK · SNAP · ALERT
@@ -20,7 +20,7 @@
   window.__smlToolbarNav = true;
 
   const GROUPS = [
-    { key: 'chart', label: 'CHART', hint: 'Drawn on the candles', ids: ['depth-walls', 'depth-cost', 'heat-toggle', 'smc-toggle', 'intent-btn'] },
+    { key: 'chart', label: 'CHART', hint: 'Drawn on the candles', ids: ['depth-walls', 'depth-cost', 'heat-toggle', 'smc-toggle', 'intent-btn', 'targets-toggle'] },
     { key: 'flow', label: 'FLOW', hint: 'Who is buying and selling', ids: ['buysell-toggle', 'darkpool-toggle', 'shortsale-toggle', 'sentiment-toggle', 'squeeze-btn'] },
     { key: 'desk', label: 'DESK', hint: 'Panels that take the lower deck', ids: ['chain-toggle', 'mem-algo-toggle', 'sire-toggle', 'earnings-toggle', 'catalysts-toggle', 'paper-toggle', 'challenge-toggle'] },
     { key: 'share', label: 'SHARE', hint: 'Talk about it, post it, be told', ids: ['talk-btn', 'snap-toggle', 'click-alert-toggle', 'article-btn'] }

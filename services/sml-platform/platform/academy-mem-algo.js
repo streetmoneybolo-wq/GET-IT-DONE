@@ -557,8 +557,15 @@ function analyze(rawBars, mode = 'day', overrides = {}, tf = '', ctx = {}) {
   const last = bars[bars.length - 1];
   const bias = !last || !Number.isFinite(ind.trend[bars.length - 1]) || bars.length < ind.warm ? 'warming' : (last.c > ind.trend[bars.length - 1] ? (ind.fast[bars.length - 1] > ind.slow[bars.length - 1] ? 'long' : 'pullback') : (ind.fast[bars.length - 1] < ind.slow[bars.length - 1] ? 'short' : 'bounce'));
   const first = bars[Math.min(ind.warm, bars.length - 1)];
+  /* the early warning: a volume burst away from the close, caught on its first candle (academy-ignition.js); intraday candles only */
+  let ignition = null;
+  try {
+    const gaps = []; for (let i = Math.max(1, bars.length - 20); i < bars.length; i++) gaps.push(bars[i].t - bars[i - 1].t);
+    gaps.sort((a, b) => a - b);
+    if (gaps.length && gaps[gaps.length >> 1] <= 6 * 60_000) ignition = require('./academy-ignition').read(bars, { now: (ctx && ctx.now) || Date.now() });
+  } catch (_) { ignition = null; }
   return {
-    mode, params, bars: bars.length, warm: ind.warm, ind: { fast: ind.fast, slow: ind.slow, trend: ind.trend, atr: ind.atr },
+    ignition, mode, params, bars: bars.length, warm: ind.warm, ind: { fast: ind.fast, slow: ind.slow, trend: ind.trend, atr: ind.atr },
     signals, latest: signals.length ? signals[signals.length - 1] : null, open, bias,
     stats: summarize(trades), inSample: summarize(inS), outOfSample: summarize(oos), trades,
     buyHoldPct: first && last && first.o ? ((last.c - first.o) / first.o) * 100 : null,

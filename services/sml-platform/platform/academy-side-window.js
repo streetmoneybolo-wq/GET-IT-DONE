@@ -24,7 +24,8 @@
     { id: 'sent', label: 'SENTIMENT', btn: 'sentiment-toggle', mods: ['.academy-depth'] },
     { id: 'smc', label: 'SMC', btn: 'smc-toggle', mods: ['#smc-card'] },
     { id: 'algo', label: 'MEM ALGO', btn: 'mem-algo-toggle', mods: ['#mem-algo-panel'] },
-    { id: 'intent', label: 'INTENT', btn: 'intent-btn', mods: ['#intent-panel'] }
+    { id: 'intent', label: 'INTENT', btn: 'intent-btn', mods: ['#intent-panel'] },
+    { id: 'targets', label: 'TARGETS', btn: 'targets-toggle', mods: ['#targets-panel'] }
   ];
   const S = { tab: 'quote' };
   const side = () => document.querySelector('main .side');
@@ -35,7 +36,7 @@
   /* every tool that is on shows in the column at once, stacked under the quote (the column scrolls); nothing is hidden by tab */
   rules.push(A + '[data-sw-any] main .side>.academy-side-fill{display:none!important}');
   /* the two cards that floated: now ordinary blocks in the column */
-  rules.push(A + ' main .side>#smc-card,' + A + ' main .side>#mem-algo-panel,' + A + ' main .side>#intent-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;height:auto!important;max-height:none!important;margin:6px 0 10px!important;z-index:auto!important;box-shadow:none!important}');
+  rules.push(A + ' main .side>#smc-card,' + A + ' main .side>#mem-algo-panel,' + A + ' main .side>#intent-panel,' + A + ' main .side>#targets-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;height:auto!important;max-height:none!important;margin:6px 0 10px!important;z-index:auto!important;box-shadow:none!important}');
   rules.push('#side-win{display:none}');
   rules.push(A + ' #side-win{display:none!important;flex-wrap:wrap;gap:4px;margin:8px 0 6px;padding:0 0 8px;border-bottom:1px solid #16303b}');
   rules.push(A + ' #side-win button{padding:5px 8px;border:1px solid #2b4b5a;border-radius:7px;background:#0d1b25;color:#a9c3d0;font:800 .58rem ui-monospace,monospace;letter-spacing:.05em;cursor:pointer;white-space:nowrap}');
@@ -89,8 +90,8 @@
     const now = TABS.filter((t) => t.btn && byId(t.btn)).length;
     if (now !== watched) { watched = now; watch(); }
     /* the column is the tool window: the SMC card and the MEM ALGO panel sit in it (their own placement code mounts them) */
-    const ip = byId('intent-panel'), col = side();
-    if (ip && col && isOn(byId('intent-btn')) && ip.parentElement !== col) { col.appendChild(ip); ip.scrollIntoView && ip.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    const col = side();
+    for (const [bid, pid] of [['intent-btn', 'intent-panel'], ['targets-toggle', 'targets-panel']]) { const ip = byId(pid); if (ip && col && isOn(byId(bid)) && ip.parentElement !== col) { col.appendChild(ip); ip.scrollIntoView && ip.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }
     const t = TABS.find((x) => x.id === S.tab);
     if (t && t.btn && !isOn(byId(t.btn))) S.tab = 'quote';
     paint();
@@ -101,7 +102,7 @@
     tick();
   }
   function disable() {
-    const ip = byId('intent-panel'), st = document.querySelector('.academy-chart-stage'); if (ip && st && ip.parentElement !== st) st.appendChild(ip);
+    const st = document.querySelector('.academy-chart-stage'); for (const pid of ['intent-panel', 'targets-panel']) { const ip = byId(pid); if (ip && st && ip.parentElement !== st) st.appendChild(ip); }
     document.body.classList.remove('sml-sw'); delete document.body.dataset.sw; document.body.removeAttribute('data-sw-any');
     if (timer) { clearInterval(timer); timer = null; }
     if (obs) { obs.disconnect(); obs = null; watched = 0; }

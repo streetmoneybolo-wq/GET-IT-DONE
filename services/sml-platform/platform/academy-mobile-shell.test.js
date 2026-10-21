@@ -143,3 +143,15 @@ test('INTENT sits in the quote column with the other tools', () => {
   assert.ok(sw.includes("btn: 'intent-btn', mods: ['#intent-panel']") && sw.includes("main .side>#intent-panel") && sw.includes("col.appendChild(ip)"), 'mounted in the column');
   assert.ok(dock.includes("sel === '#intent-panel'"), 'the chart dock leaves it to the column');
 });
+
+test('TARGETS: the button, the panel in the quote column, the chart lines, the route and the learner are all wired', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'academy-targets-ui.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(__dirname, 'academy-side-window.js'), 'utf8');
+  const nav = fs.readFileSync(path.join(__dirname, 'academy-toolbar-nav.js'), 'utf8');
+  const sh = fs.readFileSync(path.join(__dirname, 'academy-mobile-shell.js'), 'utf8');
+  for (const bit of ["btn.id = 'targets-toggle'", "/academy-activity/targets?symbol=", '[data-dir]', '[data-hz]', "'T' + t.n + ' '", "'STOP '", 'window.smlTargets']) assert.ok(ui.includes(bit), bit);
+  for (const bit of ["path === '/academy-activity/targets'", "path === '/academy-activity/targets/learning'", "'/academy-activity/alert-forensics'", 'createTargetLearner({ store: createPgStateStore', "key: 'target-learning'", 'targetLearner.settle()', 'judgeAlerts', '<script>\' + targetsUi + \'</script>', 'owner_only']) assert.ok(server.includes(bit), bit);
+  assert.ok(sw.includes("btn: 'targets-toggle', mods: ['#targets-panel']") && sw.includes('main .side>#targets-panel'), 'in the quote column');
+  assert.ok(nav.includes("'intent-btn', 'targets-toggle'") && sh.includes("['targets', 'TARGETS', 'targets-toggle']"), 'in the rail and on the phone chart tab');
+});
