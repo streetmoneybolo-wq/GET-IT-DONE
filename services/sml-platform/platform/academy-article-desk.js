@@ -289,7 +289,7 @@ function modChart(st, c, d, chartEndpoint, imageUrl = '') {
   const html = `<figure class="mem-chartbox" data-symbol="${esc(c.symbol)}"${chartEndpoint ? ` data-live-endpoint="${esc(chartEndpoint)}"` : ''}>
 <div class="mem-chiprow"><span class="mem-chip mem-chip-live"><i></i>LIVE CHART</span><span class="mem-chip">$${esc(c.symbol)} <b data-live="price">${esc(px(c.price))}</b> <em data-live="change" class="${num(c.changePct, 0) >= 0 ? 'up' : 'dn'}">${num(c.changePct) != null ? esc(pct(c.changePct)) : ''}</em></span><span class="mem-chip mem-chip-mut" data-live="updated">as of publication</span></div>
 ${ch.svg}
-${embed ? `<iframe class="mem-chart-embed" title="$${esc(c.symbol)} live price fallback" loading="lazy" src="${esc(embed)}"></iframe>` : ''}
+${embed ? `<noscript><iframe class="mem-chart-embed" title="$${esc(c.symbol)} live price fallback" loading="lazy" src="${esc(embed)}"></iframe></noscript>` : ''}
 <figcaption>Daily candles with the levels that matter and the scenario path: ${esc((st.path || []).map((p) => p.label.toLowerCase()).concat('target').join(', '))}. The white line is the last price and moves with the tape where the page can run script.</figcaption></figure>`;
   /* the Loop Letters sanitizer keeps img and drops svg, iframe and script: the letter block carries the uploaded poster
      (the same scenario, drawn as a still) under a chip that says what it is; no poster, no chart block (the GIF image

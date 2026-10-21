@@ -157,3 +157,9 @@ test('the letter frames are always dark whatever the reader prefers, and a glanc
   assert.equal((fixed[0].html.match(/class="mem-article/g) || []).length, 1); assert.ok(fixed[0].css.startsWith(D.CSS) && fixed[0].css.includes('.mem-track-bar i{left:41.5%}') && fixed[0].css.includes('.mem-glance'));
   assert.equal(D.compactLetterBlocks(fixed), null, 'once fixed it is left alone');
 });
+
+test('the chart has no empty space: the live-price iframe exists only when scripts are off, so the page never shows a blank box under the candles', () => {
+  const a = compose();
+  assert.match(a.bodyHtml, /<noscript><iframe class="mem-chart-embed"[^>]*><\/iframe><\/noscript>/);
+  assert.doesNotMatch(a.bodyHtml.replace(/<noscript>[\s\S]*?<\/noscript>/g, ''), /mem-chart-embed"/, 'no iframe outside noscript');
+});
