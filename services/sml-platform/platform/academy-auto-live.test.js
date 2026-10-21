@@ -58,3 +58,29 @@ test('the desk speaks in the owner voice with the browser voice as the fallback,
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'); assert.match(server, /autoLiveUi \? '<script>'/);
   assert.match(fs.readFileSync(path.join(__dirname, 'academy-desktop-compact.js'), 'utf8'), /'auto-live-btn'/);
 });
+
+const bar = (min, h, l, c) => ({ t: NOW + min * 60_000, o: c, h, l, c });
+test('candles decide a call: a spike between polls counts, bars before the call do not, and a candle that touches both stop and target counts the stop', () => {
+  const c = call({ at: NOW });
+  const ev = L.judgeBars(c, [bar(-1, 130, 50, 100), bar(1, 101, 99, 100), bar(2, 104.5, 100, 104), bar(3, 105, 103, 104)], NOW + 5 * 60_000);
+  assert.deepEqual(ev.map((e) => e.type + (e.n || '')), ['target1', 'target2']); assert.equal(c.hit, 2);
+  assert.deepEqual(L.judgeBars(c, [bar(2, 104.5, 100, 104)], NOW + 6 * 60_000), [], 'a candle is never counted twice');
+  const d = call({ at: NOW }); const e2 = L.judgeBars(d, [bar(1, 102.5, 97.5, 100)], NOW + 120_000);
+  assert.equal(e2[0].type, 'stop'); assert.equal(e2[0].cautious, true); assert.equal(d.hit, 0);
+  const s = call({ at: NOW, side: 'short', targets: [98, 96, 94], stop: 102 }); assert.equal(L.judgeBars(s, [bar(1, 100, 97.9, 99)], NOW + 120_000)[0].n, 1);
+  const old = call({ at: NOW - L.CALL_LIFE_MS - 1 }); assert.equal(L.judgeBars(old, [], NOW)[0].type, 'expired');
+});
+const tt = (o = {}) => ({ ok: true, direction: 'long', price: 100, targets: [{ price: 102, pct: 2, prob: 55 }, { price: 104, pct: 4, prob: 35 }, { price: 106, pct: 6, prob: 20 }], stop: { price: 98 }, ...o });
+test('the desk passes on stale, thin or already-moved ladders and says why', () => {
+  assert.equal(L.vetCall(tt(), 100.2).ok, true); assert.equal(L.vetCall(tt(), 100.2).entry, 100.2);
+  assert.match(L.vetCall(tt(), 101).reason, /stale/); assert.match(L.vetCall(tt(), 102.5).reason, /moved through/);
+  assert.match(L.vetCall(tt({ targets: [{ price: 102, prob: 12 }, { price: 104 }, { price: 106 }] })).reason, /12 percent/);
+  assert.match(L.vetCall(tt({ stop: { price: 90 } })).reason, /pays too little/); assert.equal(L.vetCall(tt({ targets: [] })).ok, false);
+  assert.equal(L.vetCall(tt({ direction: 'short', targets: [{ price: 98, prob: 50 }, { price: 96 }, { price: 94 }], stop: { price: 102 } }), 99.9).ok, true);
+});
+test('progress reads in R and percent for either side; speech is split into short sentences', () => {
+  const c = call(); assert.deepEqual(L.progress(c, 101), { r: 0.5, pct: 1, frac: 0.75 }); assert.equal(L.progress(call({ side: 'short', targets: [98, 96, 94], stop: 102 }), 99).r, 0.5);
+  const parts = L.chunk('One short sentence. ' + 'word '.repeat(80) + 'end. Another one!'); assert.ok(parts.every((p) => p.length <= 175), parts.map((p) => p.length).join());
+  assert.equal(parts[0], 'One short sentence.'); assert.ok(parts.length >= 4);
+  const a = L.setupScript({ sym: 'A', why: [] }, tt({ confidence: 'low' }), null, { n: 1 }).map((x) => x.say).join(' '); assert.match(a, /Walls/); assert.doesNotMatch(a, /not advice/);
+});
