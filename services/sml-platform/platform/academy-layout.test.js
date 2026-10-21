@@ -59,6 +59,6 @@ test('oversized lists are cut', () => {
 });
 test('the market modules are wide short strips on desktop, with MORE for the full Market Direction read', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, 'academy-layout-engine.js'), 'utf8');
-  assert.match(src, /sml-dir-more/); assert.match(src, /#academy-direction:not\(\.sml-open\) \.smd-v2/); assert.match(src, /\.auv-foot\{display:none\}/); assert.match(src, /\.avx-terms,\.avx-scale,\.avx-foot\{display:none\}/);
+  assert.match(src, /sml-dir-more/); assert.match(src, /#academy-direction:not\(\.sml-open\) \.smd-v2/); assert.match(src, /\.auv-foot\{display:none\}/); assert.match(src, /\.avx-terms,html body \.avx-scale,html body \.avx-foot\{display:none\}/);
   assert.doesNotMatch(src, /academy-below > \.academy-chat/);
 });
