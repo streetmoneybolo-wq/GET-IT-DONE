@@ -39,6 +39,11 @@
   document.head.appendChild(css);
 
   const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'click-alert-toggle'; btn.textContent = 'ALERT'; btn.title = 'Click-to-Alert: click a price on the chart to set the target, then post the alert to Discord'; toolbar.appendChild(btn);
+  /* the midday report: today's alerts and how they are doing, posted to Discord (opens the alerts desk, which previews it first) */
+  const midBtn = document.createElement('button'); midBtn.type = 'button'; midBtn.id = 'midday-report-toggle'; midBtn.textContent = 'MIDDAY'; midBtn.title = "Midday report: how today's alerts are doing, with a preview before it posts to Discord";
+  midBtn.style.cssText = 'margin-left:4px;padding:5px 9px;border:1px solid #8a6a1c;border-radius:7px;background:#1d1708;color:#ffd166;font:800 .64rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer';
+  midBtn.addEventListener('click', () => { if (window.smlAlertsDesk && typeof window.smlAlertsDesk.midday === 'function') window.smlAlertsDesk.midday(); });
+  toolbar.appendChild(midBtn);
   const layer = document.createElement('canvas'); layer.id = 'ca-layer'; const ctx = layer.getContext('2d');
   const hint = document.createElement('div'); hint.id = 'ca-hint'; hint.style.display = 'none'; hint.textContent = 'Stock alert: click a price on the chart to set your target. Entry is the live price.';
   const panel = document.createElement('aside'); panel.id = 'ca-panel'; panel.style.display = 'none'; document.body.appendChild(panel);
