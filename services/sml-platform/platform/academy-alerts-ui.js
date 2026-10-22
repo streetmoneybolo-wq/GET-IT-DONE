@@ -468,5 +468,11 @@
   paint();
   // open one alert from outside (the new-target notification): show the desk, expand the alert, chart it
   const openAlert = (id, sym) => { if (!id) return; if (S.hidden) setHidden(false); if (window.matchMedia('(max-width:720px)').matches) { S.sheet = true; panel.classList.add('sheet'); } if (sym && window.smlAcademyNavigateMarket && chartSymbol() !== sym) window.smlAcademyNavigateMarket(sym); S.open = String(id); S.detail = null; paint(); refreshDetail(); };
-  window.smlAlertsDesk = { state: S, reload: load, openAlert };
+  /* the toolbar's MIDDAY button: bring the desk up and open the report in it */
+  function openMidday() {
+    if (S.hidden) setHidden(false);
+    if (window.matchMedia('(max-width:720px)').matches && !S.sheet) { S.sheet = true; panel.classList.add('sheet'); }
+    S.pick = null; if (S.mid) { paint(); return; } void middayOpen();
+  }
+  window.smlAlertsDesk = { state: S, reload: load, openAlert, midday: openMidday };
 })(0);
