@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createSeatsBilling, checkoutParams, readSubscription, GRACE_HOURS, DEFAULT_MIN_SEATS } = require('./academy-seats-billing');
+const { createSeatsBilling, checkoutParams, readSubscription, GRACE_HOURS, DEFAULT_MIN_SEATS, DEFAULT_UNIT_AMOUNT } = require('./academy-seats-billing');
 const { createSeats, refFor } = require('./academy-seats');
 const { createPassStore } = require('./academy-passes');
 const { sign } = require('./stripe-webhook');
@@ -32,7 +32,7 @@ function stripeSub({ id = 'sub_1', quantity = 3, status = 'active', ownerId = OW
   };
 }
 
-function harness({ env = ENV, subs = {}, clock = () => NOW } = {}) {
+function harness({ env = ENV, subs = {}, prices = {}, clock = () => NOW } = {}) {
   const doc = { subs: {} };
   const store = { read: async () => doc, write: async (s) => { Object.assign(doc, s); } };
   const passStore = createPassStore();
@@ -41,7 +41,12 @@ function harness({ env = ENV, subs = {}, clock = () => NOW } = {}) {
   const stripe = {
     createCheckoutSession: async (params, idempotencyKey) => { calls.push(['checkout', params, idempotencyKey]); return { id: 'cs_1', url: 'https://checkout.stripe.com/c/pay/cs_1' }; },
     createPortalSession: async (params, idempotencyKey) => { calls.push(['portal', params, idempotencyKey]); return { id: 'bps_1', url: 'https://billing.stripe.com/p/session/bps_1' }; },
-    retrieveSubscription: async (id) => { calls.push(['retrieve', id]); return subs[id] || stripeSub({ id }); }
+    retrieveSubscription: async (id) => { calls.push(['retrieve', id]); return subs[id] || stripeSub({ id }); },
+    retrievePrice: async (id) => {
+      calls.push(['price', id]);
+      if (prices.throws) throw new Error('stripe down');
+      return prices.price || { id, unit_amount: 2999, currency: 'usd', recurring: { interval: 'month' } };
+    }
   };
   const logs = [];
   const billing = createSeatsBilling({ env, seats, stripe, now: clock, logger: (lvl, ev, d) => logs.push([ev, d]) });
@@ -309,4 +314,61 @@ test('a Stripe outage during checkout is reported, not swallowed as success', as
   assert.equal(out.ok, false);
   assert.equal(out.code, 'checkout_failed');
   assert.ok(logs.includes('academy_seats_checkout_failed'));
+});
+
+test('the price the panel shows is the price Stripe charges', async () => {
+  const { billing, calls } = harness();
+  assert.equal(billing.unitAmount, DEFAULT_UNIT_AMOUNT);
+  assert.equal(DEFAULT_UNIT_AMOUNT, 2999, '$29.99 a seat is what ships');
+
+  const p = await billing.price();
+  assert.deepEqual(p, { unitAmount: 2999, currency: 'usd', interval: 'month', from: false, source: 'stripe' });
+  /* asked once, then cached: the panel is read on every open */
+  await billing.price();
+  await billing.price();
+  assert.equal(calls.filter(([kind]) => kind === 'price').length, 1);
+});
+
+test('a Stripe price that disagrees with the config wins, and a tiered one is quoted as a floor', async () => {
+  /* the config is only a stand-in; a figure typed into env must never be shown as the charge */
+  const dearer = harness({ prices: { price: { unit_amount: 4999, currency: 'eur', recurring: { interval: 'month' } } } });
+  const p = await dearer.billing.price();
+  assert.equal(p.unitAmount, 4999);
+  assert.equal(p.currency, 'eur');
+  assert.equal(p.source, 'stripe');
+  assert.ok(dearer.logs.some(([event]) => event === 'academy_seats_price_differs'), 'the difference is logged, not hidden');
+
+  /* volume tiers have no single unit amount: quote the first tier and mark it a "from" */
+  const tiered = harness({ prices: { price: {
+    unit_amount: null, currency: 'usd', recurring: { interval: 'month' },
+    tiers: [{ unit_amount: 3499, up_to: 9 }, { unit_amount: 2999, up_to: 24 }, { unit_amount: 2499, up_to: null }]
+  } } });
+  const t = await tiered.billing.price();
+  assert.equal(t.unitAmount, 3499, 'the first tier is what a five-seat buyer pays');
+  assert.equal(t.from, true);
+});
+
+test('the panel still quotes a price when Stripe is unreachable or unconfigured', async () => {
+  const broken = harness({ prices: { throws: true } });
+  const p = await broken.billing.price();
+  assert.deepEqual(p, { unitAmount: 2999, currency: 'usd', interval: 'month', from: false, source: 'config' });
+  assert.ok(broken.logs.some(([event]) => event === 'academy_seats_price_read_failed'));
+
+  const bare = harness({ env: {} });
+  const q = await bare.billing.price();
+  assert.equal(q.unitAmount, 2999);
+  assert.equal(q.source, 'config', 'no Stripe key, so no read was attempted');
+  assert.equal(bare.calls.filter(([kind]) => kind === 'price').length, 0);
+});
+
+test('a bad configured amount falls back to $29.99 rather than quoting nonsense', async () => {
+  for (const bad of ['0', '-100', 'free', '29.99', '99999999']) {
+    const h = harness({ env: { ...ENV, SML_ACADEMY_SEATS_UNIT_AMOUNT: bad } });
+    assert.equal(h.billing.unitAmount, DEFAULT_UNIT_AMOUNT, bad);
+    assert.ok(h.logs.some(([event]) => event === 'academy_seats_amount_invalid'), bad);
+  }
+  /* cents, so 3499 is $34.99 */
+  const ok = harness({ env: { ...ENV, SML_ACADEMY_SEATS_UNIT_AMOUNT: '3499', SML_ACADEMY_SEATS_CURRENCY: 'GBP' } });
+  assert.equal(ok.billing.unitAmount, 3499);
+  assert.equal(ok.billing.currency, 'gbp');
 });

@@ -18,6 +18,14 @@
  *   SML_ACADEMY_SEATS_WEBHOOK_SECRET  comma-separated during a rotation
  *   SML_ACADEMY_SEATS_RETURN_URL      where Checkout and the portal come back to
  *   SML_ACADEMY_SEATS_MIN             smallest team that can be bought (default 5)
+ *   SML_ACADEMY_SEATS_UNIT_AMOUNT     what a seat costs, in cents (default 2999 = $29.99)
+ *   SML_ACADEMY_SEATS_CURRENCY        currency for that amount (default usd)
+ *
+ * THE PRICE SHOWN IS THE PRICE CHARGED. The panel has to quote a figure before anyone will buy,
+ * and a figure typed into config drifts from the Stripe price the day the Stripe price changes.
+ * So the real price is read back from Stripe once, cached, and it wins; the configured amount is
+ * only what the panel shows until that read lands (and all it ever has, on a deployment with no
+ * Stripe key). A tiered price has no single unit amount, so its first tier is quoted as a 'from'.
  *
  * The buyer's Discord id travels in subscription metadata
  * (`mem_seats_discord_owner`), so the webhook can bind a subscription to an
@@ -57,6 +65,11 @@ const SESSION_TTL_MINUTES = 35;
    more than an individual Trader plan, which is what keeps the two from competing.
    SML_ACADEMY_SEATS_MIN moves it without a deploy. */
 const DEFAULT_MIN_SEATS = 5;
+/* $29.99 a seat: clearly under Trader at $49.99, so buying for a team is worth doing, but high
+   enough that the five-seat floor costs more than one Trader plan and seats never become the
+   cheap way to put one person on Trader. */
+const DEFAULT_UNIT_AMOUNT = 2999;
+const DEFAULT_CURRENCY = 'usd';
 
 const text = (v) => String(v == null ? '' : v).trim();
 const csv = (v) => text(v).split(',').map((s) => s.trim()).filter(Boolean);
@@ -116,6 +129,17 @@ function createSeatsBilling({ env = process.env, seats = null, stripe = null, no
   const webhookSecrets = csv(env.SML_ACADEMY_SEATS_WEBHOOK_SECRET);
   const returnUrl = text(env.SML_ACADEMY_SEATS_RETURN_URL) || 'https://stockmarketloop.com/academy/';
   const maxSeats = (seats && seats.MAX_SEATS) || 1000;
+  const unitAmount = (() => {
+    const raw = text(env.SML_ACADEMY_SEATS_UNIT_AMOUNT);
+    if (!raw) return DEFAULT_UNIT_AMOUNT;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > 10_000_00) { logger('warn', 'academy_seats_amount_invalid', { value: raw.slice(0, 12) }); return DEFAULT_UNIT_AMOUNT; }
+    return n;
+  })();
+  const currency = (text(env.SML_ACADEMY_SEATS_CURRENCY) || DEFAULT_CURRENCY).toLowerCase();
+  /* what Stripe actually charges, once we have asked it; null until then */
+  let livePrice = null;
+
   const minSeats = (() => {
     const raw = Number(text(env.SML_ACADEMY_SEATS_MIN));
     if (!text(env.SML_ACADEMY_SEATS_MIN)) return DEFAULT_MIN_SEATS;
@@ -135,13 +159,46 @@ function createSeatsBilling({ env = process.env, seats = null, stripe = null, no
     client = {
       createCheckoutSession: (params, idempotencyKey) => raw.checkout.sessions.create(params, { idempotencyKey }),
       createPortalSession: (params, idempotencyKey) => raw.billingPortal.sessions.create(params, { idempotencyKey }),
-      retrieveSubscription: (id) => raw.subscriptions.retrieve(id)
+      retrieveSubscription: (id) => raw.subscriptions.retrieve(id),
+      retrievePrice: (id) => raw.prices.retrieve(id)
     };
     return client;
   }
 
   const configured = Boolean(priceOk && (key || stripe) && seats);
   const webhookConfigured = Boolean(webhookSecrets.length && seats);
+
+  /* What a seat costs, for the panel. Stripe is the authority and is asked once; until it answers
+     (or forever, with no Stripe key) the configured amount stands in. A failed read is not an
+     error worth surfacing: the panel just keeps quoting the configured figure. */
+  async function price() {
+    if (livePrice) return livePrice;
+    const fallback = { unitAmount, currency, interval: 'month', from: false, source: 'config' };
+    if (!configured) return fallback;
+    try {
+      const p = await api().retrievePrice(priceId);
+      const tiers = Array.isArray(p && p.tiers) ? p.tiers : null;
+      const amount = Number.isFinite(Number(p && p.unit_amount)) && p.unit_amount !== null
+        ? Number(p.unit_amount)
+        : (tiers && tiers.length ? Number(tiers[0].unit_amount) : NaN);
+      if (!Number.isFinite(amount)) return fallback;
+      livePrice = {
+        unitAmount: amount,
+        currency: text(p.currency).toLowerCase() || currency,
+        interval: (p.recurring && text(p.recurring.interval)) || 'month',
+        /* a tiered price has no single figure, so the panel says "from" */
+        from: Boolean(tiers && tiers.length > 1),
+        source: 'stripe'
+      };
+      if (livePrice.unitAmount !== unitAmount) {
+        logger('info', 'academy_seats_price_differs', { configured: unitAmount, stripe: livePrice.unitAmount });
+      }
+      return livePrice;
+    } catch (error) {
+      logger('warn', 'academy_seats_price_read_failed', { error: String((error && error.message) || error).slice(0, 160) });
+      return fallback;
+    }
+  }
 
   /* Start a purchase. An owner who already has a live subscription is sent to
      the portal to change the seat count instead, so nobody is charged twice. */
@@ -268,8 +325,12 @@ function createSeatsBilling({ env = process.env, seats = null, stripe = null, no
 
   return Object.freeze({
     configured, webhookConfigured, priceId: priceOk ? priceId : null, returnUrl, graceHours: GRACE_HOURS, minSeats, maxSeats,
+    unitAmount, currency, price,
     checkout, portal, webhook, applySubscription, resync, MAX_BODY_BYTES
   });
 }
 
-module.exports = { createSeatsBilling, checkoutParams, readSubscription, GRACE_HOURS, LIVE_STATUSES, DEFAULT_MIN_SEATS };
+module.exports = {
+  createSeatsBilling, checkoutParams, readSubscription,
+  GRACE_HOURS, LIVE_STATUSES, DEFAULT_MIN_SEATS, DEFAULT_UNIT_AMOUNT, DEFAULT_CURRENCY
+};

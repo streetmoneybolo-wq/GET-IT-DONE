@@ -26,8 +26,17 @@
   const ID = /^\d{15,25}$/;
   /* the floor and the ceiling come from the server (billing owns them); these are only what to
      show before the first answer arrives */
-  const S = { open: false, busy: false, msg: '', data: null, loaded: '', want: 5, min: 5, max: 200 };
+  const S = { open: false, busy: false, msg: '', data: null, loaded: '', want: 5, min: 5, max: 200, price: null };
   const lo = () => S.min, hi = () => S.max;
+  /* Money the way the buyer's own locale writes it, falling back to plain dollars where Intl is
+     unavailable. Amounts arrive from Stripe in minor units. */
+  function cash(cents, currency) {
+    const n = Number(cents) / 100;
+    if (!Number.isFinite(n)) return '';
+    try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: String(currency || 'usd').toUpperCase() }).format(n); }
+    catch (_) { return '$' + n.toFixed(2); }
+  }
+  const unit = () => (S.price && Number.isFinite(Number(S.price.unitAmount)) ? S.price : null);
 
   const css = document.createElement('style');
   css.textContent = '#seats-btn{margin-left:4px;padding:5px 9px;border:1px solid #1f6a52;border-radius:7px;background:#08201a;color:#7fe8c0;font:800 .64rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer;display:none}#seats-btn.on{display:inline-block}#seats-btn b{color:#fff}'
@@ -42,6 +51,7 @@
     + '#seats-card .add button,#seats-card .row button,#seats-card .row a{border:1px solid #1f6a52;border-radius:8px;background:#0c241d;color:#7fe8c0;font:800 .62rem ui-monospace,monospace;letter-spacing:.05em;padding:7px 10px;cursor:pointer;text-align:center;text-decoration:none}'
     + '#seats-card .row{display:flex;gap:6px;padding:10px 11px}#seats-card .row button{flex:1}#seats-card .row button.ghost{border-color:#24423a;color:#9fc3b7;background:#0a1714}'
     + '#seats-card .qty{display:flex;align-items:center;gap:6px;padding:4px 11px 0}#seats-card .qty input{flex:0 0 72px;text-align:center}#seats-card .qty small{color:#8fa6b3;font-weight:600}'
+    + '#seats-card .price{margin:8px 11px 0;padding:8px 10px;border-radius:9px;background:#0b1a16;border:1px solid #16302a;color:#9fc3b7;font-weight:600}#seats-card .price b{color:#eafff6}#seats-card .price i{font-style:normal;color:#7f968d;font-weight:500}#seats-card .price span{display:block;margin-top:3px;color:#7f968d;font-weight:500}'
     + '#seats-card .msg{padding:0 11px 8px;color:#ffd166;font-weight:600}#seats-card .note{padding:0 11px 11px;color:#5f7a71;font-weight:500;font-size:.57rem}#seats-card .note b{color:#8fb3a7}'
     + '#seats-card .empty{padding:2px 11px 8px;color:#7f968d;font-weight:500}'
     + '@media(max-width:700px){#seats-card{right:6px;left:6px;width:auto;top:auto;bottom:60px;max-height:72vh}}';
@@ -89,6 +99,7 @@
       S.loaded = t; S.data = r;
       if (Number.isInteger(r.minSeats) && r.minSeats > 0) S.min = r.minSeats;
       if (Number.isInteger(r.maxSeats) && r.maxSeats > 0) S.max = r.maxSeats;
+      if (r.price && Number.isFinite(Number(r.price.unitAmount))) S.price = r.price;
       S.want = Math.min(hi(), Math.max(lo(), r.seats > 0 ? r.seats : S.want));
     }
     reflect();
@@ -137,6 +148,9 @@
         + '<p class="empty">One seat is one member, for a month. They get the <b>Trader</b> edition: the chart, every desk, the scanner, the alerts and the rooms — everything that reads the market. Seats do not include the Analyst side (publishing, Click-to-Alert into your own server, the Article Desk, charging for your alerts), so your people can still buy that themselves.</p>'
         + '<h6>HOW MANY</h6>'
         + '<div class="qty"><input data-want type="number" min="' + lo() + '" max="' + hi() + '" value="' + esc(S.want) + '"><small>seats, billed monthly, ' + lo() + ' at the least. You can change this later; Stripe prorates it.</small></div>'
+        + (unit() ? '<p class="price"><b>' + esc(cash(unit().unitAmount, unit().currency)) + '</b> per seat, per ' + esc(unit().interval || 'month')
+            + (unit().from ? ' <i>(less at higher seat counts)</i>' : '')
+            + '<span>' + esc(S.want) + ' seats = <b>' + esc(cash(unit().unitAmount * S.want, unit().currency)) + '</b> a ' + esc(unit().interval || 'month') + '</span></p>' : '')
         + '<div class="row"><button data-buy="1">BUY SEATS</button></div>'
         + '<p class="note">You pick who sits in them after you pay, and you can move a seat to someone else at any time. Payment is taken by Stripe in your browser, not in Discord.</p>';
     }
@@ -221,6 +235,17 @@
         else S.msg = problem(r, 'Could not free the seat.');
       });
     }
+  });
+
+  /* the running total follows the number as it is typed, so the buyer sees the real monthly cost */
+  card.addEventListener('input', (e) => {
+    const box = e.target && e.target.closest ? e.target.closest('[data-want]') : null;
+    if (!box || !unit()) return;
+    const n = Math.round(Number(box.value));
+    if (!Number.isFinite(n) || n < lo() || n > hi()) return;
+    S.want = n;
+    const line = card.querySelector('.price span');
+    if (line) line.innerHTML = esc(n) + ' seats = <b>' + esc(cash(unit().unitAmount * n, unit().currency)) + '</b> a ' + esc(unit().interval || 'month');
   });
 
   btn.addEventListener('click', () => { S.open = !S.open; S.msg = ''; paint(); if (S.open) void load(true); });

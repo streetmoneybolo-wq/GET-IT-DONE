@@ -4146,6 +4146,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
             held.minSeats = academySeatsBilling.minSeats;
             held.maxSeats = academySeatsBilling.maxSeats;
             held.forSale = academySeatsBilling.configured;
+            /* the price is Stripe's, read back so the panel can never quote one Stripe is not charging */
+            held.price = await academySeatsBilling.price().catch(() => null);
           }
           sendJson(response, 200, held); return;
         }
