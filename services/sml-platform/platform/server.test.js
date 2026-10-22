@@ -2662,7 +2662,7 @@ test('team seats: the owner buys them, hands them out by Discord id, and only th
     configured: true,
     minSeats: 5,
     maxSeats: 1000,
-    price: async () => ({ unitAmount: 2999, currency: 'usd', interval: 'month', from: false, source: 'stripe' }),
+    price: async () => ({ unitAmount: 4999, currency: 'usd', interval: 'month', from: false, source: 'stripe' }),
     MAX_BODY_BYTES: 1024,
     checkout: async (ownerId, seats) => { billingCalls.push(['checkout', ownerId, seats]); return { ok: true, url: 'https://checkout.stripe.com/c/pay/cs_1', seats }; },
     portal: async () => ({ ok: false, status: 404, code: 'no_subscription' }),
@@ -2682,7 +2682,7 @@ test('team seats: the owner buys them, hands them out by Discord id, and only th
     /* the panel must not guess the team size limits: billing owns them and they are configurable */
     assert.equal(b.minSeats, 5); assert.equal(b.maxSeats, 1000); assert.equal(b.forSale, true);
     /* and the price, read back from Stripe, so the panel never quotes a figure Stripe is not charging */
-    assert.equal(b.price.unitAmount, 2999); assert.equal(b.price.source, 'stripe');
+    assert.equal(b.price.unitAmount, 4999); assert.equal(b.price.source, 'stripe');
 
     /* buying goes through Stripe, and the URL is handed back for the browser to open */
     r = await fetch(`${base}/academy-activity/seats/checkout`, { method: 'POST', headers: j, body: '{"seats":3}' });

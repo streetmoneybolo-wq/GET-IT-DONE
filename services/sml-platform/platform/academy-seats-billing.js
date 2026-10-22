@@ -18,7 +18,7 @@
  *   SML_ACADEMY_SEATS_WEBHOOK_SECRET  comma-separated during a rotation
  *   SML_ACADEMY_SEATS_RETURN_URL      where Checkout and the portal come back to
  *   SML_ACADEMY_SEATS_MIN             smallest team that can be bought (default 5)
- *   SML_ACADEMY_SEATS_UNIT_AMOUNT     what a seat costs, in cents (default 2999 = $29.99)
+ *   SML_ACADEMY_SEATS_UNIT_AMOUNT     what a seat costs, in cents (default 4999 = $49.99)
  *   SML_ACADEMY_SEATS_CURRENCY        currency for that amount (default usd)
  *
  * THE PRICE SHOWN IS THE PRICE CHARGED. The panel has to quote a figure before anyone will buy,
@@ -65,10 +65,12 @@ const SESSION_TTL_MINUTES = 35;
    more than an individual Trader plan, which is what keeps the two from competing.
    SML_ACADEMY_SEATS_MIN moves it without a deploy. */
 const DEFAULT_MIN_SEATS = 5;
-/* $29.99 a seat: clearly under Trader at $49.99, so buying for a team is worth doing, but high
-   enough that the five-seat floor costs more than one Trader plan and seats never become the
-   cheap way to put one person on Trader. */
-const DEFAULT_UNIT_AMOUNT = 2999;
+/* $49.99 a seat: the same as Trader bought individually. Seats are not a bulk discount, they are
+   a server owner covering their people - one card, one invoice, and the owner decides who sits in
+   each seat and can move one to somebody else. Because the price matches, a seat can never
+   undercut an individual Trader plan, and the five-seat floor is a signal that this is a team
+   product rather than something holding the two apart. */
+const DEFAULT_UNIT_AMOUNT = 4999;
 const DEFAULT_CURRENCY = 'usd';
 
 const text = (v) => String(v == null ? '' : v).trim();

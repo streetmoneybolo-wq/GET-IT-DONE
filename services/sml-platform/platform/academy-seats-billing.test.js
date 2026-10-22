@@ -45,7 +45,7 @@ function harness({ env = ENV, subs = {}, prices = {}, clock = () => NOW } = {}) 
     retrievePrice: async (id) => {
       calls.push(['price', id]);
       if (prices.throws) throw new Error('stripe down');
-      return prices.price || { id, unit_amount: 2999, currency: 'usd', recurring: { interval: 'month' } };
+      return prices.price || { id, unit_amount: 4999, currency: 'usd', recurring: { interval: 'month' } };
     }
   };
   const logs = [];
@@ -319,10 +319,10 @@ test('a Stripe outage during checkout is reported, not swallowed as success', as
 test('the price the panel shows is the price Stripe charges', async () => {
   const { billing, calls } = harness();
   assert.equal(billing.unitAmount, DEFAULT_UNIT_AMOUNT);
-  assert.equal(DEFAULT_UNIT_AMOUNT, 2999, '$29.99 a seat is what ships');
+  assert.equal(DEFAULT_UNIT_AMOUNT, 4999, 'a seat costs the same as Trader bought individually');
 
   const p = await billing.price();
-  assert.deepEqual(p, { unitAmount: 2999, currency: 'usd', interval: 'month', from: false, source: 'stripe' });
+  assert.deepEqual(p, { unitAmount: 4999, currency: 'usd', interval: 'month', from: false, source: 'stripe' });
   /* asked once, then cached: the panel is read on every open */
   await billing.price();
   await billing.price();
@@ -331,9 +331,9 @@ test('the price the panel shows is the price Stripe charges', async () => {
 
 test('a Stripe price that disagrees with the config wins, and a tiered one is quoted as a floor', async () => {
   /* the config is only a stand-in; a figure typed into env must never be shown as the charge */
-  const dearer = harness({ prices: { price: { unit_amount: 4999, currency: 'eur', recurring: { interval: 'month' } } } });
+  const dearer = harness({ prices: { price: { unit_amount: 5999, currency: 'eur', recurring: { interval: 'month' } } } });
   const p = await dearer.billing.price();
-  assert.equal(p.unitAmount, 4999);
+  assert.equal(p.unitAmount, 5999);
   assert.equal(p.currency, 'eur');
   assert.equal(p.source, 'stripe');
   assert.ok(dearer.logs.some(([event]) => event === 'academy_seats_price_differs'), 'the difference is logged, not hidden');
@@ -351,18 +351,18 @@ test('a Stripe price that disagrees with the config wins, and a tiered one is qu
 test('the panel still quotes a price when Stripe is unreachable or unconfigured', async () => {
   const broken = harness({ prices: { throws: true } });
   const p = await broken.billing.price();
-  assert.deepEqual(p, { unitAmount: 2999, currency: 'usd', interval: 'month', from: false, source: 'config' });
+  assert.deepEqual(p, { unitAmount: 4999, currency: 'usd', interval: 'month', from: false, source: 'config' });
   assert.ok(broken.logs.some(([event]) => event === 'academy_seats_price_read_failed'));
 
   const bare = harness({ env: {} });
   const q = await bare.billing.price();
-  assert.equal(q.unitAmount, 2999);
+  assert.equal(q.unitAmount, 4999);
   assert.equal(q.source, 'config', 'no Stripe key, so no read was attempted');
   assert.equal(bare.calls.filter(([kind]) => kind === 'price').length, 0);
 });
 
 test('a bad configured amount falls back to $29.99 rather than quoting nonsense', async () => {
-  for (const bad of ['0', '-100', 'free', '29.99', '99999999']) {
+  for (const bad of ['0', '-100', 'free', '49.99', '99999999']) {
     const h = harness({ env: { ...ENV, SML_ACADEMY_SEATS_UNIT_AMOUNT: bad } });
     assert.equal(h.billing.unitAmount, DEFAULT_UNIT_AMOUNT, bad);
     assert.ok(h.logs.some(([event]) => event === 'academy_seats_amount_invalid'), bad);
