@@ -31,7 +31,7 @@ test('in a real browser RESET clears the saved layout and cached files, keeps dr
     assert.match(await page.textContent('#sml-reset-card'), /Blank, black or stuck/);
     const card = await page.evaluate(() => { const r = document.getElementById('sml-reset-card').getBoundingClientRect(), c = document.getElementById('chart').getBoundingClientRect(); return { w: r.width, h: r.height, overChart: !(r.right < c.left || r.left > c.right || r.bottom < c.top || r.top > c.bottom) }; });
     assert.ok(card.w <= 342 && card.h < 190, 'a small card');
-    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('[data-r=lite]')]);
+    await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), page.click('[data-r=lite]')]);
     await page.waitForTimeout(1500);
     const after = await page.evaluate(() => ({ url: location.search, lite: localStorage.getItem('sml-lite'), compact: localStorage.getItem('sml-opt-mini-tf'), quality: localStorage.getItem('sml-chart-quality'), draw: localStorage.getItem('sml-chart-draw-v1'), theme: localStorage.getItem('sml-academy-appearance-v1'), cls: document.documentElement.classList.contains('sml-lite'), dpr: window.smlChartDpr && window.smlChartDpr(), label: (document.getElementById('sml-reset-btn') || {}).textContent }));
     assert.match(after.url, /[?&]r=\d+/); assert.equal(after.lite, '1'); assert.equal(after.compact, null); assert.equal(after.quality, null);
@@ -39,7 +39,7 @@ test('in a real browser RESET clears the saved layout and cached files, keeps dr
     assert.equal(after.cls, true, 'Lite mode is applied'); assert.equal(after.dpr, 1, 'charts draw at normal resolution'); assert.equal(after.label, 'RESET · LITE');
     // and back to full graphics
     await page.click('#sml-reset-btn'); assert.match(await page.textContent('#sml-reset-card'), /Reset \+ full graphics/);
-    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), page.click('[data-r=full]')]);
+    await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), page.click('[data-r=full]')]);
     assert.equal(await page.evaluate(() => localStorage.getItem('sml-lite')), null);
   } finally { await browser.close(); await new Promise((r) => server.close(r)); }
 });

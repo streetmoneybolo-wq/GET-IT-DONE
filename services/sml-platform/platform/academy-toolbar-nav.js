@@ -23,9 +23,11 @@
     { key: 'chart', label: 'CHART', hint: 'Drawn on the candles', ids: ['depth-walls', 'depth-cost', 'heat-toggle', 'smc-toggle', 'levels-toggle', 'intent-btn', 'targets-toggle'] },
     { key: 'flow', label: 'FLOW', hint: 'Who is buying and selling', ids: ['buysell-toggle', 'darkpool-toggle', 'shortsale-toggle', 'sentiment-toggle', 'squeeze-btn'] },
     { key: 'desk', label: 'DESK', hint: 'Panels that take the lower deck', ids: ['chain-toggle', 'mem-algo-toggle', 'sire-toggle', 'earnings-toggle', 'catalysts-toggle', 'paper-toggle', 'challenge-toggle'] },
-    { key: 'share', label: 'SHARE', hint: 'Talk about it, post it, be told', ids: ['talk-btn', 'snap-toggle', 'edition-btn', 'click-alert-toggle', 'article-btn'] }
+    { key: 'share', label: 'SHARE', hint: 'Talk about it, post it, be told', ids: ['talk-btn', 'snap-toggle', 'edition-btn', 'click-alert-toggle', 'midday-report-toggle', 'article-btn'] }
   ];
   const FLOW_BOXES = ['buysell-toggle', 'darkpool-toggle', 'shortsale-toggle', 'sentiment-toggle'];
+  /* MEM ALGO is the flagship tool: it stays on the bar whichever tab is open (beside TOUR and GUIDE) instead of hiding inside DESK */
+  const PINNED = ['mem-algo-toggle'];
   const ALL_IDS = GROUPS.flatMap((g) => g.ids);
   const phone = () => window.matchMedia('(max-width:720px)').matches;
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -146,11 +148,13 @@
     if (!rail) return;
     for (const g of GROUPS) {
       const row = rail.querySelector('.tg[data-group="' + g.key + '"] .row');
-      const want = g.ids.map((id) => document.getElementById(id)).filter((b) => b && !b.dataset.ownerSlot);
+      const want = g.ids.filter((id) => !PINNED.includes(id)).map((id) => document.getElementById(id)).filter((b) => b && !b.dataset.ownerSlot);
       /* the designed order, whatever order the tools booted in; re-appending only when something is out of place */
       const have = [...row.children];
       if (want.length !== have.length || want.some((b, i) => have[i] !== b)) for (const b of want) row.appendChild(b);
     }
+    const tail = rail.querySelector('.tail') || document.querySelector('.sml-dc-tail'); // the desktop layout moves the tail into the title bar
+    if (tail) PINNED.slice().reverse().forEach((id) => { const b = document.getElementById(id); if (b && b.parentElement !== tail) tail.insertBefore(b, tail.firstChild); });
     initTab();
     paint();
   }

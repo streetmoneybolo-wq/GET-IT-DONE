@@ -66,7 +66,7 @@
   var btn = null;
   function mount() {
     if (btn && document.body.contains(btn)) return true;
-    var tail = document.querySelector('#tool-rail .tail');
+    var tail = document.querySelector('#tool-rail .tail') || document.querySelector('.sml-dc-tail');
     if (!tail) return false;
     btn = document.createElement('button'); btn.type = 'button'; btn.id = 'sml-reset-btn'; btn.textContent = lite ? 'RESET · LITE' : 'RESET'; btn.title = 'Blank or stuck? Clear the saved layout and cached files and reload';
     btn.addEventListener('click', open); tail.appendChild(btn); return true;
