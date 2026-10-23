@@ -33,13 +33,12 @@ test('in a real browser the forming candle glides to each print instead of jumpi
       const base = last(); const start = Number(base.c), target = start + 3;
       P.liveTick(start + 0.0001, 10, Date.now()); await new Promise((x) => setTimeout(x, 150));
       P.liveTick(target, 10, Date.now());
-      await new Promise((x) => requestAnimationFrame(() => requestAnimationFrame(x)));
-      const mid = Number(last().c);
+      const mid = Number(last().c); // read before any frame has run: the drawn price has not caught up yet
       await new Promise((x) => setTimeout(x, 700));
       return { start, target, mid, end: Number(last().c), trueClose: P.view.live.c };
     });
     assert.equal(r.trueClose, r.target, 'the real candle holds the true print');
-    assert.ok(r.mid < r.target - 0.05, `a frame later the drawn price (${r.mid}) is still on its way to ${r.target}`);
+    assert.ok(r.mid < r.target - 0.05, `right after the print the drawn price (${r.mid}) is still on its way to ${r.target}`);
     assert.ok(Math.abs(r.end - r.target) < 0.01, `it settles on the print (${r.end})`);
   } finally { await env.close(); }
 });
