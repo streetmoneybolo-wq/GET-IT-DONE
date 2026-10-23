@@ -53,13 +53,13 @@ test('in a browser launched like the Discord phone app, every fixed control sits
     });
     let g = await probe();
     assert.equal(g.top, 48); assert.equal(g.bottom, 78);
-    assert.ok(g.seen >= 4, 'the bottom tabs and the floating buttons were checked (' + g.seen + ')');
+    assert.ok(g.seen >= 3, 'the floating controls were checked (' + g.seen + ')'); // the tab bars sit in the page under the chart now, not fixed
     assert.deepEqual(g.bad, [], 'a control sits under a Discord strip: ' + g.bad.join(', '));
     // the member raises the bottom gap in Settings: the tabs move up by the same amount
-    const navBefore = await page.evaluate(() => Math.round(document.getElementById('ms-nav').getBoundingClientRect().bottom));
+    const padBefore = await page.evaluate(() => parseFloat(getComputedStyle(document.body).paddingBottom));
     await page.evaluate(() => window.smlDiscordEdges.set({ bottom: 110 })); await page.waitForTimeout(400);
-    const navAfter = await page.evaluate(() => Math.round(document.getElementById('ms-nav').getBoundingClientRect().bottom));
-    assert.equal(navBefore - navAfter, 32, 'the tabs rose 32px with the gap');
+    const padAfter = await page.evaluate(() => parseFloat(getComputedStyle(document.body).paddingBottom));
+    assert.equal(Math.round(padAfter - padBefore), 32, 'the page keeps 32px more clear of the bottom strip');
     g = await probe(); assert.deepEqual(g.bad, [], g.bad.join(', '));
     // outside the Discord phone app nothing changes
     const plain = await (await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })).newPage();
