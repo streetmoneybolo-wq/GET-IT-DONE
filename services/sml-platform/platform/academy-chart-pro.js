@@ -36,6 +36,7 @@
   let dprCap = 3; try { const v = Number(localStorage.getItem('sml-chart-dpr-cap')); if (v >= 1.5 && v <= 3) dprCap = v; } catch (_) { /* storage can be blocked */ }
   /* the member's own floor (Settings, Chart sharpness): Sharp draws at 2x and Ultra at 3x even on a 1x screen, which the screen then averages down to the smoothest edges it can show */
   let qFloor = stage.clientWidth >= 560 ? 2 : 0; try { const raw = localStorage.getItem('sml-chart-quality'); if (raw !== null) { const v = Number(raw); qFloor = v === 3 ? 3 : v === 2 ? 2 : 0; } } catch (_) { /* storage can be blocked */ } // desktops start at Sharp: a 1x window is drawn at 2x and averaged down
+  try { if (localStorage.getItem('sml-lite') === '1') { dprCap = 1; qFloor = 0; } } catch (_) { /* storage can be blocked */ } // Lite mode (RESET card): normal-resolution charts
   window.smlChartQuality = { get: () => qFloor, set: (v) => { qFloor = Number(v) === 3 ? 3 : Number(v) === 2 ? 2 : 0; try { localStorage.setItem('sml-chart-quality', String(qFloor)); } catch (_) { /* ignore */ } window.dispatchEvent(new Event('resize')); } };
   window.smlChartDpr = () => Math.min(Math.max(window.devicePixelRatio || 1, qFloor), Math.max(dprCap, qFloor));
   /* moving the window to another screen, or zooming the page, changes the density: redraw at the new one */
