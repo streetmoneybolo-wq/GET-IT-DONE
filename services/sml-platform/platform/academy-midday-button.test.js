@@ -26,13 +26,14 @@ test('in a real browser the MIDDAY button on the chart toolbar opens the desk, p
         return f(u, o);
       };
     });
-    await page.goto('http://127.0.0.1:' + server.address().port + '/academy-activity/?symbol=SPY&tf=5m', { waitUntil: 'load' });
-    await page.waitForTimeout(2500);
+    await page.goto('http://127.0.0.1:' + server.address().port + '/academy-activity/?symbol=SPY&tf=5m', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.smlAlertsDesk && window.smlToolRail && document.getElementById('midday-report-toggle'), null, { timeout: 30000 }); // a busy machine boots slowly
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('sml-academy-session', { detail: { sessionToken: 'tok' } })));
-    await page.waitForTimeout(1200);
-    assert.ok(await page.isVisible('#midday-report-toggle'), 'the MIDDAY button is on the toolbar');
+    await page.waitForFunction(() => window.smlAlertsDesk.state.perMember === true, null, { timeout: 20000 });
+    await page.waitForSelector('#midday-report-toggle', { state: 'visible', timeout: 8000 });
     await page.click('#midday-report-toggle');
     await page.waitForSelector('.aa-mid');
+    await page.waitForFunction(() => /preview text/.test((document.querySelector('.aa-mid') || {}).textContent || ''), null, { timeout: 15000 });
     assert.match(await page.textContent('.aa-mid'), /preview text/);
     assert.match(await page.textContent('.aa-mid'), /#free-alerts/);
     assert.deepEqual(await page.evaluate(() => window.__mid), [{ post: false }], 'the preview posts nothing');

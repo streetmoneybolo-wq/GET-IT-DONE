@@ -50,23 +50,25 @@
   const A = 'html body.sml-ms';
   const css = [
     ':root{--ms-nav-h:54px;--ms-sub-h:0px}',
-    A + '{padding-bottom:calc(var(--ms-nav-h) + var(--ms-sub-h) + env(safe-area-inset-bottom,0px) + var(--sml-inset-bottom,0px))!important}',
+    A + '{padding-bottom:calc(env(safe-area-inset-bottom,0px) + var(--sml-inset-bottom,0px))!important}',
     /* what the tabs replace */
     /* the hover mini chart is a mouse feature: a tap loads the symbol on the chart tab instead */
     A + ' #sml-scan-pop{display:none!important}',
     A + ' main .bar{overflow-x:auto;scrollbar-width:none}' + A + ' main .bar::-webkit-scrollbar{display:none}',
     A + ' #tool-rail,' + A + ' #tool-quote-btn,' + A + ' #tool-quote-close,' + A + ' .academy-view-cycle,' + A + ' #academy-below>.below-title{display:none!important}',
-    /* the bottom tab bar and the sub-tab bar above it */
-    '#ms-nav{display:none}' + A + ' #ms-nav{position:fixed;left:0;right:0;bottom:0;z-index:9000;display:flex;height:calc(var(--ms-nav-h) + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);background:#08121a;border-top:1px solid #1f3a46;box-shadow:0 -8px 24px rgba(0,0,0,.45)}',
+    /* The tab bar and the sub-tab bar sit in the page directly under the chart, never fixed to the bottom of the window: a fixed bar inside the
+       Discord app floated up over the candles when the page was pulled past its top. They start at the chart's lower edge and, once the chart has scrolled
+       away, pin to the top of the window so they stay in reach; they never sit over the chart. */
+    '#ms-nav{display:none}' + A + ' #ms-nav{position:sticky;top:var(--sml-inset-top,0px);grid-column:1/-1;width:100%;margin:6px 0 0;z-index:9000;display:flex;height:var(--ms-nav-h);background:#08121a;border-top:1px solid #1f3a46;border-bottom:1px solid #1f3a46;box-shadow:0 8px 24px rgba(0,0,0,.45)}',
     A + ' #ms-nav button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;background:none;color:#7f97a4;font:800 .5rem ui-monospace,monospace;letter-spacing:.06em;padding:4px 0}',
     A + ' #ms-nav button i{font-style:normal;font-size:1.05rem;line-height:1;filter:grayscale(.7)}',
     A + ' #ms-nav button.on{color:#7ef0bd;box-shadow:inset 0 2px 0 #00c47d;background:#0b1d22}' + A + ' #ms-nav button.on i{filter:none}',
-    '#ms-sub{display:none}' + A + ' #ms-sub.has{position:fixed;left:0;right:0;bottom:calc(var(--ms-nav-h) + env(safe-area-inset-bottom,0px));z-index:8999;display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:6px 8px;background:#0a1620;border-top:1px solid #1b3540}',
+    '#ms-sub{display:none}' + A + ' #ms-sub.has{position:sticky;top:calc(var(--sml-inset-top,0px) + var(--ms-nav-h));grid-column:1/-1;width:100%;box-sizing:border-box;z-index:8999;display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:6px 8px;background:#0a1620;border-top:1px solid #1b3540}',
     A + ' #ms-sub::-webkit-scrollbar{display:none}' + A + ' #ms-sub button{flex:none;height:30px;padding:0 11px;border:1px solid #2b4b5a;border-radius:15px;background:#0d1b25;color:#a9c3d0;font:800 .6rem ui-monospace,monospace;letter-spacing:.05em;white-space:nowrap}',
     A + ' #ms-sub button.on{background:#0b3b2e;border-color:#00c47d;color:#7ef0bd}' + A + ' #ms-sub button.lit{border-color:#3fd9a0;color:#d8fff0}',
     /* the floating round buttons ride above the bars */
     A + ' #sml-settings-btn,' + A + ' #aa-btn,' + A + ' #academy-profile-btn,' + A + ' #academy-ask-btn,' + A + ' #lb-btn{opacity:0!important;pointer-events:none!important}',
-    '#ms-more{display:none}' + A + ' #ms-more.open{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;position:fixed;left:8px;right:8px;bottom:calc(var(--ms-nav-h) + var(--ms-sub-h) + env(safe-area-inset-bottom,0px) + 8px);z-index:9001;padding:10px;background:#0a1620;border:1px solid #2b5362;border-radius:14px;box-shadow:0 -12px 40px rgba(0,0,0,.6)}',
+    '#ms-more{display:none}' + A + ' #ms-more.open{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;grid-column:1/-1;margin:8px;z-index:9001;padding:10px;background:#0a1620;border:1px solid #2b5362;border-radius:14px;box-shadow:0 -12px 40px rgba(0,0,0,.6)}',
     A + ' #ms-more button{display:flex;align-items:center;gap:8px;padding:12px 10px;border:1px solid #2b4b5a;border-radius:10px;background:#0d1b25;color:#d6e6ee;font:800 .72rem system-ui,sans-serif;text-align:left}',
     A + ' #ms-more button i{font-style:normal;font-size:1.1rem}',
     /* the quote column is never a bottom sheet: it is an in-flow module of the FLOW tab */
@@ -161,10 +163,10 @@
     top = document.createElement('div'); top.id = 'ms-top'; top.setAttribute('role', 'tablist');
     top.innerHTML = STOCK_TABS.map(([id, label]) => '<button type="button" role="tab" data-tab="' + id + '">' + label + '</button>').join('');
     top.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button[data-tab]'); if (b) setTab(b.dataset.tab); });
-    more = document.createElement('div'); more.id = 'ms-more'; document.body.appendChild(more);
+    more = document.createElement('div'); more.id = 'ms-more';
     more.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button[data-fab]'); if (!b) return; setMore(false); if (b.dataset.fab === '__tour') { if (window.smlTour) window.smlTour.start(true); return; } if (b.dataset.fab === '__room') { if (window.smlRoom) window.smlRoom.mine(); return; } const t = byId(b.dataset.fab); if (t) t.click(); });
     sub = document.createElement('div'); sub.id = 'ms-sub'; sub.setAttribute('role', 'tablist');
-    document.body.appendChild(sub); document.body.appendChild(nav);
+    place();
     nav.addEventListener('click', (e) => { const m = e.target.closest && e.target.closest('button[data-more]'); if (m) { setMore(!more.classList.contains('open')); return; } const px = e.target.closest && e.target.closest('button[data-proxy]'); if (px) { setMore(false); const t = byId(px.dataset.proxy); if (t) t.click(); return; } const st = e.target.closest && e.target.closest('button[data-stock]'); if (st) { setMore(false); setTab(S.tab === 'quotes' ? S.stock : S.tab); return; } const b = e.target.closest && e.target.closest('button[data-tab]'); if (b) { setMore(false); setTab(b.dataset.tab); } });
     sub.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('button[data-sub]'); if (b) pickSub(b.dataset.sub); });
   }
@@ -175,9 +177,17 @@
     more.classList.toggle('open', !!on);
     const mb = nav && nav.querySelector('[data-more]'); if (mb) mb.classList.toggle('on', !!on);
   }
+  /* the bars live right after the chart card, in order: the tabs, their sub-tabs, the MORE sheet; anything else that lands between is moved past */
+  function place() {
+    const chart = document.querySelector('main .chart'); if (!chart || !nav) return;
+    if (chart.nextElementSibling !== nav) chart.after(nav);
+    if (nav.nextElementSibling !== sub) nav.after(sub);
+    if (sub.nextElementSibling !== more) sub.after(more);
+  }
   /* a slot under the chart for the Smart-money map card (academy-smart-money-ui.js moves its card in) */
   function slots() {
     const chart = document.querySelector('main .chart'); if (!chart) return;
+    place();
     const tb = chart.querySelector(':scope>.toolbar');
     if (top && tb && document.body.classList.contains('sml-ms') && top.previousElementSibling !== tb) tb.after(top);
     if (!byId('ms-slot-smc')) { const d = document.createElement('div'); d.id = 'ms-slot-smc'; chart.appendChild(d); }

@@ -1152,13 +1152,17 @@ function academyGateClientScript(gate) {
 /* The chart kit (academy-viz.js): one look for every graph, bar, meter and pie; loaded before every module that draws. */
 const ACADEMY_VIZ_KIT = (() => { try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-viz.js'), 'utf8') + '</script>'; } catch (_) { return ''; } })();
 
+/* Start-up guard, first thing in <head>. A start that never finishes (the page froze on something saved in this browser) is counted; two
+   in a row and the Academy's saved layout and view state are cleared before anything else runs, keeping drawings, theme and the tour flags.
+   It reports each start with the saved keys' names and sizes (never their values), so a freeze can be traced. Cleared when sign-in works. */
+const ACADEMY_BOOT_GUARD = "<script>(function(){try{var K='sml-boot',n=Number(localStorage.getItem(K))||0,keys=[],rec=false;localStorage.setItem(K,String(n+1));for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('sml-')===0)keys.push(k+':'+String(localStorage.getItem(k)||'').length)}if(n>=2){var keep=/^(sml-chart-draw-v1|sml-academy-appearance-v1|sml-academy-tour-v1|sml-academy-explain|sml-last-symbol|sml-boot)$/,drop=[];for(var j=0;j<localStorage.length;j++){var kk=localStorage.key(j);if(kk&&kk.indexOf('sml-')===0&&!keep.test(kk))drop.push(kk)}for(var d=0;d<drop.length;d++)localStorage.removeItem(drop[d]);try{sessionStorage.clear()}catch(_){}localStorage.setItem(K,'1');rec=true}window.__smlBootDone=function(){try{localStorage.removeItem(K)}catch(_){}};setTimeout(window.__smlBootDone,12000);if(navigator.sendBeacon)navigator.sendBeacon('/academy-activity/diag',new Blob([JSON.stringify({stage:rec?'boot_recovered':'boot_start',code:'boots:'+n,message:keys.join(' ').slice(0,190),ua:navigator.userAgent.slice(0,80),inDiscord:location.search.indexOf('frame_id')>=0})],{type:'application/json'}))}catch(_){}})();</script>";
 function academyActivityHtml(initialMarket = {}, options = {}) {
   /* options.gate is passed only while an Academy gate flag is on; without it
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
   const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_RESET + ACADEMY_CHART_GUARD + ACADEMY_VIZ_KIT + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_DISCORD_EDGES + ACADEMY_MOBILE_COMPACT + ACADEMY_MOBILE_SHELL + ACADEMY_SIDE_WINDOW + ACADEMY_ONE_AT_A_TIME + ACADEMY_DESKTOP_COMPACT + ACADEMY_TOUR + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + ACADEMY_CANDLE_RECAP + ACADEMY_PROFILE_DESK + ACADEMY_PROFILE_MUSIC + ACADEMY_PROFILE_FX + ACADEMY_PROFILE_UI + ACADEMY_ROOM_UI + ACADEMY_ASK_UI + ACADEMY_BAR_RAIL + ACADEMY_CLIPBOARD + '</body></html>');
-  const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>');
+  const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>').replace('<head><meta charset="utf-8">', () => '<head><meta charset="utf-8">' + ACADEMY_BOOT_GUARD);
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
 
@@ -1335,6 +1339,7 @@ function authenticateAcademyActivity(){
       window.smlAcademySessionToken=sessionToken;
       if(displayName)window.smlAcademyDisplayName=displayName;
       document.body.dataset.academyAuth='ready';
+      try{window.__smlBootDone&&window.__smlBootDone()}catch(_){}
       academyNotice('');
       if(typeof mainLastAuth!=='undefined')mainLastAuth=Date.now();
       window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken,displayName}}));
