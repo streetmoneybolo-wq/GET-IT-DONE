@@ -2056,6 +2056,15 @@ function mergeLive(base, massive, symbolRaw) {
 
 /* a streaming route sends its headers at once and is untouched; a data route that has not answered by then is cut with a 503 */
 const ACADEMY_ROUTE_BUDGET_MS = Number(process.env.SML_ACADEMY_ROUTE_BUDGET_MS) || 20_000;
+/* the last good Market Direction and SML VIX reads: served (marked stale) when a fresh read takes longer than ACADEMY_SLOW_READ_MS */
+const ACADEMY_SLOW_READ_MS = Number(process.env.SML_ACADEMY_SLOW_READ_MS) || 12_000;
+const academyLastGood = new Map();
+function raceLastGood(read, key, ms = ACADEMY_SLOW_READ_MS) {
+  read.catch(() => null);
+  let timer = null;
+  const slow = new Promise((resolve) => { timer = setTimeout(() => { const old = academyLastGood.get(key); resolve(old ? { ...old, stale: true } : null); }, ms); if (timer.unref) timer.unref(); });
+  return Promise.race([read, slow]).finally(() => clearTimeout(timer));
+}
 
 function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSecret = '',
   acceptStripeEvent, stripeWebhookSecret = '', billingApiSecret = '', stripe = null,
@@ -3595,7 +3604,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
       if (!marketDirection) { sendJson(response, 503, { ok: false, error: 'direction_unavailable' }); return; }
       const mode = new URL(request.url || '/', 'http://localhost').searchParams.get('mode') === 'swing' ? 'swing' : 'day';
-      try { sendJson(response, 200, await marketDirection.get(mode)); }
+      try {
+        /* a slow upstream never holds the panel past 12 s: the last good read comes back marked stale while the fresh one finishes */
+        const read = marketDirection.get(mode).then((v) => { if (v && v.ok) academyLastGood.set('direction:' + mode, v); return v; });
+        const v = await raceLastGood(read, 'direction:' + mode);
+        if (v) sendJson(response, 200, v); else sendJson(response, 503, { ok: false, error: 'direction_temporarily_unavailable' });
+      }
       catch (error) { logger('error', 'market_direction_failed', { error }); sendJson(response, 503, { ok: false, error: 'direction_temporarily_unavailable' }); }
       return;
     }
@@ -3606,7 +3620,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
       if (!academySmlVix) { sendJson(response, 503, { ok: false, error: 'vix_unavailable' }); return; }
       try {
-        const v = await academySmlVix.get();
+        const v = await raceLastGood(academySmlVix.get().then((x) => { if (x && x.ok) academyLastGood.set('vix', x); return x; }), 'vix');
         const et = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
         const mins = (Number(et.find((p) => p.type === 'hour').value) % 24) * 60 + Number(et.find((p) => p.type === 'minute').value);
         const openMs = Date.now() - (mins - 570) * 60_000;
@@ -6746,7 +6760,7 @@ if (require.main === module) {
 
 module.exports = {
   getAcademyCandles, getAcademyScanner, getAcademyDepth, dataHealth, createServer,
-  sendJson,
+  sendJson, raceLastGood, academyLastGood,
   sendHtml,
   academyActivityHtml,
   loopKickActivityHtml,
