@@ -2641,6 +2641,41 @@ test('Editions and persona bots: a member picks Trader or Analyst, the analyst c
   assert.match(html, /id = 'edition-btn'/); assert.match(html, /body\.sml-edition-trader #click-alert-toggle,body\.sml-edition-trader #article-btn\{display:none!important\}/, 'the Trader edition hides the publishing tools');
 });
 
+test('the trial countdown offers a choice of plans instead of one button to a browser', () => {
+  /* Before this, a member whose trial was ending had exactly one route: a "Keep my access" button
+     that opened an external billing page. The gate client's own buy button was no better - it called
+     startPurchase({sku_id: skus[0]}), whichever SKU happened to be first, so nobody ever chose. */
+  const SKU = '111111111111111111';
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] },
+    { appId: '1551336038713139370', gate: { contentGate: false, links: false, skus: [SKU], skuLevels: { [SKU]: 'trader' } } });
+  assert.match(html, /window\.smlAcademyPlans = \{/, 'the picker ships beside the gate script');
+  /* and nowhere else: a page that sells nothing stays byte-identical, which academy-gate.test.js pins */
+  const plain = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  /* the countdown still *mentions* window.smlAcademyPlans in its canPick() guard, so test for the
+     picker's own definition rather than the name */
+  assert.ok(!/window\.smlAcademyPlans = \{/.test(plain), 'no picker when nothing is sold through Discord');
+  assert.match(plain, /canPick = \(\) => Boolean\(window\.smlAcademyPlans/, 'and the countdown degrades to its external link');
+  assert.match(html, /data-plans="1">See my options/, 'and the trial card opens it');
+  /* the fallback must survive: outside Discord, or with no SKUs, the card still needs a live button */
+  assert.match(html, /canPick\(\) \? .*data-plans.*: \(d\.buyUrl \?/, 'the external link remains the fallback');
+  /* prices come from Discord, never from our source: a figure typed here would drift from the SKU */
+  assert.match(html, /commands\.getSkus/, 'plans are read from Discord');
+  assert.ok(!/\$49\.99|\$119\.99/.test(html.slice(html.indexOf('smlAcademyPlans'))), 'no hardcoded prices in the picker');
+  /* seats are a different purchase by a different person and must not read as a cheaper self-serve tier */
+  assert.match(html, /RUN YOUR OWN SERVER\?/, 'seats are offered, kept apart');
+  assert.match(html, /smlAcademyOnEntitlement/, 'a finished purchase renews the session; access stays server-side');
+});
+
+test('the Activity tells the client which SKU is which tier', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  assert.ok(src.includes('discordSkuLevels: parseSkuLevels(config.academyDiscordSkus)'), 'levels are derived once');
+  assert.ok(src.includes('{ skuLevels: levels }'), 'and reach the page');
+  /* two empty keys must never appear on a page that sells nothing: academy-gate.test.js pins the
+     exact gate JSON, so an unconditional skuLevels:{} would break it */
+  assert.ok(src.includes('Object.keys(levels).length ? { skuLevels: levels } : {}'), 'omitted when empty');
+  assert.ok(src.includes("const picker = skus.length && ACADEMY_PLANS_UI"), 'and the picker ships only with the SKUs');
+});
+
 test('the intro overlay plays once, actually plays, and cannot hold the screen', () => {
   /* The overlay is injected by academyFinalBody (not academyActivityHtml), so this pins the source.
      Three things were wrong, reported as "the intro overlay stays too long":

@@ -2,7 +2,10 @@
    The chip reads the real pass from the server (GET /academy-activity/trial-status, the same pass the access check uses),
    counts down locally every half minute and re-reads every ten minutes. Green with more than five days left, amber at five,
    red on the last day (hours), and "TRIAL ENDED" once it is over. Tapping it opens a small card with the end date and a
-   Keep-access button that goes to the billing page. Members with a paid pass see nothing. */
+   See-my-options button that opens the plan picker (academy-plans-ui.js) right here in Discord: Trader, Analyst, and team
+   seats for a member who runs their own server. The old behaviour - one button that threw the member out to a browser -
+   is kept as the fallback for when no SKUs are configured or the Activity is not running inside Discord, so the card
+   never ends up with a dead button. Members with a paid pass see nothing. */
 (function boot(tries) {
   if (window.__smlTrialCountdown) return;
   const bar = document.querySelector('.bar');
@@ -12,6 +15,8 @@
   const token = () => String(window.smlAcademySessionToken || '');
   const openOut = (url) => { if (!url) return; if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url); else { try { window.open(url, '_blank', 'noopener'); } catch (_) { /* blocked */ } } };
   const S = { data: null, checked: '', timer: 0, tick: 0, open: false };
+  /* the picker is a separate module and may not have loaded (or may have nothing to offer) */
+  const canPick = () => Boolean(window.smlAcademyPlans && window.smlAcademyPlans.available());
 
   const css = document.createElement('style');
   css.textContent = '.academy-trial-chip{display:none;align-items:center;gap:6px;margin-left:4px;padding:4px 9px;border:1px solid #1f8a5f;border-radius:999px;background:#0b2219;color:#7dffc4;font:900 .62rem ui-monospace,monospace;letter-spacing:.05em;cursor:pointer;white-space:nowrap;line-height:1.2}.academy-trial-chip.show{display:inline-flex}'
@@ -47,7 +52,7 @@
     card.innerHTML = '<h3>' + (ended ? 'YOUR FREE TRIAL HAS ENDED' : 'YOUR FREE TRIAL') + '</h3>'
       + (ended ? '<div class="big">0 days left</div><p>It ended ' + esc(fmtDate(d.endsAt)) + '. Keep the live chart lab, every lesson, the scanner, options, Level 2, the alerts desk and your profile by picking a plan.</p>'
         : '<div class="big">' + esc(L.long) + ' left</div><p>Ends ' + esc(fmtDate(d.endsAt)) + (d.startsAt ? ' · started ' + esc(fmtDate(d.startsAt)) : '') + '. Everything stays unlocked until then. Pick a plan any time and nothing changes on the day.</p>')
-      + '<div class="row">' + (d.buyUrl ? '<button type="button" class="keep" data-keep="1">Keep my access</button>' : '') + '<button type="button" data-close="1">' + (ended ? 'Later' : 'Got it') + '</button></div>'
+      + '<div class="row">' + (canPick() ? '<button type="button" class="keep" data-plans="1">See my options</button>' : (d.buyUrl ? '<button type="button" class="keep" data-keep="1">Keep my access</button>' : '')) + '<button type="button" data-close="1">' + (ended ? 'Later' : 'Got it') + '</button></div>'
       + '<small>The countdown reads the pass on your Discord account; it is the same pass the Academy checks on every open.</small>';
   }
   async function check() {
@@ -60,7 +65,12 @@
     paint();
   }
   chip.addEventListener('click', () => { S.open = !S.open; paint(); });
-  card.addEventListener('click', (e) => { const t = e.target.closest && e.target.closest('[data-keep],[data-close]'); if (!t) return; if (t.dataset.keep) { openOut(S.data && S.data.buyUrl); } S.open = false; paint(); });
+  card.addEventListener('click', (e) => {
+    const t = e.target.closest && e.target.closest('[data-keep],[data-plans],[data-close]'); if (!t) return;
+    if (t.dataset.plans) { S.open = false; paint(); window.smlAcademyPlans.open(S.data && S.data.buyUrl); return; }
+    if (t.dataset.keep) { openOut(S.data && S.data.buyUrl); }
+    S.open = false; paint();
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.open) { S.open = false; paint(); } });
   window.addEventListener('sml-academy-session', () => { const t = token(); if (t !== S.checked) { S.checked = t; void check(); } });
   if (token()) { S.checked = token(); void check(); }
