@@ -6099,7 +6099,9 @@ async function main() {
     pool: database.pool, candles: (s, tf) => sentimentCandles(s, tf),
     quote: async (s) => { const p = academyMassive ? academyMassive.peek(s) : null; if (p && Number.isFinite(p.last) && p.last > 0) return { last: p.last }; const c = changeFromDaily((await sentimentCandles(s, '1D')).bars); return c && Number.isFinite(c.price) ? { last: c.price } : null; },
     deskAlerts: academyAlerts ? () => academyAlerts.records() : null, backfill: academyAlerts ? (sinceMs) => academyAlerts.backfill({ sinceMs }) : null,
-    ownerIds: [...OWNER_IDS], since: process.env.SML_ALERT_RECORD_SINCE || '2026-10-05', logger: log
+    ownerIds: [...OWNER_IDS], since: process.env.SML_ALERT_RECORD_SINCE || '2026-10-05',
+    /* the owner's record starts fresh with the week of Oct 19, 2026 (earlier alerts stay stored, not counted); SML_ALERT_RECORD_OWNER_START moves it */
+    ownerStart: process.env.SML_ALERT_RECORD_OWNER_START || '2026-10-19', logger: log
   });
   if (academyAlertRecord) { void academyAlertRecord.ensureSchema(); academyAlertRecord.start(); }
   const academyProfilePages = process.env.ACADEMY_PROFILE_PAGES === 'off' ? null : createProfilePages({

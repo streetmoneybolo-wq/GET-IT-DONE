@@ -90,24 +90,26 @@ function linkFollowUps(rows) {
 }
 
 /* the record from a member's rows */
-function summarize(rows, nowMs) {
+/* fromMs: a fresh start (the owner's record begins at OWNER_START); earlier alerts stay stored and still link follow-ups, but are not counted */
+function summarize(rows, nowMs, fromMs = 0) {
   const all = linkFollowUps((rows || []).filter(Boolean)).sort((a, b) => b.alertedAt - a.alertedAt);
-  const counted = all.filter((a) => !a.followUp);
+  const counted = all.filter((a) => !a.followUp && a.alertedAt >= fromMs);
   const follow = new Map(); for (const a of all) if (a.followUp) follow.set(a.rootRef, (follow.get(a.rootRef) || 0) + 1);
   const scored = (list) => { const closed = list.filter((a) => a.result && a.result !== 'abandoned'); const wins = closed.filter((a) => a.result === 'win'); return { alerts: list.length, open: list.filter((a) => !a.result).length, closed: closed.length, wins: wins.length, stopped: closed.filter((a) => a.result === 'stopped').length, missed: closed.filter((a) => a.result === 'missed').length, winRatePct: closed.length ? Math.round(wins.length / closed.length * 100) : null, avgPeakPct: list.filter((a) => a.peakPct != null).length ? r2(list.filter((a) => a.peakPct != null).reduce((s, a) => s + a.peakPct, 0) / list.filter((a) => a.peakPct != null).length) : null }; };
   const window = counted.filter((a) => nowMs - a.alertedAt <= WINDOW_MS);
   const rowOf = (a) => row(a, follow.get(a.ref || a.id) || 0);
   const top = counted.filter((a) => a.peakPct != null).sort((a, b) => b.peakPct - a.peakPct || a.alertedAt - b.alertedAt).slice(0, 10).map(rowOf);
-  return { ninetyDay: { ...scored(window), sinceMs: nowMs - WINDOW_MS }, allTime: scored(counted), followUps: all.length - counted.length, top, recent: counted.slice(0, 10).map(rowOf), firstAt: counted.length ? counted[counted.length - 1].alertedAt : null };
+  return { ninetyDay: { ...scored(window), sinceMs: Math.max(nowMs - WINDOW_MS, fromMs) }, allTime: scored(counted), followUps: all.length - counted.length, top, recent: counted.slice(0, 10).map(rowOf), firstAt: counted.length ? counted[counted.length - 1].alertedAt : null };
 }
 function row(a, followUps = 0) {
   return { id: a.id, source: a.source, symbol: a.symbol, side: a.side, horizon: a.horizon, entry: a.entry, target: a.target, stop: a.stop, alertedAt: a.alertedAt, status: a.status, result: a.result, followUps,
     peakPct: a.peakPct, peakAt: a.peakAt, timeToPeakMs: a.peakAt != null ? Math.max(0, a.peakAt - a.alertedAt) : null, lastPrice: a.lastPrice, lastPct: a.lastPct, lastAt: a.lastAt, closedAt: a.closedAt, closePct: a.closePct };
 }
 
-function createAlertRecord({ pool = null, candles = null, quote = null, clickAlerts = null, deskAlerts = null, backfill = null, ownerIds = [], since = '2026-10-05', now = Date.now, logger = () => {}, timers = { setTimeout, clearTimeout, setInterval, clearInterval }, settleMs = 10 * 60_000, perPass = 40 } = {}) {
+function createAlertRecord({ pool = null, candles = null, quote = null, clickAlerts = null, deskAlerts = null, backfill = null, ownerIds = [], since = '2026-10-05', ownerStart = '', now = Date.now, logger = () => {}, timers = { setTimeout, clearTimeout, setInterval, clearInterval }, settleMs = 10 * 60_000, perPass = 40 } = {}) {
   const db = pool && typeof pool.query === 'function' ? pool : null;
   const owners = new Set((ownerIds || []).map(String));
+  const ownerStartMs = ownerStart ? (Date.parse(String(ownerStart).length === 10 ? ownerStart + 'T00:00:00-04:00' : ownerStart) || 0) : 0;
   const sinceMs = Date.parse(String(since).length === 10 ? since + 'T00:00:00-04:00' : since) || Date.parse('2026-10-05T00:00:00-04:00');
   const mem = new Map(); // `${source}:${ref}` -> row (when there is no database)
   const summaries = new Map();
@@ -225,11 +227,12 @@ function createAlertRecord({ pool = null, candles = null, quote = null, clickAle
     const id = String(userId); if (!SNOWFLAKE.test(id)) return null;
     const hit = summaries.get(id); if (hit && now() - hit.at < 120_000) return hit.v;
     const rows = await rowsOf(id);
-    const v = summarize(rows, now());
+    const fresh = owners.has(id) && ownerStartMs > 0 ? ownerStartMs : 0;
+    const v = summarize(rows, now(), fresh);
     if (typeof quote === 'function') {
       for (const r of v.top) { try { const q = await quote(r.symbol); const last = q && num(q.last); if (last > 0) { r.lastPrice = last; r.lastPct = movePct(r.side, r.entry, last); r.lastAt = now(); r.live = true; } } catch (_) { /* the stored last stands */ } }
     }
-    v.userId = id; v.asOf = now(); v.since = since;
+    v.userId = id; v.asOf = now(); v.since = fresh ? ownerStart : since;
     summaries.set(id, { at: now(), v }); if (summaries.size > 1000) summaries.delete(summaries.keys().next().value);
     return v;
   }
