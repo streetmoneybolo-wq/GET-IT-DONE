@@ -2639,6 +2639,29 @@ test('Editions and persona bots: a member picks Trader or Analyst, the analyst c
   assert.match(html, /id = 'edition-btn'/); assert.match(html, /body\.sml-edition-trader #click-alert-toggle,body\.sml-edition-trader #article-btn\{display:none!important\}/, 'the Trader edition hides the publishing tools');
 });
 
+test('the desktop tool rail is not swallowed by the rules that hide spans in the top bar', () => {
+  /* REGRESSION. academy-bar-rail.js docks six floating pills (Alerts, Loop Bucks, Ask, Profile,
+     Settings, Aa) into one <span class="bar-rail"> in the top bar at desktop widths. TWO separate
+     rules hide spans in that bar to save room, and the rail is a span, so both caught it: the page's
+     own max-width:1180 rule (.bar>span beats .bar-rail on specificity) and desktop-compact's
+     body.sml-dc rule (heavier still, and !important). Between them the rail computed display:none
+     across the entire desktop range, and the six pills went with it - they are inside the rail by
+     then, so they do not fall back to floating. Observed live at 1440px: the Profile button existed,
+     reported visible, and measured 0x0. */
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  assert.match(html, /@media\(max-width:1180px\)\{\.bar>span:not\(\.bar-rail\)\{display:none\}\}/,
+    'the narrow-desktop rule must spare the rail');
+  assert.match(html, /main \.bar>span:not\(\.bar-rail\)\{display:none!important\}/,
+    'and so must the compact rule');
+  assert.match(html, /body\.academy-lesson-open \.bar>span:not\(\.bar-rail\)\{display:none\}/,
+    'and so must the one that fires while a lesson is open');
+  /* the unqualified forms must not ship at all, or they would hide it again on source order */
+  assert.ok(!/\.bar>span\{display:none\}/.test(html), 'no unqualified narrow-desktop rule');
+  assert.ok(!/\.bar>span\{display:none!important\}/.test(html), 'no unqualified compact rule');
+  assert.match(html, /@media\(min-width:721px\)\{\.bar-rail\{display:flex/, 'and the rail still shows itself at desktop width');
+  assert.match(html, /const IDS = \['academy-alerts-fab'/, 'and still docks the pills');
+});
+
 test('team seats: the owner buys them, hands them out by Discord id, and only the site owner may grant one by hand', async () => {
   const OWNER = '258456581000000000';
   const A = '111111111111111111';

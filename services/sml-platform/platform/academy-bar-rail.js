@@ -16,6 +16,11 @@
     /* the panels those buttons open hang under the bar instead of rising from a corner */
     + '#aa-panel,#sml-settings-panel,#lb-panel,#sml-sig,#academy-ask{top:50px!important;bottom:auto!important;left:auto!important;right:10px!important;max-height:calc(100dvh - 64px)!important}}';
   document.head.appendChild(style);
+  /* The rail is a <span>, and TWO rules hide spans in the top bar to save room: the page's own
+     responsive CSS under max-width 1180, and academy-desktop-compact.js under body.sml-dc. Both now
+     carry :not(.bar-rail), for exactly this reason - without the exception the rail computes
+     display:none across the whole desktop range and takes all six docked pills down with it, since
+     dock() has already moved them inside, so they cannot fall back to floating either. */
   let rail = null;
   function home() {
     if (rail) return rail;
