@@ -120,7 +120,10 @@ function createVolIndex({ chain, now = Date.now, symbol = 'SPY', openTtlMs = 120
   async function get() {
     if (cache && cache.until > now()) return cache.value;
     if (pending) return pending;
-    pending = compute().then((value) => {
+    /* a hung chain read never holds the index for good: after 60 s the read counts as failed and the next ask tries again */
+    let hung = null;
+    const limit = new Promise((_, reject) => { hung = setTimeout(() => reject(new Error('vol_index_timeout')), 60_000); if (hung.unref) hung.unref(); });
+    pending = Promise.race([compute(), limit]).finally(() => clearTimeout(hung)).then((value) => {
       cache = { value: value.ok ? value : (cache && cache.value && cache.value.ok ? { ...cache.value, stale: true } : value), until: now() + (isOpen(now()) ? openTtlMs : closedTtlMs) };
       return cache.value;
     }, (error) => {

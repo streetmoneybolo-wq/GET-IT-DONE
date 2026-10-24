@@ -22,3 +22,9 @@ test('the direction and VIX routes keep the last good read and race it', () => {
   assert.match(src, /raceLastGood\(read, 'direction:' \+ mode\)/);
   assert.match(src, /raceLastGood\(academySmlVix\.get\(\)/);
 });
+
+test('a hung upstream read never blocks the SML VIX or Market Direction for good: each read gives up after 60 s', () => {
+  const read = (f) => require('node:fs').readFileSync(require('node:path').join(__dirname, f), 'utf8');
+  assert.match(read('academy-vol-index.js'), /Promise\.race\(\[compute\(\), limit\]\)/);
+  assert.match(read('academy-market-direction-v2.js'), /direction_source_timeout'\)\), 60_000\)/);
+});
