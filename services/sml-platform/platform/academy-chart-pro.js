@@ -20,6 +20,8 @@
   /* Smart range: tools that draw price levels (targets, stops, walls, alerts) register them here, and the auto scale widens to show the ones within reach of
      the candles (never more than one extra visible range beyond an edge), so a target is on screen instead of off the top. Far-away levels never squash the candles. */
   const LEVELS = new Map();
+  /* a layer that asks the chart for its model while giving its levels would loop forever (the model asks for the levels again), so a nested call gets none */
+  let inLevels = false;
   window.smlChartLevels = { register: (name, fn) => { if (typeof fn === 'function') LEVELS.set(String(name), fn); }, unregister: (name) => LEVELS.delete(String(name)), list: () => [...LEVELS.keys()] };
   function reachRange(lo, hi, prices) {
     const span = hi - lo; if (!(span > 0)) return { lo, hi };
@@ -27,7 +29,7 @@
     for (const p of prices) { if (!Number.isFinite(p)) continue; if (p > hi && p - hi <= span) nhi = Math.max(nhi, p); else if (p < lo && lo - p <= span) nlo = Math.min(nlo, p); }
     return { lo: nlo, hi: nhi };
   }
-  const levelPrices = (sym) => { const out = []; for (const fn of LEVELS.values()) { try { const r = fn(sym); if (Array.isArray(r)) for (const x of r) out.push(+(x && typeof x === 'object' ? x.price : x)); } catch (_) { /* a broken layer never breaks the chart */ } } return out; };
+  const levelPrices = (sym) => { const out = []; if (inLevels) return out; inLevels = true; try { for (const fn of LEVELS.values()) { try { const r = fn(sym); if (Array.isArray(r)) for (const x of r) out.push(+(x && typeof x === 'object' ? x.price : x)); } catch (_) { /* a broken layer never breaks the chart */ } } } finally { inLevels = false; } return out; };
   /* Drawing resolution for every chart layer. A phone screen packs 3 device pixels into each CSS pixel; four stacked full-size layers at that density is what makes dragging heavy,
      so cap it (1.5x on phones, 2x elsewhere). Coordinates stay in CSS pixels, so nothing moves; text and thin lines are only slightly softer. */
   /* sharpness: every chart layer draws at the screen's real pixel density (a 2x laptop, a 3x phone), up to 3; it was 2 on desktop and 1.5 on a phone,
