@@ -285,7 +285,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /academy-intro-rail-left/);
     assert.match(html, /academy-intro\.banner-mode/);
     assert.match(html, /availableWidth\/availableHeight>=2/);
-    assert.match(html, /Tap to begin with sound/);
+    /* the fallback no longer promises sound: the video is muted so that autoplay is permitted at all */
+    assert.match(html, /Tap to play the intro/);
+    assert.match(html, /autoplay muted playsinline/);
     assert.match(html, /keepWarm/);
     assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
     assert.match(html, /let bars=\[/);
@@ -2637,6 +2639,29 @@ test('Editions and persona bots: a member picks Trader or Analyst, the analyst c
   await withServer({ academyOAuth }, async (base) => { assert.equal((await fetch(`${base}/academy-activity/edition`, { headers: { authorization: 'Bearer member' } })).status, 503, 'without the service the route says so'); });
   const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
   assert.match(html, /id = 'edition-btn'/); assert.match(html, /body\.sml-edition-trader #click-alert-toggle,body\.sml-edition-trader #article-btn\{display:none!important\}/, 'the Trader edition hides the publishing tools');
+});
+
+test('the intro overlay plays once, actually plays, and cannot hold the screen', () => {
+  /* The overlay is injected by academyFinalBody (not academyActivityHtml), so this pins the source.
+     Three things were wrong, reported as "the intro overlay stays too long":
+     - the <video> had autoplay but no muted, and browsers refuse autoplay with sound. The play()
+       promise rejected, the "PLAY INTRO" fallback appeared instead of the video, and a 6s watchdog
+       cleared it - so the member sat looking at a dead panel rather than a 4.8s film.
+     - nothing recorded that it had been seen, so it blocked EVERY load, forever.
+     - if metadata never arrived the cap was min(45, 20+4) = 24 seconds of full-screen overlay. */
+  const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  assert.ok(src.includes('<video id="academy-intro-video" autoplay muted playsinline'), 'muted, or autoplay is refused');
+  assert.ok(src.includes('video.muted=true'), 'and set in script, since the attribute alone can be missed after parse');
+  assert.ok(src.includes("const SEEN='sml-academy-intro-seen-v1'"), 'it remembers being seen');
+  assert.ok(src.includes('if(seen()){finish();return}'), 'and closes at once on a later load');
+  assert.ok(src.includes('finished=true;mark();'), 'every exit records it, including Skip');
+  assert.ok(src.includes('Math.min(12,d+3)*1000'), 'a stalled video gives up quickly');
+  assert.ok(!src.includes('Math.min(45,d+4)*1000'), 'the 24-second worst case is gone');
+  /* the warm-up must still run when the intro is skipped: it primes the curriculum, market,
+     scanner and first lesson, which is useful on every load */
+  const skipAt = src.indexOf('if(seen()){finish();return}');
+  const warmAt = src.indexOf('window.smlAcademyWarmPromise');
+  assert.ok(warmAt > 0 && warmAt < skipAt, 'the early return must come after the warm-up, not before it');
 });
 
 test('the desktop tool rail is not swallowed by the rules that hide spans in the top bar', () => {
