@@ -14,12 +14,12 @@ const targetsUi = fs.readFileSync(path.join(__dirname, 'academy-targets-ui.js'),
  * chart; these two were never given a place. */
 
 test('the phone shell gives the Intent and Targets panels a slot under the chart and puts them back when the phone layout ends', () => {
-  assert.match(shell, /const PANELS = \['intent-panel', 'targets-panel'\]/);
+  assert.match(shell, /const PANELS = \['intent-panel', 'targets-panel', 'levels-card'\]/);
   assert.match(shell, /d\.id = 'ms-slot-tools'; chart\.appendChild\(d\)/, 'the slot is made under the chart with the SMC slot');
   assert.match(shell, /dockPanels\(\);\s*\}/, 'docking runs with the slots, which the shell refreshes every second');
   assert.match(shell, /undockPanels\(\);\s*const slot = byId\('ms-slot-smc'\)/, 'teardown returns them to the chart stage');
   assert.match(shell, /\[data-ms-tab=chart\] #ms-slot-tools\{display:block/, 'visible on the Chart tab');
-  assert.match(shell, /#ms-slot-tools>#intent-panel,' \+ A \+ ' #ms-slot-tools>#targets-panel\{position:static!important/, 'in the flow, not floating');
+  assert.match(shell, /#ms-slot-tools>#intent-panel,' \+ A \+ ' #ms-slot-tools>#targets-panel,' \+ A \+ ' #ms-slot-tools>#levels-card\{position:static!important/, 'in the flow, not floating');
   /* the panels themselves still float over the stage when nothing moves them (desktop) */
   assert.match(intentUi, /#intent-panel\{position:absolute;right:8px;top:26px/);
   assert.match(targetsUi, /#targets-panel\{position:absolute;right:8px;top:26px/);
