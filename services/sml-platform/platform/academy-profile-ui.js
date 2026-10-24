@@ -261,11 +261,13 @@
     if (!a || !a.allTime || !a.allTime.alerts) return '<p class="pv-empty">' + (d.own ? 'Your Click-to-Alert posts land here with a 90-day win rate and your ten best calls.' : 'No alerts on record yet.') + '</p>';
     const n = a.ninetyDay || {}, t = a.allTime || {};
     const rate = (x) => (Number.isFinite(x.winRatePct) ? x.winRatePct + '%' : '–');
+    /* a record that started fresh inside the 90 days says since when */
+    const fresh = Number.isFinite(n.sinceMs) && Date.now() - n.sinceMs < 88 * 86400000 ? new Date(n.sinceMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }).toUpperCase() : '';
     let h = '<div class="pv-rec"><div class="pv-kv">'
-      + '<div><span>90-DAY WIN RATE</span><b class="' + (Number.isFinite(n.winRatePct) ? (n.winRatePct >= 50 ? 'up' : 'dn') : '') + '">' + rate(n) + '</b></div>'
+      + '<div><span>' + (fresh ? 'WIN RATE · SINCE ' + fresh : '90-DAY WIN RATE') + '</span><b class="' + (Number.isFinite(n.winRatePct) ? (n.winRatePct >= 50 ? 'up' : 'dn') : '') + '">' + rate(n) + '</b></div>'
       + '<div><span>WINS · CLOSED</span><b>' + (n.wins || 0) + ' <small style="color:#7f95a1;font-size:.6rem">of ' + (n.closed || 0) + '</small></b></div>'
       + '<div><span>OPEN</span><b>' + (n.open || 0) + '</b></div>'
-      + '<div><span>ALERTS · 90D</span><b>' + (n.alerts || 0) + '</b></div>'
+      + '<div><span>' + (fresh ? 'ALERTS · SINCE ' + fresh : 'ALERTS · 90D') + '</span><b>' + (n.alerts || 0) + '</b></div>'
       + '<div><span>ALL-TIME</span><b>' + rate(t) + ' <small style="color:#7f95a1;font-size:.6rem">' + (t.wins || 0) + '/' + (t.closed || 0) + '</small></b></div>'
       + '</div>';
     const top = Array.isArray(a.top) ? a.top : [];

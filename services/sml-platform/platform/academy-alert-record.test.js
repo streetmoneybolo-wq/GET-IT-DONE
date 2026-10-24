@@ -132,3 +132,22 @@ test('a PT SMASHED update rides its first alert: never counted, never a loss, sh
   assert.equal(s.followUps, 2); assert.equal(s.ninetyDay.alerts, 4); assert.equal(s.ninetyDay.closed, 4); assert.equal(s.ninetyDay.wins, 1); assert.equal(s.ninetyDay.missed, 1); assert.equal(s.ninetyDay.winRatePct, 25, 'the missed new target is not a loss; the first target decided it');
   assert.equal(s.top[0].id, '1'); assert.equal(s.top[0].followUps, 2); assert.equal(s.top[0].peakPct, 60); assert.ok(!s.top.some((r) => r.id === '2' || r.id === '3'));
 });
+
+test('a fresh start: the owner record counts only alerts from ownerStart on, earlier ones stay stored', async () => {
+  const start = Date.parse('2026-10-19T00:00:00-04:00'), now = () => start + 5 * DAY;
+  const rows = [
+    { id: 'a', symbol: 'AAA', side: 'long', entry: 10, alertedAt: start - 3 * DAY, status: 'closed', result: 'stopped', peakPct: 1, peakAt: start - 3 * DAY + H },
+    { id: 'b', symbol: 'BBB', side: 'long', entry: 10, alertedAt: start + DAY, status: 'closed', result: 'win', peakPct: 20, peakAt: start + DAY + H },
+    { id: 'c', symbol: 'CCC', side: 'long', entry: 10, alertedAt: start + 2 * DAY, status: 'open', result: null, peakPct: 2, peakAt: start + 2 * DAY + H }
+  ];
+  const s = summarize(rows, now(), start);
+  assert.equal(s.ninetyDay.winRatePct, 100); assert.equal(s.ninetyDay.alerts, 2); assert.equal(s.ninetyDay.sinceMs, start); assert.equal(s.allTime.alerts, 2);
+  assert.equal(summarize(rows, now()).ninetyDay.alerts, 3, 'without a start everything in 90 days counts');
+  const timers = { setTimeout: () => ({ unref() {} }), clearTimeout() {}, setInterval: () => ({ unref() {} }), clearInterval() {} };
+  const svc = createAlertRecord({ ownerIds: [OWNER], since: '2026-10-05', ownerStart: '2026-10-19', now, timers });
+  for (const who of [OWNER, ANA]) for (const r of rows) await svc.keep({ ...r, ref: who + r.id, userId: who, source: 'click', target: 12, stop: 9 });
+  const own = await svc.summary(OWNER), other = await svc.summary(ANA);
+  assert.equal(own.ninetyDay.alerts, 2); assert.equal(own.since, '2026-10-19');
+  assert.equal(other.ninetyDay.alerts, 3, 'members keep their full record'); assert.equal(other.since, '2026-10-05');
+  assert.equal((await svc.rowsOf(OWNER)).length, 3, 'nothing is deleted');
+});
