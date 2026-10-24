@@ -1152,10 +1152,8 @@ function academyGateClientScript(gate) {
 /* The chart kit (academy-viz.js): one look for every graph, bar, meter and pie; loaded before every module that draws. */
 const ACADEMY_VIZ_KIT = (() => { try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-viz.js'), 'utf8') + '</script>'; } catch (_) { return ''; } })();
 
-/* Start-up guard, first thing in <head>. A start that never finishes (the page froze on something saved in this browser) is counted; two
-   in a row and the Academy's saved layout and view state are cleared before anything else runs, keeping drawings, theme and the tour flags.
-   It reports each start with the saved keys' names and sizes (never their values), so a freeze can be traced. Cleared when sign-in works. */
-const ACADEMY_BOOT_GUARD = "<script>(function(){try{var K='sml-boot',n=Number(localStorage.getItem(K))||0,keys=[],rec=false;localStorage.setItem(K,String(n+1));for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('sml-')===0)keys.push(k+':'+String(localStorage.getItem(k)||'').length)}if(n>=2){var keep=/^(sml-chart-draw-v1|sml-academy-appearance-v1|sml-academy-tour-v1|sml-academy-explain|sml-last-symbol|sml-boot)$/,drop=[];for(var j=0;j<localStorage.length;j++){var kk=localStorage.key(j);if(kk&&kk.indexOf('sml-')===0&&!keep.test(kk))drop.push(kk)}for(var d=0;d<drop.length;d++)localStorage.removeItem(drop[d]);try{sessionStorage.clear()}catch(_){}localStorage.setItem(K,'1');rec=true}window.__smlBootDone=function(){try{localStorage.removeItem(K)}catch(_){}};setTimeout(window.__smlBootDone,12000);if(navigator.sendBeacon)navigator.sendBeacon('/academy-activity/diag',new Blob([JSON.stringify({stage:rec?'boot_recovered':'boot_start',code:'boots:'+n,message:keys.join(' ').slice(0,190),ua:navigator.userAgent.slice(0,80),inDiscord:location.search.indexOf('frame_id')>=0})],{type:'application/json'}))}catch(_){}})();</script>";
+/* the start-up guard and freeze watchdog (academy-boot-guard.js), first thing in <head> */
+const ACADEMY_BOOT_GUARD = (() => { try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-boot-guard.js'), 'utf8') + '</script>'; } catch (_) { return ''; } })();
 function academyActivityHtml(initialMarket = {}, options = {}) {
   /* options.gate is passed only while an Academy gate flag is on; without it
      the page is byte-for-byte the ungated one. */
@@ -4282,6 +4280,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     /* Client diagnostics: the Activity reports which sign-in step it reached (and any page error) so a silent failure on a
        member's machine can be read from the server log. Unauthenticated by design (it fires before there is a session),
        tiny, and it stores nothing: one stderr line per beacon. */
+    /* the start-up freeze watchdog (academy-boot-guard.js): runs in a Worker so it keeps going while the page is stuck */
+    if (request.method === 'GET' && path === '/academy-activity/boot-watch.js') {
+      response.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=300', 'x-content-type-options': 'nosniff' });
+      response.end('var last=Date.now(),crumbs=[],sent=0,url="";onmessage=function(e){var d=e.data||{};if(d.url){url=d.url;return}last=Date.now();if(d.c){crumbs.push(d.c);if(crumbs.length>10)crumbs.shift()}};setInterval(function(){if(sent<2&&url&&Date.now()-last>6000){sent++;try{fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({stage:"page_hang",code:"after:"+crumbs.length,message:crumbs.join(" > ").slice(-190),inDiscord:true})})}catch(_){}last=Date.now()}},1000);');
+      return;
+    }
     if (request.method === 'POST' && path === '/academy-activity/diag') {
       const gate = academyDataLimit.take(request);
       if (!gate.ok) { response.writeHead(204); response.end(); return; }
