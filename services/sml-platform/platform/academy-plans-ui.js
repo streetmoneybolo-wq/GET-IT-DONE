@@ -24,6 +24,10 @@
  *
  * Outside Discord, or with no SKUs configured, the panel falls back to the external checkout link
  * the caller passes in, so the trial card never ends up with a dead button.
+ *
+ * NOTHING TOUCHES document.body AT LOAD. This ships with the gate script, which is the first script
+ * in <head>, so at that moment document.body is null. The elements are built here but only attached
+ * on the first open().
  */
 (() => {
   if (window.smlAcademyPlans) return;
@@ -39,6 +43,7 @@
     analyst: { name: 'Analyst', blurb: 'Everything in Trader, plus the publishing side: your own trading room, Click-to-Alert into your server, the Article Desk, and charging for your alert channels.' }
   };
 
+  let mounted = false;
   const css = document.createElement('style');
   css.textContent = '#academy-plans{position:fixed;inset:0;z-index:2147483400;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,8,11,.72)}#academy-plans.open{display:flex}'
     + '#academy-plans .box{width:min(520px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:#0a1118;border:1px solid #1f6a52;border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.7);color:#dbe6ec;font:500 .72rem/1.5 system-ui,sans-serif}'
@@ -52,15 +57,21 @@
     + '#academy-plans .team{margin:2px 14px 12px;padding:11px 12px;border:1px dashed #2b4a58;border-radius:11px;background:#0a141b}#academy-plans .team b{display:block;font:900 .68rem ui-monospace,monospace;letter-spacing:.05em;color:#cfe3ec;margin-bottom:3px}#academy-plans .team p{margin:0 0 8px}#academy-plans .team button{border:1px solid #2b4a58;border-radius:8px;background:#0d1a24;color:#cfe3ec;font:800 .64rem ui-monospace,monospace;padding:7px 11px;cursor:pointer}'
     + '#academy-plans .msg{padding:0 14px 10px;color:#ffd166;font-weight:600}#academy-plans .note{padding:0 14px 13px;color:#5f7a71;font-size:.6rem}'
     + '@media(max-width:560px){#academy-plans .box{max-height:calc(100dvh - 20px)}}';
-  document.head.appendChild(css);
-
   const wrap = document.createElement('div');
   wrap.id = 'academy-plans';
   wrap.setAttribute('role', 'dialog');
   wrap.setAttribute('aria-modal', 'true');
   wrap.setAttribute('aria-label', 'Choose a plan');
-  document.body.appendChild(wrap);
+  /* the chart owns pointer and key events; the panel must keep its own */
   ['pointerdown', 'wheel', 'keydown'].forEach((ev) => wrap.addEventListener(ev, (e) => e.stopPropagation()));
+
+  function mount() {
+    if (mounted || !document.body) return mounted;
+    mounted = true;
+    (document.head || document.documentElement).appendChild(css);
+    document.body.appendChild(wrap);
+    return true;
+  }
 
   const money = (p) => {
     const amount = Number(p && p.amount);
@@ -165,6 +176,7 @@
   window.smlAcademyPlans = {
     /* `fallbackUrl` is the caller's external checkout link, used when Discord cannot sell */
     async open(fallbackUrl) {
+      if (!mount()) return;
       S.fallbackUrl = String(fallbackUrl || S.fallbackUrl || '');
       S.open = true; S.msg = '';
       paint();

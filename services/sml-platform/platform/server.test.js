@@ -2664,6 +2664,18 @@ test('the trial countdown offers a choice of plans instead of one button to a br
   /* seats are a different purchase by a different person and must not read as a cheaper self-serve tier */
   assert.match(html, /RUN YOUR OWN SERVER\?/, 'seats are offered, kept apart');
   assert.match(html, /smlAcademyOnEntitlement/, 'a finished purchase renews the session; access stays server-side');
+  /* REGRESSION: the picker ships with the gate script, which is the FIRST script in <head>, where
+     document.body is still null. Appending there threw on load and left window.smlAcademyPlans
+     undefined, so the trial card's button would have done nothing. Observed live before the fix. */
+  assert.match(html, /if \(mounted \|\| !document\.body\) return mounted;/, 'the panel attaches lazily');
+  assert.match(html, /async open\(fallbackUrl\) \{\s*if \(!mount\(\)\) return;/, 'and mounts on first open');
+  /* document.body must appear exactly twice, both inside mount(): a third use would mean
+     something touches the body at load again, where it is null. */
+  const src = fs.readFileSync(path.join(__dirname, 'academy-plans-ui.js'), 'utf8');
+  const code = src.slice(src.indexOf('(() => {'));
+  assert.equal(code.split('document.body').length - 1, 2, 'only the two uses inside mount()');
+  assert.ok(code.includes('if (mounted || !document.body) return mounted;'));
+  assert.ok(code.includes('document.body.appendChild(wrap);'));
 });
 
 test('the Activity tells the client which SKU is which tier', () => {
