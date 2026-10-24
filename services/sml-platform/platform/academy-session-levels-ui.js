@@ -39,7 +39,7 @@
   function analysis(M) {
     const last = M.bars[M.N - 1], key = M.symbol + ':' + M.tf + ':' + M.N + ':' + (last && last.t) + ':' + (S.o.rth ? 'rth' : 'day') + ':' + S.gAt;
     const stale = performance.now() - S.at > 900;
-    if (!S.a || key !== S.key || (stale && last)) { S.a = SL.analyze(M.bars, { anchor: S.o.rth ? 'rth' : 'day', gamma: gammaInput() }); S.key = key; S.at = performance.now(); paintCard(); }
+    if (!S.a || key !== S.key || (stale && last)) { S.a = SL.analyze(M.bars, { anchor: S.o.rth ? 'rth' : 'day', gamma: gammaInput() }); S.aSym = M.symbol; S.key = key; S.at = performance.now(); paintCard(); }
     return S.a;
   }
 
@@ -80,7 +80,7 @@
   (function reg(n) {
     if (window.smlChartLevels) {
       window.smlChartLevels.register('levels', (sym) => {
-        if (!S.on || !S.a || sym !== symbolNow()) return [];
+        if (!S.on || !S.a || sym !== S.aSym) return []; // never asks the chart for its model here: the model asks this for its levels, and the two would call each other forever
         const out = [];
         if (S.o.ib && S.a.ib.current) out.push(S.a.ib.current.hi, S.a.ib.current.lo);
         if (S.o.gamma && S.a.gamma) for (const l of S.a.gamma.levels) out.push(l.price);
