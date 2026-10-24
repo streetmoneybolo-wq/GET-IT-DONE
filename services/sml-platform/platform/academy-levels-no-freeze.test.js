@@ -35,3 +35,14 @@ test('the Academy loads and stays responsive on a desktop with LEVELS saved on',
     assert.equal(await ask(() => 'ok', 8000), 'ok', 'the page still answers after the levels have drawn');
   } finally { await browser.close(); await new Promise((r) => server.close(r)); }
 });
+
+/* nothing covers the chart: the Session levels card goes where the other tool panels go (the quote column on a desktop, the slot under
+   the chart on a phone, the dock beside the plot when the chart lock is off) instead of floating over the candles */
+test('the Session levels card never floats over the chart', () => {
+  const fs = require('node:fs'), path = require('node:path'), read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const side = read('academy-side-window.js');
+  assert.ok(side.includes("['levels-toggle', 'levels-card']"), 'the quote column takes it while LEVELS is on');
+  assert.ok(side.includes("main .side>#levels-card{position:static!important"), 'as a block in the column');
+  assert.ok(read('academy-mobile-shell.js').includes("const PANELS = ['intent-panel', 'targets-panel', 'levels-card']"), 'a phone puts it under the chart');
+  assert.ok(read('academy-chart-dock.js').includes("'#levels-card', '#targets-panel'"), 'the dock takes it when the lock is off');
+});

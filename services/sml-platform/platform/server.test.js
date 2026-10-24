@@ -2124,7 +2124,7 @@ test('the option-bars route serves one contract\'s candles to members only, with
   assert.match(html, /sml-settings-btn/, 'the Settings button sits beside Customize');
   assert.match(html, /'sml-settings-btn', 'aa-btn'/, 'and docks in the top-bar rail with it');
   assert.match(html, /data-leg-trade=/, 'hedge legs carry Buy / Sell buttons');
-  assert.match(html, /'#opt-mini'\]/, 'the chart dock can hold the mini chart');
+  assert.match(html, /'#opt-mini'[,\]]/, 'the chart dock can hold the mini chart');
   assert.match(html, /#intent-layer\{[^}]*background:none/, 'the intent layer must not inherit the opaque canvas gradient that would cover the candles');
   assert.match(html, /window\.smlChartLock = \{/, 'the chart lock (nothing moves or shrinks the live chart) ships with the chart page');
   assert.match(html, /window\.smlLoopKick = \{/, 'LOOP-KICK exposes its panel, grip and badge to the Academy notifications feed');

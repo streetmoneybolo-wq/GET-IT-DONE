@@ -36,7 +36,7 @@
   /* every tool that is on shows in the column at once, stacked under the quote (the column scrolls); nothing is hidden by tab */
   rules.push(A + '[data-sw-any] main .side>.academy-side-fill{display:none!important}');
   /* the two cards that floated: now ordinary blocks in the column */
-  rules.push(A + ' main .side>#smc-card,' + A + ' main .side>#mem-algo-panel,' + A + ' main .side>#intent-panel,' + A + ' main .side>#targets-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;height:auto!important;max-height:none!important;margin:6px 0 10px!important;z-index:auto!important;box-shadow:none!important}');
+  rules.push(A + ' main .side>#smc-card,' + A + ' main .side>#mem-algo-panel,' + A + ' main .side>#intent-panel,' + A + ' main .side>#targets-panel,' + A + ' main .side>#levels-card{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;height:auto!important;max-height:none!important;margin:6px 0 10px!important;z-index:auto!important;box-shadow:none!important}');
   /* S.I.R.E. lives in the column too, as an ordinary block (it used to float over the chart: nothing may sit on the chart) */
   rules.push(A + ' main .side>#sire-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;max-width:none;height:auto;max-height:56vh;margin:8px 0 0!important;grid-column:auto!important;box-shadow:none}');
   rules.push('#side-win{display:none}');
@@ -97,7 +97,7 @@
     if (now !== watched) { watched = now; watch(); }
     /* the column is the tool window: the SMC card and the MEM ALGO panel sit in it (their own placement code mounts them) */
     const col = side();
-    for (const [bid, pid] of [['intent-btn', 'intent-panel'], ['targets-toggle', 'targets-panel']]) { const ip = byId(pid); if (ip && col && isOn(byId(bid)) && ip.parentElement !== col) { col.appendChild(ip); ip.scrollIntoView && ip.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }
+    for (const [bid, pid] of [['intent-btn', 'intent-panel'], ['targets-toggle', 'targets-panel'], ['levels-toggle', 'levels-card']]) { const ip = byId(pid); if (ip && col && isOn(byId(bid)) && ip.parentElement !== col) { col.appendChild(ip); ip.scrollIntoView && ip.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }
     const t = TABS.find((x) => x.id === S.tab);
     if (t && t.btn && !isOn(byId(t.btn))) S.tab = 'quote';
     paint();
@@ -105,10 +105,12 @@
   function enable() {
     document.body.classList.add('sml-sw');
     if (!timer) timer = setInterval(tick, 1200);
+    /* a panel turned on moves to the column at once, not on the next tick, so it never sits on the chart in between */
+    if (!enable.click) { enable.click = true; document.addEventListener('click', (e) => { if (e.target && e.target.closest && e.target.closest('#intent-btn,#targets-toggle,#levels-toggle')) setTimeout(tick, 30); }, true); }
     tick();
   }
   function disable() {
-    const st = document.querySelector('.academy-chart-stage'); for (const pid of ['intent-panel', 'targets-panel']) { const ip = byId(pid); if (ip && st && ip.parentElement !== st) st.appendChild(ip); }
+    const st = document.querySelector('.academy-chart-stage'); for (const pid of ['intent-panel', 'targets-panel', 'levels-card']) { const ip = byId(pid); if (ip && st && ip.parentElement !== st) st.appendChild(ip); }
     document.body.classList.remove('sml-sw'); delete document.body.dataset.sw; document.body.removeAttribute('data-sw-any');
     if (timer) { clearInterval(timer); timer = null; }
     if (obs) { obs.disconnect(); obs = null; watched = 0; }

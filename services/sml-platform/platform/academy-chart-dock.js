@@ -9,7 +9,7 @@
   if (!chart || !stage) { if (tries < 120) setTimeout(() => boot(tries + 1), 150); return; }
   window.__smlChartDock = true;
 
-  const DOCKABLE = ['#mem-algo-panel', '#smc-card', '.academy-pro-panel', '.academy-interval-stats', '#intent-panel', '#opt-mini'];
+  const DOCKABLE = ['#mem-algo-panel', '#smc-card', '.academy-pro-panel', '.academy-interval-stats', '#intent-panel', '#opt-mini', '#levels-card', '#targets-panel'];
   /* The dock takes about a third of the chart section (260 to 340 px) and only when the plot keeps at least 360 px; otherwise
      (phones, a narrow Activity with S.I.R.E. open) the panels float as before. */
   const SIRE_W = 332, MIN_PLOT = 360;
@@ -34,7 +34,7 @@
     + '#chart-dock>*{min-width:0!important;max-width:100%!important;box-sizing:border-box;overflow-wrap:anywhere}#chart-dock button,#chart-dock select,#chart-dock input{max-width:100%;min-width:0}#chart-dock .om-row,#chart-dock .row{flex-wrap:wrap}#chart-dock .om-row>button{flex:1 1 7rem;white-space:normal}'
     + '#chart-dock>*{position:static!important;left:auto!important;top:auto!important;right:auto!important;bottom:auto!important;width:auto!important;max-width:none!important;max-height:none!important;margin:0!important;flex:0 0 auto;box-shadow:none!important}'
     + '#chart-dock>.academy-pro-panel.open{display:flex!important}#chart-dock>.academy-pro-panel .plist{max-height:46vh}'
-    + '#chart-dock>#mem-algo-panel.open{display:block!important}'
+    + '#chart-dock>#mem-algo-panel.open{display:block!important}#chart-dock>#targets-panel.open{display:block!important}'
     /* CLEAN: candles, axes and drawings only */
     + '#academy-chart-clean.on{background:#00c47d!important;color:#032318!important}'
     + 'body.chart-clean .academy-chart-stage>:not(canvas):not(.academy-pro-zone){display:none!important}'

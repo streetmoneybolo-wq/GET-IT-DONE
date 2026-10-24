@@ -134,7 +134,7 @@
     A + ' main .chart #mem-algo-panel,' + A + '.chart-lock main .chart #sire-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;max-height:none!important;margin:6px 0 0!important;z-index:auto!important;grid-column:1!important;box-shadow:none!important}',
     /* the Intent and Targets read-outs: an in-flow card right under the chart on the CHART tab, never a sheet over the candles */
     '#ms-slot-tools{display:none}' + A + '[data-ms-tab=chart] #ms-slot-tools{display:block;grid-column:1;margin:6px 0 0;min-width:0}',
-    A + ' #ms-slot-tools>#intent-panel,' + A + ' #ms-slot-tools>#targets-panel{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;max-height:none!important;z-index:auto!important;margin:0 0 6px!important;overflow:visible!important;box-shadow:none!important;background:#07111a!important}',
+    A + ' #ms-slot-tools>#intent-panel,' + A + ' #ms-slot-tools>#targets-panel,' + A + ' #ms-slot-tools>#levels-card{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;max-height:none!important;z-index:auto!important;margin:0 0 6px!important;overflow:visible!important;box-shadow:none!important;background:#07111a!important}',
     A + ' #ms-slot-smc{grid-column:1;margin:6px 0 0;min-width:0}' + A + ' #ms-slot-smc #smc-card{position:static!important;width:auto!important;max-height:none!important;right:auto!important;margin:0}',
     A + ' #sire-panel{font-size:.68rem!important;max-height:56svh!important;overflow:auto!important;margin:6px 0 0!important}',
     A + ' #sire-panel header{position:sticky!important;top:0!important}',
@@ -194,9 +194,9 @@
     if (!byId('ms-slot-tools')) { const d = document.createElement('div'); d.id = 'ms-slot-tools'; chart.appendChild(d); }
     dockPanels();
   }
-  /* The Intent and Targets panels are made inside the chart stage (they float over it on a desktop). On the phone workspace they move
+  /* The Intent, Targets and Session levels panels are made inside the chart stage (they float over it on a desktop). On the phone workspace they move
      into the slot under the chart, and scroll into view when they open, so a read-out never covers a candle. */
-  const PANELS = ['intent-panel', 'targets-panel'], wasOpen = {};
+  const PANELS = ['intent-panel', 'targets-panel', 'levels-card'], wasOpen = {};
   function dockPanels() {
     const slot = byId('ms-slot-tools'); if (!slot || !document.body.classList.contains('sml-ms')) return;
     for (const id of PANELS) {
