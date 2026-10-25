@@ -118,11 +118,14 @@
     T('options', '#academy-below>:not(#options-dock)') + '{display:none!important}',
     T('options', '#academy-below') + '{display:block!important;padding:6px!important}',
     T('options', '#options-dock') + '{display:grid!important}',
-    TS('options', 'chain', '#options-dock>.opt-calc') + ',' + TS('options', 'calc', '#options-dock>#options-chain') + '{display:none!important}',
+    /* the calculator lives in the dock's side column (#options-side) since 2026-10-25; on a phone that column never holds the contract chart */
+    TS('options', 'chain', '#options-dock>.opt-calc') + ',' + TS('options', 'chain', '#options-dock #options-side') + ',' + TS('options', 'calc', '#options-dock>#options-chain') + '{display:none!important}',
     TS('options', 'contract', '#academy-below') + '{display:none!important}',
     T('options', 'main .shell>.side') + '{display:none!important}',
     TS('options', 'contract', 'main .shell>.side') + '{display:flex!important;position:static!important;flex-direction:column;width:auto!important;height:auto!important;max-height:none!important;margin:6px 4px 0;padding:8px 10px!important;border:1px solid #1f3a46!important;border-radius:12px!important;background:#0a141c;box-shadow:none!important}',
-    TS('options', 'contract', 'main .side>*:not(#options-focus)') + '{display:none!important}',
+    TS('options', 'contract', 'main .side>*:not(#options-focus):not(#opt-mini)') + '{display:none!important}',
+    /* on a phone the contract chart homes here, above the breakdown, as a block in the flow (academy-options-desk.js phoneSide) */
+    TS('options', 'contract', 'main .side>#opt-mini.open') + '{display:block!important;position:static!important;width:auto!important;max-height:none!important;margin:0 0 8px!important}',
     A + '.ms-focus-empty[data-ms-tab=options][data-ms-sub=contract] main .shell>.side:before{content:"Tap a contract in CHAIN and its breakdown lands here.";display:block;color:#7f97a4;font:600 .72rem/1.5 system-ui}',
     /* ---- ALGO: the chart-section panels and the deck panels, one at a time ---- */
     T('algo', '#academy-below>*') + '{display:none!important}',
@@ -241,7 +244,7 @@
     S.tab = id; if (id !== 'quotes') S.stock = id;
     /* leaving a tab closes what it switched on that would otherwise take room elsewhere */
     if (leaving === 'talk' && id !== 'talk') { const p = byId('talk-panel'); if (p && p.classList.contains('open')) ensureOff('talk-btn'); }
-    if (id === 'options') { ensureOff('chain-toggle'); const v = document.querySelector('.academy-view-cycle [data-view="options"]'); if (v) v.click(); }
+    if (id === 'options') { ensureOff('chain-toggle'); const v = document.querySelector('.academy-view-cycle [data-view="options"]'); if (v) v.click(); enter('options', S.sub.options); }
     if (id === 'talk' && S.sub.talk === 'comments') ensureOn('talk-btn');
     if (id === 'algo') enter('algo', S.sub.algo);
     if (id === 'flow') enter('flow', S.sub.flow);
@@ -254,6 +257,8 @@
     const btn = row[2];
     if (btn && btn !== 'squeeze-btn') ensureOn(btn);
     if (btn === 'squeeze-btn') { const b = byId(btn); if (b && !isOn(b)) b.click(); }
+    /* CALCULATOR shows the calculator, not its folded header (the layout engine folds it on phones until opened) */
+    if (tab === 'options' && id === 'calc') { const h = document.querySelector('.opt-calc.sml-folded>.sml-fold-head'); if (h) h.click(); }
     if (tab === 'algo' && id === 'smc') setTimeout(() => { const o = byId('smc-card') && byId('smc-card').querySelector('span[data-min]'); if (o && /open/i.test(o.textContent)) o.click(); }, 450);
     if (tab === 'algo' && id === 'earn') { const v = document.querySelector('.academy-view-cycle [data-view="earnings"]'); if (v) v.click(); }
     if (tab === 'talk' && id === 'comments') ensureOn('talk-btn');
@@ -276,7 +281,9 @@
     if (!document.body.classList.contains('sml-ms')) return;
     slots(); wire(); rememberSymbol();
     document.body.classList.remove('sml-quote-open'); // the old quote sheet never opens on a phone
-    const f = byId('options-focus'); document.body.classList.toggle('ms-focus-empty', !f || getComputedStyle(f).display === 'none' || !f.textContent.trim());
+    const f = byId('options-focus'), mini = byId('opt-mini');
+    const miniHere = !!(mini && mini.classList.contains('open') && f && mini.parentElement === f.parentElement);
+    document.body.classList.toggle('ms-focus-empty', !miniHere && (!f || getComputedStyle(f).display === 'none' || !f.textContent.trim()));
     renderSub(); measure();
   }
   /* the last stock the member left the Academy on: remembered while they use it, and restored when it opens with no symbol in its address */

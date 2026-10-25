@@ -2728,6 +2728,23 @@ test('the contract chart lives beside the options chain, carries its own tools, 
   assert.ok(odesk.includes("if (t.dataset.stock) { const b = document.querySelector(t.dataset.stock); if (b) { b.click();"), 'a stock tool opens on the main chart, never pretends to run on the contract');
 });
 
+test("phone: the contract chart homes in the shell's OPTIONS > CONTRACT view, the CHAIN view hides the side column, and CALCULATOR unfolds", () => {
+  /* Seen live at 375x812 on 2026-10-25: the calculator's new side column slipped past the shell's CHAIN-view rule and showed
+     folded under the chain; CALCULATOR showed only that folded header; and a contract's chart opened as a 273x274 box
+     floating over the stock chart with 735px of content inside, while the CONTRACT view showed only the placeholder. */
+  const shell = fs.readFileSync(path.join(__dirname, 'academy-mobile-shell.js'), 'utf8');
+  assert.ok(shell.includes("TS('options', 'chain', '#options-dock #options-side')"), 'the CHAIN view hides the side column that now holds the calculator');
+  assert.ok(shell.includes("TS('options', 'contract', 'main .side>*:not(#options-focus):not(#opt-mini)')"), 'the CONTRACT view keeps the card');
+  assert.ok(shell.includes("TS('options', 'contract', 'main .side>#opt-mini.open') + '{display:block!important;position:static!important;"), 'as a block in the flow, not a box over the chart');
+  assert.ok(shell.includes("document.body.classList.toggle('ms-focus-empty', !miniHere && ("), 'no placeholder while the card is there');
+  assert.ok(shell.includes("if (tab === 'options' && id === 'calc') { const h = document.querySelector('.opt-calc.sml-folded>.sml-fold-head'); if (h) h.click(); }"), 'CALCULATOR unfolds the calculator');
+  assert.ok(shell.includes("if (v) v.click(); enter('options', S.sub.options); }"), 'also when the Options tab is re-entered on CALCULATOR');
+  const odesk = fs.readFileSync(path.join(__dirname, 'academy-options-desk.js'), 'utf8');
+  assert.ok(odesk.includes("const phoneSide = () => (!CH.on && document.body.classList.contains('sml-ms') && window.matchMedia('(max-width:700px)').matches) ? document.querySelector('main .shell>.side') : null;"), 'the phone home');
+  assert.ok(odesk.includes("if (ps) { if (card.parentElement !== ps) { ps.insertBefore(card, $('options-focus') || null); paint(); } } else rehome(); return; }"), 'placed above the breakdown; without the shell the old sheet stays');
+  assert.ok(odesk.includes("if (st.tab !== 'options') window.smlMobileShell.tab('options'); if (window.smlMobileShell.state().sub.options !== 'contract') window.smlMobileShell.sub('contract');"), 'and the shell flips to the view that shows it');
+});
+
 test('phone: the shell nav and sub rows hide while a lesson is open', () => {
   /* Measured at 375x812 with a lesson open: #lesson is fixed at z-index 20, #ms-nav is sticky at 9000 and
      #ms-sub at 8999, so both painted over the lesson and elementFromPoint on the STOCK tab and a WALLS chip

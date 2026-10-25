@@ -93,6 +93,8 @@
      with no chain the side column is a full-width block far below the chart, so the card keeps its old home by the chart */
   const dockTwoCol = () => { const d = document.querySelector('.options-dock'); return !!d && !d.classList.contains('no-chain') && window.matchMedia('(min-width:1001px)').matches; };
   const chainSide = () => (!CH.on && M.home !== 'chart' && dockTwoCol()) ? $('options-side') : null;
+  /* on a phone the shell's OPTIONS > CONTRACT view is the card's home: a block above the contract's breakdown, never a box floating over the chart */
+  const phoneSide = () => (!CH.on && document.body.classList.contains('sml-ms') && window.matchMedia('(max-width:700px)').matches) ? document.querySelector('main .shell>.side') : null;
   const planKey = () => M.tools.join(',') + '|' + M.tf + '|' + M.bars.length + '|' + (M.bars.length ? M.bars[M.bars.length - 1].t + ':' + M.bars[M.bars.length - 1].c : '');
   try { const t = localStorage.getItem('sml-opt-mini-tf'); if (TFS.includes(t)) M.tf = t; } catch (_) { /* ignore */ }
   const openCard = () => card.classList.add('open');
@@ -110,7 +112,7 @@
     if (card.classList.contains('dock-stay')) { card.classList.remove('dock-stay'); paint(); }
     const dk = window.smlChartDock;
     if (dk && (dk.holds(card) || dk.room())) { if (card.style.position) CLEAR.forEach((k) => { card.style[k] = ''; }); return; }
-    if (window.matchMedia('(max-width:700px)').matches) { CLEAR.forEach((k) => { card.style[k] = ''; }); rehome(); return; }
+    if (window.matchMedia('(max-width:700px)').matches) { CLEAR.forEach((k) => { card.style[k] = ''; }); const ps = phoneSide(); if (ps) { if (card.parentElement !== ps) { ps.insertBefore(card, $('options-focus') || null); paint(); } } else rehome(); return; }
     const vis = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return r.width > 40 && r.height > 80 && getComputedStyle(el).display !== 'none' ? r : null; };
     const r = vis(document.querySelector('.side')) || vis($('academy-alerts'));
     if (!r) { CLEAR.forEach((k) => { card.style[k] = ''; }); rehome(); return; }
@@ -127,6 +129,8 @@
     openCard(); paint(); place();
     /* opened beside the chain while that part of the page is off screen: bring the pair into view rather than leave the member hunting */
     if (chainSide() && card.parentElement === chainSide()) { const r = card.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) { try { card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) { card.scrollIntoView(); } } }
+    /* on a phone the shell flips to OPTIONS > CONTRACT, the view that shows the card */
+    const ps = phoneSide(); if (ps && card.parentElement === ps && window.smlMobileShell) { try { const st = window.smlMobileShell.state(); if (st.tab !== 'options') window.smlMobileShell.tab('options'); if (window.smlMobileShell.state().sub.options !== 'contract') window.smlMobileShell.sub('contract'); } catch (_) { /* ignore */ } try { card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) { /* ignore */ } }
     if (!same || Date.now() - M.asOf > 15000) void load();
   }
   async function load() {
