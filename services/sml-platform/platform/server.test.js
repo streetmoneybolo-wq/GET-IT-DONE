@@ -2715,7 +2715,8 @@ test('the contract chart lives beside the options chain, carries its own tools, 
   assert.ok(odock.includes('#options-side{position:sticky;top:8px;'), 'which is sticky beside the chain');
   assert.ok(odock.includes('max-height:calc(100vh - 16px);overflow:auto;overscroll-behavior:contain;'), 'and no taller than the window, scrolling inside itself: a sticky column taller than the chain has nothing to stick within (seen live 2026-10-25: calculator 1009px + card 608px never stuck)');
   assert.ok(odock.includes('#options-side{position:static;max-height:none;overflow:visible}'), 'a plain block again on narrow windows');
-  assert.ok(odesk.includes("if (card.parentElement !== side) side.prepend(card); return; }"), 'the card goes on top of the column, the calculator below it');
+  assert.ok(odesk.includes("if (card.parentElement !== side) { side.prepend(card); paint(); } return; }"), 'the card goes on top of the column, the calculator below it, and repaints so the home toggle appears (the chain fills in after the card opened: seen live 2026-10-25)');
+  assert.ok(odesk.includes("if (card.classList.contains('dock-stay')) { card.classList.remove('dock-stay'); paint(); }"), 'and repaints again on the way out');
   assert.ok(odock.includes('id="oc-chart" hidden'), 'with a CONTRACT CHART button that appears once a row is loaded');
   assert.ok(odock.includes("else if (b.id === 'oc-chart') { if (S.loadedTd) window.dispatchEvent(new CustomEvent('sml-option-mini', { detail: { td: S.loadedTd } })); }"), 'and opens the chart for that row');
   assert.ok(odesk.includes("const chainSide = () => (!CH.on && M.home !== 'chart' && dockTwoCol()) ? $('options-side') : null;"), 'home is beside the chain unless the chain has the stage or the member chose the chart');

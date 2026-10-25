@@ -105,8 +105,9 @@
   function place() {
     if (!M.c) return;
     const side = chainSide();
-    if (side) { card.classList.add('dock-stay'); CLEAR.forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== side) side.prepend(card); return; }
-    card.classList.remove('dock-stay');
+    /* the header's home toggle depends on where the card is, so a move between homes repaints it */
+    if (side) { card.classList.add('dock-stay'); CLEAR.forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== side) { side.prepend(card); paint(); } return; }
+    if (card.classList.contains('dock-stay')) { card.classList.remove('dock-stay'); paint(); }
     const dk = window.smlChartDock;
     if (dk && (dk.holds(card) || dk.room())) { if (card.style.position) CLEAR.forEach((k) => { card.style[k] = ''; }); return; }
     if (window.matchMedia('(max-width:700px)').matches) { CLEAR.forEach((k) => { card.style[k] = ''; }); rehome(); return; }
