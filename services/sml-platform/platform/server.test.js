@@ -2699,6 +2699,16 @@ test('phone: the Settings and Appearance panels are tap-sized', () => {
   assert.ok(aa.includes("ui.textContent += '@media(max-width:720px){#aa-panel .sw button{min-height:44px}#aa-panel .row label{min-height:44px}#aa-panel input[type=color]{height:44px;width:56px}#aa-panel select{min-height:44px}#aa-panel input[type=range]{height:44px}#aa-panel .bm{min-height:44px}#aa-panel .ft button{min-height:44px}}';"), 'appearance swatches, inputs, selects, slider, module buttons and footer');
 });
 
+test('phone: the lesson crumb clears the fixed Back to Chart pill', () => {
+  /* At 375px the pill (fixed, top-right, 118px wide) sat over the end of "MODULE 0 · LESSON 1 · 1 OF 151":
+     elementFromPoint on the crumb's last character returned the pill. The crumb now reserves the pill's
+     width on narrow screens and wraps instead of running under it. Same media block as the pill. */
+  const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const i = src.indexOf('@media(max-width:900px){body.academy-lesson-open #academy-back-to-chart{display:block;position:fixed;top:6px;right:6px;');
+  assert.ok(i > 0, 'the pill rule is where it was');
+  assert.ok(src.slice(i, i + 700).includes('body.academy-lesson-open #lesson>small:first-child{display:block;padding-right:126px}'), 'the crumb reserves the pill width');
+});
+
 test('the tool guide scrolls as one list: the voice tips live inside the scroller, not after it', () => {
   /* Reported on desktop as "the window doesn't show them all". Reproduced at 1440x640: the .body (the
      tool list) collapsed to 51px and showed none of its 19 rows without scrolling, because the eight
