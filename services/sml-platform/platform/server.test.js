@@ -2701,7 +2701,7 @@ test('the tool guide scrolls as one list: the voice tips live inside the scrolle
   /* on a phone the tool rail is hidden, and with it the GUIDE button: the shell's MORE sheet opens the guide instead */
   const shell = fs.readFileSync(path.join(__dirname, 'academy-mobile-shell.js'), 'utf8');
   assert.ok(shell.includes("['__guide', ") && shell.includes(", 'Tool guide'], ['sml-settings-btn'"), 'the MORE sheet lists the guide');
-  assert.ok(shell.includes("if (b.dataset.fab === '__guide') { if (window.smlToolRail && window.smlToolRail.guide) window.smlToolRail.guide(true); return; }"), 'and opens it');
+  assert.ok(shell.includes("if (b.dataset.fab === '__guide') { e.stopPropagation(); if (window.smlToolRail && window.smlToolRail.guide) window.smlToolRail.guide(true); return; }"), 'and opens it');
   assert.ok(shell.includes("id === '__guide' ? !!(window.smlToolRail && window.smlToolRail.guide)"), 'only when the guide exists');
   /* and inside the sheet every row, voice-tip chip and the close button is a 44px tap target */
   assert.ok(src.includes("#tool-guide .t{grid-template-columns:84px 1fr;min-height:44px;align-items:center}#tool-guide .tips a{display:inline-flex;align-items:center;min-height:44px;padding:0 12px}#tool-guide header .x{width:44px;height:44px"), 'phone tap sizes in the guide');
