@@ -2715,7 +2715,9 @@ test('the contract chart lives beside the options chain, carries its own tools, 
   assert.ok(odock.includes('id="oc-chart" hidden'), 'with a CONTRACT CHART button that appears once a row is loaded');
   assert.ok(odock.includes("else if (b.id === 'oc-chart') { if (S.loadedTd) window.dispatchEvent(new CustomEvent('sml-option-mini', { detail: { td: S.loadedTd } })); }"), 'and opens the chart for that row');
   const odesk = fs.readFileSync(path.join(__dirname, 'academy-options-desk.js'), 'utf8');
-  assert.ok(odesk.includes("const chainSide = () => (!CH.on && M.home !== 'chart' && !phoneNow()) ? $('options-side') : null;"), 'home is beside the chain unless the chain has the stage, the member chose the chart, or it is a phone');
+  assert.ok(odesk.includes("const chainSide = () => (!CH.on && M.home !== 'chart' && dockTwoCol()) ? $('options-side') : null;"), 'home is beside the chain unless the chain has the stage or the member chose the chart');
+  assert.ok(odesk.includes("return !!d && !d.classList.contains('no-chain') && window.matchMedia('(min-width:1001px)').matches;"), 'and only while the dock is really two columns: with no chain rows (no session) the side column is a full-width block far below the chart, so the card keeps its home by the chart (seen live 2026-10-25)');
+  assert.ok(odesk.includes("const homeBtn = (!CH.on && $('options-side') && dockTwoCol()) ?"), 'the home toggle is offered only when there is a side column to move to');
   assert.ok(odesk.includes("if (side) { card.classList.add('dock-stay');"), 'and the card marks itself so the chart dock leaves it');
   assert.ok(odesk.includes("TOOLS().draw(ctx, M.geo, bars, M.bars.length - bars.length, M.plan)"), 'overlays draw in the mini chart\'s own geometry');
   assert.ok(odesk.includes("data-tool=") && odesk.includes("data-stock=") && odesk.includes("data-home="), 'tool toggles, stock hand-offs and the home toggle are wired');

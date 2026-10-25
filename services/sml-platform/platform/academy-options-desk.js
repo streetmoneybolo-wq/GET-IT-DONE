@@ -89,7 +89,10 @@
   try { if (localStorage.getItem('sml-opt-mini-home') === 'chart') M.home = 'chart'; } catch (_) { /* ignore */ }
   const phoneNow = () => window.matchMedia('(max-width:700px)').matches;
   /* beside the chain = inside the options dock's sticky side column, so chain, calculator and contract chart share one screen */
-  const chainSide = () => (!CH.on && M.home !== 'chart' && !phoneNow()) ? $('options-side') : null;
+  /* only while the dock really is two columns: a chain with rows, and a window wide enough to put the column beside it;
+     with no chain the side column is a full-width block far below the chart, so the card keeps its old home by the chart */
+  const dockTwoCol = () => { const d = document.querySelector('.options-dock'); return !!d && !d.classList.contains('no-chain') && window.matchMedia('(min-width:1001px)').matches; };
+  const chainSide = () => (!CH.on && M.home !== 'chart' && dockTwoCol()) ? $('options-side') : null;
   const planKey = () => M.tools.join(',') + '|' + M.tf + '|' + M.bars.length + '|' + (M.bars.length ? M.bars[M.bars.length - 1].t + ':' + M.bars[M.bars.length - 1].c : '');
   try { const t = localStorage.getItem('sml-opt-mini-tf'); if (TFS.includes(t)) M.tf = t; } catch (_) { /* ignore */ }
   const openCard = () => card.classList.add('open');
@@ -160,7 +163,7 @@
     const readLine = T && M.plan ? T.readLine(M.plan) : '';
     const toolRow = T ? '<div class="om-tools">' + T.TOOLS.filter((t) => t.group !== 'stock').map((t) => '<button type="button" data-tool="' + t.id + '" class="' + (M.tools.includes(t.id) ? 'on' : '') + '"' + (t.ok ? '' : ' disabled') + ' title="' + esc(t.why) + '">' + t.label + '</button>').join('')
       + '<i>FOR THE STOCK</i>' + T.TOOLS.filter((t) => t.group === 'stock').map((t) => '<button type="button" class="stock" data-stock="' + esc(t.target) + '" data-label="' + esc(t.label) + '" title="' + esc(t.why) + '">' + t.label + ' \u2197</button>').join('') + '</div>' : '';
-    const homeBtn = (!CH.on && $('options-side') && !phoneNow()) ? '<button type="button" class="om-home" data-home="1" title="' + (M.home === 'chart' ? 'Move this chart down beside the options chain' : 'Move this chart up beside the stock chart') + '">' + (M.home === 'chart' ? '\u2193 by the chain' : '\u2191 by the chart') + '</button>' : '';
+    const homeBtn = (!CH.on && $('options-side') && dockTwoCol()) ? '<button type="button" class="om-home" data-home="1" title="' + (M.home === 'chart' ? 'Move this chart down beside the options chain' : 'Move this chart up beside the stock chart') + '">' + (M.home === 'chart' ? '\u2193 by the chain' : '\u2191 by the chart') + '</button>' : '';
     const trade = brokers.length ? '<div class="om-row">' + tradeBtn(brokers[0], 'buy') + (prefs.sell ? tradeBtn(brokers[0], 'sell') : '') + '</div><small style="color:#7f97a4">on ' + (P && P.switcher ? P.switcher() : esc(brokers[0].name)) + '</small>' : '';
     card.innerHTML = '<header><b>CONTRACT CHART</b>' + homeBtn + '<span class="x" data-x="1" title="Close">×</span></header>'
       + '<div class="nm">' + esc(OC.describe(c)) + '<code>' + esc(OC.occSymbol(c)) + '</code></div>'
