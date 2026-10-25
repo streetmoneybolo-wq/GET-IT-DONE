@@ -2695,8 +2695,9 @@ test('the tool guide scrolls as one list: the voice tips live inside the scrolle
      panel. On a 900px-tall screen everything happened to fit, which is why it looked fine here. */
   const src = fs.readFileSync(path.join(__dirname, 'academy-toolbar-nav.js'), 'utf8');
   assert.ok(src.includes("+ tipsHtml() + '</div><div class=\"foot\">"), 'the tips are inside .body; .body closes after them');
-  assert.ok(!src.includes("+ '</div>'
-      + tipsHtml()"), 'and not before them');
+  /* between the opening of .body and the tips call there must be no closing div, or the tips sit outside the scroller */
+  const bodyOpen = src.indexOf('<div class="body">'), tipsCall = src.indexOf('+ tipsHtml()');
+  assert.ok(bodyOpen > 0 && tipsCall > bodyOpen && !src.slice(bodyOpen + 18, tipsCall).includes('</div>'), 'and not before them');
   assert.ok(src.includes("#tool-guide .body{flex:1 1 auto;min-height:0;overflow:auto;"), '.body is the flex child that gives way, and the only scroller');
 });
 
