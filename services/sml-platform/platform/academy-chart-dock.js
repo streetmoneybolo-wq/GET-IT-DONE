@@ -62,11 +62,13 @@
     chart.style.setProperty('--dock-w', r.dockW + 'px');
     if (!r.ok) { [...dock.children].forEach(undock); }
     else {
+      [...dock.children].filter((c) => c.classList.contains('dock-stay')).forEach(undock);
       for (const sel of DOCKABLE) {
         /* the quote column is the tool window (academy-side-window.js): it keeps the SMC card and the MEM ALGO panel */
         if (document.body.classList.contains('sml-sw') && (sel === '#smc-card' || sel === '#mem-algo-panel' || sel === '#intent-panel')) continue;
         const el = document.querySelector(sel);
-        if (!el || el.parentElement === dock || !visible(el)) continue;
+        /* a card that has chosen another home (the contract chart beside the options chain) is left where it is */
+        if (!el || el.parentElement === dock || !visible(el) || el.classList.contains('dock-stay')) continue;
         el.__smlHome = { parent: el.parentElement, next: el.nextSibling };
         dock.appendChild(el);
       }

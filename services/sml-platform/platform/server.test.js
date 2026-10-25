@@ -2699,6 +2699,29 @@ test('phone: the Settings and Appearance panels are tap-sized', () => {
   assert.ok(aa.includes("ui.textContent += '@media(max-width:720px){#aa-panel .sw button{min-height:44px}#aa-panel .row label{min-height:44px}#aa-panel input[type=color]{height:44px;width:56px}#aa-panel select{min-height:44px}#aa-panel input[type=range]{height:44px}#aa-panel .bm{min-height:44px}#aa-panel .ft button{min-height:44px}}';"), 'appearance swatches, inputs, selects, slider, module buttons and footer');
 });
 
+test('the contract chart lives beside the options chain, carries its own tools, and the engines ship before it', () => {
+  /* Owner, on desktop: the chain is below the chart, double-clicking a contract opened its chart up beside the stock
+     chart, so you scrolled up to see it and the chain was gone - and back down again. The card now homes in the options
+     dock's sticky side column (calculator + contract chart) while the chain is below; the chart dock must not steal it. */
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  const tools = html.indexOf('root.SmlOptionMiniTools = api'), desk = html.indexOf("card.id = 'opt-mini'");
+  assert.ok(tools > 0 && desk > tools, 'academy-option-mini-tools.js ships before academy-options-desk.js');
+  const dock = fs.readFileSync(path.join(__dirname, 'academy-chart-dock.js'), 'utf8');
+  assert.ok(dock.includes("el.classList.contains('dock-stay')) continue;"), 'the chart dock leaves a dock-stay card where it is');
+  assert.ok(dock.includes("[...dock.children].filter((c) => c.classList.contains('dock-stay')).forEach(undock);"), 'and lets go of one it already holds');
+  const odock = fs.readFileSync(path.join(__dirname, 'academy-options-dock.js'), 'utf8');
+  assert.ok(odock.includes("side.id = 'options-side'; side.appendChild(card);"), 'the calculator sits in a side column');
+  assert.ok(odock.includes('#options-side{position:sticky;top:8px;'), 'which is sticky beside the chain');
+  assert.ok(odock.includes('id="oc-chart" hidden'), 'with a CONTRACT CHART button that appears once a row is loaded');
+  assert.ok(odock.includes("else if (b.id === 'oc-chart') { if (S.loadedTd) window.dispatchEvent(new CustomEvent('sml-option-mini', { detail: { td: S.loadedTd } })); }"), 'and opens the chart for that row');
+  const odesk = fs.readFileSync(path.join(__dirname, 'academy-options-desk.js'), 'utf8');
+  assert.ok(odesk.includes("const chainSide = () => (!CH.on && M.home !== 'chart' && !phoneNow()) ? $('options-side') : null;"), 'home is beside the chain unless the chain has the stage, the member chose the chart, or it is a phone');
+  assert.ok(odesk.includes("if (side) { card.classList.add('dock-stay');"), 'and the card marks itself so the chart dock leaves it');
+  assert.ok(odesk.includes("TOOLS().draw(ctx, M.geo, bars, M.bars.length - bars.length, M.plan)"), 'overlays draw in the mini chart\'s own geometry');
+  assert.ok(odesk.includes("data-tool=") && odesk.includes("data-stock=") && odesk.includes("data-home="), 'tool toggles, stock hand-offs and the home toggle are wired');
+  assert.ok(odesk.includes("if (t.dataset.stock) { const b = document.querySelector(t.dataset.stock); if (b) { b.click();"), 'a stock tool opens on the main chart, never pretends to run on the contract');
+});
+
 test('phone: the shell nav and sub rows hide while a lesson is open', () => {
   /* Measured at 375x812 with a lesson open: #lesson is fixed at z-index 20, #ms-nav is sticky at 9000 and
      #ms-sub at 8999, so both painted over the lesson and elementFromPoint on the STOCK tab and a WALLS chip

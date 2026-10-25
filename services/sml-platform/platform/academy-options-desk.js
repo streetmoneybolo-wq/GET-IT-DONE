@@ -42,6 +42,8 @@
     + '#opt-mini .hint{padding:6px 9px 8px;color:#6f8794;font-weight:500;font-size:.56rem;line-height:1.4}#opt-mini .hint.ok{color:#a8ffd8}'
     /* while the chain has the stage (which is hidden), a card the dock does not hold sits at the top of the chain instead */
     + '#chain-stage>#opt-mini{position:static;width:auto;max-height:none;margin:6px;display:none}#chain-stage>#opt-mini.open{display:block}'
+    + '#opt-mini .om-tools{display:flex;flex-wrap:wrap;gap:4px;padding:6px 9px 0}#opt-mini .om-tools button{border:1px solid #2b5362;border-radius:5px;background:#0d1a24;color:#9ed3e6;font:800 .56rem ui-monospace,monospace;letter-spacing:.03em;padding:3px 6px;cursor:pointer}#opt-mini .om-tools button.on{background:#1c3444;border-color:#6fb8e0;color:#fff}#opt-mini .om-tools button.stock{border-style:dashed;color:#c9d6de}#opt-mini .om-tools button:disabled{opacity:.38;cursor:not-allowed}#opt-mini .om-tools i{flex-basis:100%;font-style:normal;color:#5f7986;font:800 .5rem ui-monospace,monospace;letter-spacing:.1em;margin-top:2px}'
+    + '#opt-mini .om-read{padding:4px 9px 0;color:#9ed3e6;font:600 .58rem system-ui;line-height:1.35}#opt-mini header .om-home{margin-left:auto;border:1px solid #2b5362;border-radius:5px;background:#0d1a24;color:#9ed3e6;font:800 .54rem ui-monospace,monospace;padding:2px 6px;cursor:pointer}'
     + '@media(max-width:700px){#opt-mini{right:8px;top:auto;bottom:34px;max-height:60%}}';
   document.head.appendChild(css);
 
@@ -80,7 +82,15 @@
   /* ---------- MINI: one contract's own chart ---------- */
   const TFS = ['1m', '5m', '15m', '1h', '1D'];
   const card = document.createElement('aside'); card.id = 'opt-mini'; card.setAttribute('aria-label', 'Options contract chart'); stage.appendChild(card);
-  const M = { c: null, row: null, tf: '5m', bars: [], asOf: 0, msg: '', busy: false, timer: 0, hover: null, hint: '', hintOk: false, stale: false, geo: null, target: null };
+  const M = { c: null, row: null, tf: '5m', bars: [], asOf: 0, msg: '', busy: false, timer: 0, hover: null, hint: '', hintOk: false, stale: false, geo: null, target: null, tools: [], home: 'chain', plan: null, planKey: '' };
+  /* tools on the contract chart (academy-option-mini-tools.js decides which make sense) and where the card lives when the chain is below the chart */
+  const TOOLS = () => window.SmlOptionMiniTools || null;
+  try { const saved = JSON.parse(localStorage.getItem('sml-opt-mini-tools') || 'null'); M.tools = TOOLS() ? TOOLS().normalizeEnabled(Array.isArray(saved) ? saved : TOOLS().DEFAULTS) : []; } catch (_) { M.tools = TOOLS() ? TOOLS().DEFAULTS.slice() : []; }
+  try { if (localStorage.getItem('sml-opt-mini-home') === 'chart') M.home = 'chart'; } catch (_) { /* ignore */ }
+  const phoneNow = () => window.matchMedia('(max-width:700px)').matches;
+  /* beside the chain = inside the options dock's sticky side column, so chain, calculator and contract chart share one screen */
+  const chainSide = () => (!CH.on && M.home !== 'chart' && !phoneNow()) ? $('options-side') : null;
+  const planKey = () => M.tools.join(',') + '|' + M.tf + '|' + M.bars.length + '|' + (M.bars.length ? M.bars[M.bars.length - 1].t + ':' + M.bars[M.bars.length - 1].c : '');
   try { const t = localStorage.getItem('sml-opt-mini-tf'); if (TFS.includes(t)) M.tf = t; } catch (_) { /* ignore */ }
   const openCard = () => card.classList.add('open');
   /* where the card lives when neither the dock nor the quote column has it: the stage, or the top of the chain while the chain has the stage */
@@ -91,6 +101,9 @@
   const CLEAR = ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'bottom', 'zIndex'];
   function place() {
     if (!M.c) return;
+    const side = chainSide();
+    if (side) { card.classList.add('dock-stay'); CLEAR.forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== side) side.appendChild(card); return; }
+    card.classList.remove('dock-stay');
     const dk = window.smlChartDock;
     if (dk && (dk.holds(card) || dk.room())) { if (card.style.position) CLEAR.forEach((k) => { card.style[k] = ''; }); return; }
     if (window.matchMedia('(max-width:700px)').matches) { CLEAR.forEach((k) => { card.style[k] = ''; }); rehome(); return; }
@@ -108,6 +121,8 @@
     M.c = contract; M.row = row || M.row || null;
     if (!same) { M.bars = []; M.asOf = 0; M.msg = 'Loading the contract’s candles…'; M.hint = ''; M.stale = false; M.target = null; M.geo = null; }
     openCard(); paint(); place();
+    /* opened beside the chain while that part of the page is off screen: bring the pair into view rather than leave the member hunting */
+    if (chainSide() && card.parentElement === chainSide()) { const r = card.getBoundingClientRect(); if (r.top < 0 || r.bottom > innerHeight) { try { card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) { card.scrollIntoView(); } } }
     if (!same || Date.now() - M.asOf > 15000) void load();
   }
   async function load() {
@@ -140,12 +155,19 @@
     /* one Buy and one Sell on the member's broker, with a small picker to change the broker (never a row of four) */
     const P = window.smlBuyPrefs, brokers = P ? P.tradeBrokers() : [], prefs = P ? P.get() : { sell: true };
     const tradeBtn = (b, side) => '<button type="button" data-go="' + b.key + '" data-side="' + side + '" class="' + side + ' big" style="color:' + b.color + ';background:' + b.bg + ';border-color:' + b.border + '" title="' + esc(side === 'buy' ? 'Buy to open on ' + b.name : 'Sell on ' + b.name) + '">' + (side === 'buy' ? 'BUY' : 'SELL') + ' · ' + esc(b.name) + '</button>';
+    const T = TOOLS();
+    if (T && M.tools.length && bars.length) { if (M.planKey !== planKey()) { M.plan = T.plan(bars, M.tools, { smartMoney: window.SmlSmartMoney, levels: window.SmlSessionLevels, patterns: window.SmlPatterns }); M.planKey = planKey(); } } else { M.plan = null; M.planKey = ''; }
+    const readLine = T && M.plan ? T.readLine(M.plan) : '';
+    const toolRow = T ? '<div class="om-tools">' + T.TOOLS.filter((t) => t.group !== 'stock').map((t) => '<button type="button" data-tool="' + t.id + '" class="' + (M.tools.includes(t.id) ? 'on' : '') + '"' + (t.ok ? '' : ' disabled') + ' title="' + esc(t.why) + '">' + t.label + '</button>').join('')
+      + '<i>FOR THE STOCK</i>' + T.TOOLS.filter((t) => t.group === 'stock').map((t) => '<button type="button" class="stock" data-stock="' + esc(t.target) + '" data-label="' + esc(t.label) + '" title="' + esc(t.why) + '">' + t.label + ' \u2197</button>').join('') + '</div>' : '';
+    const homeBtn = (!CH.on && $('options-side') && !phoneNow()) ? '<button type="button" class="om-home" data-home="1" title="' + (M.home === 'chart' ? 'Move this chart down beside the options chain' : 'Move this chart up beside the stock chart') + '">' + (M.home === 'chart' ? '\u2193 by the chain' : '\u2191 by the chart') + '</button>' : '';
     const trade = brokers.length ? '<div class="om-row">' + tradeBtn(brokers[0], 'buy') + (prefs.sell ? tradeBtn(brokers[0], 'sell') : '') + '</div><small style="color:#7f97a4">on ' + (P && P.switcher ? P.switcher() : esc(brokers[0].name)) + '</small>' : '';
-    card.innerHTML = '<header><b>CONTRACT CHART</b><span class="x" data-x="1" title="Close">×</span></header>'
+    card.innerHTML = '<header><b>CONTRACT CHART</b>' + homeBtn + '<span class="x" data-x="1" title="Close">×</span></header>'
       + '<div class="nm">' + esc(OC.describe(c)) + '<code>' + esc(OC.occSymbol(c)) + '</code></div>'
       + '<div class="px"><b>' + esc(money(lastPx)) + '</b>' + (chg != null ? '<i class="' + (chg >= 0 ? 'up' : 'down') + '">' + (chg >= 0 ? '+' : '') + (chg * 100).toFixed(1) + '%</i>' : '') + '<small>' + (last ? 'last trade · ' + esc(money(last.c * 100, 0)) + ' per contract' : r.mid != null ? 'mid from the chain' : '') + (M.stale ? ' · stale' : '') + '</small></div>'
       + '<div class="tfs">' + TFS.map((t) => '<button type="button" data-tf="' + t + '" class="' + (t === M.tf ? 'on' : '') + '">' + t + '</button>').join('') + '<small>' + (bars.length ? bars.length + ' candles' : '') + '</small></div>'
       + '<canvas width="10" height="10" aria-label="Candles of the contract’s price. Click a premium to set a Click-to-Alert target for this contract." title="Click a premium to alert this contract at that price"></canvas>'
+      + toolRow + (readLine ? '<div class="om-read">' + esc(readLine) + '</div>' : '')
       + (M.msg ? '<div class="msg">' + esc(M.msg) + '</div>' : '')
       + '<div class="kv"><div><span>Bid</span><b>' + esc(money(r.bid)) + '</b></div><div><span>Ask</span><b>' + esc(money(r.ask)) + '</b></div><div><span>Mid</span><b>' + esc(money(r.mid)) + '</b></div><div><span>Spread</span><b>' + (r.bid != null && r.ask != null ? esc(money(r.ask - r.bid)) : '—') + '</b></div>'
       + '<div><span>Volume</span><b>' + esc(r.volume == null ? '—' : r.volume) + '</b></div><div><span>Open int.</span><b>' + esc(r.oi == null ? '—' : r.oi) + '</b></div><div><span>IV</span><b>' + esc(r.iv == null ? '—' : r.iv) + '</b></div><div><span>Delta</span><b>' + esc(r.delta == null ? '—' : r.delta) + '</b></div></div>'
@@ -174,6 +196,8 @@
       ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(xx, y(b.h)); ctx.lineTo(xx, y(b.l)); ctx.stroke();
       ctx.fillStyle = col; const yo = y(b.o), yc = y(b.c); ctx.fillRect(xx - bw / 2, Math.min(yo, yc), bw, Math.max(1, Math.abs(yc - yo)));
     });
+    /* the tools the member switched on, drawn in this chart's own geometry (academy-option-mini-tools.js) */
+    if (M.plan && TOOLS()) { try { TOOLS().draw(ctx, M.geo, bars, M.bars.length - bars.length, M.plan); } catch (_) { /* a tool must never take the candles down */ } }
     /* the alert target the member clicked on this chart: green above the last premium, red below */
     if (M.target != null && M.target >= lo && M.target <= hi) {
       const lastC = bars[bars.length - 1].c, col = M.target >= lastC ? '#35e6a0' : '#ff6b86', ty = y(M.target);
@@ -202,8 +226,11 @@
     say('Alert target: this contract at ' + money(premium) + '. Click-to-Alert is turning that into the stock target and the horizon.', true);
   });
   card.addEventListener('click', async (e) => {
-    const t = e.target.closest ? e.target.closest('[data-x],[data-tf],[data-go],[data-alert],[data-copy]') : null; if (!t || !M.c) return;
+    const t = e.target.closest ? e.target.closest('[data-x],[data-tf],[data-go],[data-alert],[data-copy],[data-tool],[data-stock],[data-home]') : null; if (!t || !M.c) return;
     if (t.dataset.x) { closeCard(); return; }
+    if (t.dataset.tool) { const T = TOOLS(); if (!T || t.disabled) return; const id = t.dataset.tool; M.tools = T.normalizeEnabled(M.tools.includes(id) ? M.tools.filter((x) => x !== id) : M.tools.concat(id)); try { localStorage.setItem('sml-opt-mini-tools', JSON.stringify(M.tools)); } catch (_) { /* ignore */ } paint(); return; }
+    if (t.dataset.stock) { const b = document.querySelector(t.dataset.stock); if (b) { b.click(); say(t.dataset.label + ' opened on the main chart for $' + symbolNow() + ' \u2014 it reads the stock, not this contract.', true); } else say(t.dataset.label + ' is not available on this chart right now.', false); return; }
+    if (t.dataset.home) { M.home = M.home === 'chart' ? 'chain' : 'chart'; try { localStorage.setItem('sml-opt-mini-home', M.home); } catch (_) { /* ignore */ } if (M.home === 'chart') { card.classList.remove('dock-stay'); rehome(); } place(); paint(); try { card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) { /* ignore */ } return; }
     if (t.dataset.tf) { M.tf = t.dataset.tf; try { localStorage.setItem('sml-opt-mini-tf', M.tf); } catch (_) { /* ignore */ } M.bars = []; M.asOf = 0; M.msg = 'Loading…'; paint(); void load(); return; }
     if (t.dataset.copy) { const ok = window.smlBuyPrefs ? await window.smlBuyPrefs.copy(OC.occSymbol(M.c)) : false; say(ok ? 'Copied ' + OC.occSymbol(M.c) + '.' : 'Select the symbol above and copy it.', ok); return; }
     if (t.dataset.alert) { window.dispatchEvent(new CustomEvent('sml-click-alert-contract', { detail: { type: M.c.side, strike: M.c.strike, expiry: M.c.year + '-' + String(M.c.month).padStart(2, '0') + '-' + String(M.c.day).padStart(2, '0'), symbol: M.c.symbol, autoTarget: true } })); say('Click-to-Alert is reading this contract.', true); return; }
@@ -237,5 +264,8 @@
     const c = OC.contract({ symbol: d.symbol || symbolNow(), expiry: d.expiry, strike: d.strike, side: d.side || d.type });
     if (c) show(c, d.row || (d.mid != null ? { mid: d.mid, bid: d.bid, ask: d.ask, iv: d.iv, delta: d.delta, oi: d.oi, volume: d.volume } : null));
   });
-  window.smlOptionMini = { show: (contract, row) => show(contract, row), close: closeCard, open: () => !!M.c, chain: setChain, chainOn: () => CH.on };
+  window.smlOptionMini = { show: (contract, row) => show(contract, row), close: closeCard, open: () => !!M.c, chain: setChain, chainOn: () => CH.on,
+    /* preview(bars, contract): paints the given candles without a session, so the tools can be checked by eye */
+    preview: (bars, contract) => { if (!contract || !Array.isArray(bars)) return false; M.c = contract; M.bars = bars; M.asOf = Date.now(); M.msg = ''; clearTimeout(M.timer); openCard(); paint(); place(); return true; },
+    tools: () => M.tools.slice(), home: () => M.home };
 })(0);
