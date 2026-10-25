@@ -88,7 +88,7 @@
     tool('main .chart>.academy-chart-tools') + ',' + tool('main .toolbar .academy-brokers') + ',' + tool('.academy-intelligence') + '{display:none!important}',
     /* the stock tabs sit right under the symbol and price, like a stock page: Chart . Flow . Options . Algo . Comments */
     '#ms-top{display:none}' + A + ':not([data-ms-tab=quotes]) #ms-top{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:0 4px;margin:0 0 2px;border-bottom:1px solid #16303b;background:#07101a}',
-    A + ' #ms-top::-webkit-scrollbar{display:none}' + A + ' #ms-top button{flex:1 0 auto;position:relative;min-height:44px;padding:10px 12px 9px;border:0;background:none;color:#8fa6b3;font:700 .86rem system-ui,sans-serif;white-space:nowrap}',
+    A + ' #ms-top::-webkit-scrollbar{display:none}' + A + ' #ms-top button{flex:1 0 auto;position:relative;padding:10px 12px 9px;border:0;background:none;color:#8fa6b3;font:700 .86rem system-ui,sans-serif;white-space:nowrap}',
     A + ' #ms-top button.on{color:#fff;font-weight:900}' + A + ' #ms-top button.on:after{content:"";position:absolute;left:30%;right:30%;bottom:0;height:3px;border-radius:2px;background:#00c47d}',
     T('chart', 'main .chart') + '{display:flex!important;flex-direction:column!important;grid-template-rows:none!important;height:auto!important;min-height:0!important}',
     T('chart', 'main .chart>*') + '{flex:none;min-width:0}',

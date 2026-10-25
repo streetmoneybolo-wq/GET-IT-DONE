@@ -1,3 +1,5 @@
+/* OWNER'S RULE: the phone layout stays COMPACT. Do not grow buttons to 44px tap targets or add rows above the chart;
+   academy-phone-compact-guard.test.js fails any change that does. Only the owner may ask for a taller phone layout. */
 /* Phone layout for the Academy Live Chart Lab (≤720px). Loaded last, after every
    other Academy module. Several of those modules append their own <style> lazily
    (after data arrives), so every rule here carries extra specificity rather than
@@ -65,26 +67,17 @@
     + 'body main .chart .academy-chart-tools label,body main .chart .academy-chart-tools span{display:none}'
     + 'body main .chart .academy-chart-tools select,body main .chart .academy-chart-tools button{flex:none;height:26px;padding:2px 7px;font-size:.6rem;white-space:nowrap}'
     + 'body main .chart .academy-pro-palette{left:6px;right:6px;top:auto;bottom:8px}'
-    /* compact pass. Controls used to be ~22px tall so the candles got the screen; the owner asked for
-       bigger tap targets on phones (2026-10-25) and then for the full 44px guideline, so every tappable
-       control in these rows is 44px tall. That is what it costs: four control rows stacked above the candles,
-       so the first candle starts roughly a thumb lower than it did. The chart stage keeps its fixed share of
-       the screen, so the page scrolls more rather than the chart shrinking. The top-bar pills grow in height
-       only: at their old widths MEM, Lessons, Unlock, LOOP-KICK, Alerts and LIVE just fit one row at 375px,
-       and 3px more padding each pushed Alerts onto a row of its own. */
+    /* compact pass: every control row is ~22px tall so the candles get the screen */
     + 'body main .bar{gap:3px 4px;padding:4px 6px;flex-wrap:nowrap}body main .bar strong{font-size:.66rem;flex:0 1 auto}body main .bar .dot{width:.4rem;height:.4rem}'
-    + 'body main .bar .lesson-toggle,body main .bar #academy-lk-btn,body main .bar #academy-alerts-fab,body main .bar #sml-sig-fab{flex:none;height:44px;padding:0 7px;font-size:.58rem;line-height:42px;border-width:1px;box-shadow:none}'
+    + 'body main .bar .lesson-toggle,body main .bar #academy-lk-btn,body main .bar #academy-alerts-fab,body main .bar #sml-sig-fab{flex:none;height:24px;padding:0 7px;font-size:.58rem;line-height:22px;border-width:1px;box-shadow:none}'
     + 'body main .bar #lesson-toggle{margin-left:auto}body main .bar .status{font-size:.5rem;flex:none}'
     + 'html.academy-discord-mobile body main .bar{flex-wrap:wrap}'
     + 'body main .bar #academy-auth-notice{flex:1 1 100%;font-size:.58rem;padding:0}'
-    + 'body main .toolbar{gap:3px 4px;padding:3px 5px}body main .toolbar input#symbol{height:44px;padding:0 8px;font-size:.8rem}body main .toolbar .quote-chip{font-size:.56rem}'
-    + 'body main .toolbar .depth-toggle,body main .toolbar #mem-algo-toggle,body main .toolbar #smc-toggle{height:44px;padding:0 10px;font-size:.62rem;line-height:42px}'
-    + 'body main .toolbar button.academy-broker-buy{height:44px;padding:0 8px;font-size:.64rem;border-width:1px}'
-    + 'body main .chart .academy-chart-tools{padding:4px 6px;gap:5px}body main .chart .academy-chart-tools select,body main .chart .academy-chart-tools button{height:44px;padding:0 10px;font-size:.64rem}'
-    + 'body main .chart>.intervals{margin:4px 0 0;gap:4px}body main .chart>.intervals button{min-height:44px;padding:0 11px;font-size:.68rem}body main .chart>.intervals select{min-height:44px;font-size:.68rem}'
-    /* three controls other modules drop into these rows with their own inline or lazy styles: the MIDDAY pill
-       (click-alert-ui), the DATA chip (data-chip) and Unlock Tools in the top bar. Same tap size as their neighbours. */
-    + 'body main .toolbar #midday-report-toggle{height:44px;line-height:32px}body main .toolbar .data-chip{min-height:44px;padding:0 10px;font-size:.62rem}body main .bar #academy-unlock{height:44px;line-height:42px;padding:0 7px}'
+    + 'body main .toolbar{gap:3px 4px;padding:3px 5px}body main .toolbar input#symbol{height:24px;padding:0 6px;font-size:.72rem}body main .toolbar .quote-chip{font-size:.56rem}'
+    + 'body main .toolbar .depth-toggle,body main .toolbar #mem-algo-toggle,body main .toolbar #smc-toggle{height:20px;padding:0 7px;font-size:.54rem;line-height:18px}'
+    + 'body main .toolbar button.academy-broker-buy{height:20px;padding:0 5px;font-size:.56rem;border-width:1px}'
+    + 'body main .chart .academy-chart-tools{padding:3px 5px;gap:3px}body main .chart .academy-chart-tools select,body main .chart .academy-chart-tools button{height:22px;padding:0 6px;font-size:.54rem}'
+    + 'body main .chart>.intervals{margin:3px 0 0;gap:2px}body main .chart>.intervals button{padding:3px 7px;font-size:.6rem}'
     + 'body main .chart{padding:3px}'
     /* below the chart */
     + 'body .academy-below{padding:10px 8px;min-height:0}body .academy-below .below-title{margin:0 0 8px;font-size:.66rem}'
