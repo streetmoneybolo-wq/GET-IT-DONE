@@ -2688,6 +2688,24 @@ test('the Activity tells the client which SKU is which tier', () => {
   assert.ok(src.includes("const picker = skus.length && ACADEMY_PLANS_UI"), 'and the picker ships only with the SKUs');
 });
 
+test('bug sweep 2026-10-25: the intro warm-up no longer asks for a route that needs a session, and the live poll rests when nothing changes', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  /* slide-design requires a session and the intro runs before one exists: that fetch was a guaranteed
+     401 and a console error on every single load, priming nothing */
+  const warm = src.slice(src.indexOf('const warmUrls=['), src.indexOf('window.smlAcademyWarmPromise'));
+  assert.ok(!warm.includes('slide-design'), 'no slide-design in the pre-session warm-up');
+  assert.ok(warm.includes('/academy-activity/curriculum?v=') && warm.includes('/academy-activity/scanner'), 'the public warm-ups stay');
+  assert.ok(src.includes("cache:index===0?'force-cache':'no-store'"), 'only the curriculum is force-cached now that there is no fourth entry');
+
+  const live = fs.readFileSync(path.join(__dirname, 'academy-live.js'), 'utf8');
+  /* measured on a Saturday: 1.4 requests a second per open tab for a book that had not moved in hours */
+  assert.ok(live.includes('const stampOf = (d) =>'), 'a change is judged on the book time, newest print and newest quote');
+  assert.ok(live.includes('if (stamp === st.lastStamp) st.staleRuns += 1; else { st.staleRuns = 0; st.lastStamp = stamp; }'), 'a run of unchanged answers is counted, and any change resets it');
+  assert.ok(live.includes('const STALE_AFTER = 3, STALE_MAX_MS = 8000;'), 'three identical answers, then back off, never past 8 s');
+  assert.ok(live.includes('Math.min(2000, Math.max(700, base - 1800))'), 'the open-market fast cadence is untouched');
+  assert.ok(live.includes("st.lastStamp = ''; st.staleRuns = 0; }"), 'a new symbol starts fresh');
+});
+
 test('the intro overlay plays once, actually plays, and cannot hold the screen', () => {
   /* The overlay is injected by academyFinalBody (not academyActivityHtml), so this pins the source.
      Three things were wrong, reported as "the intro overlay stays too long":

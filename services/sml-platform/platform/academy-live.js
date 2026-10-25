@@ -11,7 +11,14 @@
   const size = (v) => Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(v) || 0);
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  const st = { symbol: '', lastT: 0, prev: { bids: {}, asks: {} }, freshAt: 0, failures: 0, lastBook: null };
+  /* lastStamp / staleRuns: how many polls in a row brought nothing new. With the market closed the book
+     and tape do not move for hours, and polling at 700 ms for that is pure load - measured at 1.4
+     requests a second per open tab on a Saturday. A run of unchanged answers backs the cadence off
+     towards 8 s; the first changed answer snaps it straight back, so open-market behaviour is untouched. */
+  const st = { symbol: '', lastT: 0, prev: { bids: {}, asks: {} }, freshAt: 0, failures: 0, lastBook: null, lastStamp: '', staleRuns: 0 };
+  const STALE_AFTER = 3, STALE_MAX_MS = 8000;
+  /* what counts as "something new": the book's own time, the newest print, the newest quote */
+  const stampOf = (d) => [d.asOf || '', (d.tape && d.tape.length ? d.tape[d.tape.length - 1].t : ''), (d.rt && d.rt.t) || ''].join('|');
   const style = document.createElement('style');
   style.textContent = '.academy-depth-row{transition:background .35s}.academy-depth-row.up{background:rgba(0,208,132,.28)}.academy-depth-row.down{background:rgba(255,84,112,.28)}.academy-depth-row.best span:first-child{font-weight:800;color:#fff}'
     + '.academy-depth h3 small{float:right;color:#5fd6a8;font-weight:700}.academy-depth h3 small.stale{color:#ffb454}'
@@ -62,7 +69,7 @@
   if (typeof baseRefresh === 'function') window.smlAcademyRefreshQuote = () => { baseRefresh(); if (st.lastBook && Date.now() - st.freshAt < 5000) paintQuote(st.lastBook); };
 
   /* a different stock on screen: nothing of the old one (book, quote, prints, stream) may paint under the new name */
-  function forgetStock() { st.lastT = 0; st.prev = { bids: {}, asks: {} }; st.lastBook = null; st.rt = null; st.deferred = null; st.freshAt = 0; }
+  function forgetStock() { st.lastT = 0; st.prev = { bids: {}, asks: {} }; st.lastBook = null; st.rt = null; st.deferred = null; st.freshAt = 0; st.lastStamp = ''; st.staleRuns = 0; }
   const navPending = () => !!window.smlNavPending;
   async function once() {
     if (navPending()) return;
@@ -74,6 +81,7 @@
       const d = await res.json();
       if (!res.ok || !d || !d.ready || sym() !== symbol || navPending()) { st.failures = d && d.ready === false ? 0 : st.failures + 1; return; }
       st.failures = 0; st.freshAt = Date.now(); st.lastBook = d;
+      const stamp = stampOf(d); if (stamp === st.lastStamp) st.staleRuns += 1; else { st.staleRuns = 0; st.lastStamp = stamp; }
       if (window.smlChartGesture) { st.deferred = d; return; } // a finger is on the chart: keep the main thread free, apply this when it lifts
       st.deferred = null;
       apply(d);
@@ -145,5 +153,5 @@
   window.addEventListener('sml-academy-market', (e) => { const s = String((e.detail && e.detail.symbol) || '').toUpperCase(); if (s && s !== sse.symbol) { closeStream(); sse.symbol = ''; forgetStock(); openStream(); } if (s && s !== st.symbol) { st.symbol = s; forgetStock(); once(); } });
   /* back from a minimised window: the stream may be stuck open with nothing coming, so start over and fetch the book at once */
   window.addEventListener('sml-academy-resume', () => { closeStream(); sse.retryAt = 0; sse.fails = 0; sse.okAt = 0; st.lastT = Math.max(0, st.lastT); openStream(); void once(); });
-  (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } if (!document.hidden) openStream(); const pushing = sse.es && Date.now() - sse.okAt < 5000; const base = Math.min(8000, Math.max(2000, Number(window.smlEvolveConfig && window.smlEvolveConfig.livePollMs) || 2500)); /* the cadence is an Evolve knob (academy-evolve.js) */ const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : pushing ? base : Math.min(2000, Math.max(700, base - 1800)); once().finally(() => setTimeout(loop, wait)); })();
+  (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } if (!document.hidden) openStream(); const pushing = sse.es && Date.now() - sse.okAt < 5000; const base = Math.min(8000, Math.max(2000, Number(window.smlEvolveConfig && window.smlEvolveConfig.livePollMs) || 2500)); /* the cadence is an Evolve knob (academy-evolve.js) */ const fast = Math.min(2000, Math.max(700, base - 1800)); const idle = st.staleRuns >= STALE_AFTER ? Math.min(STALE_MAX_MS, fast * 2 ** (st.staleRuns - STALE_AFTER + 1)) : fast; const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : pushing ? base : idle; once().finally(() => setTimeout(loop, wait)); })();
 })();
