@@ -80,9 +80,6 @@
     + 'body main .toolbar button.academy-broker-buy{height:36px;padding:0 8px;font-size:.64rem;border-width:1px}'
     + 'body main .chart .academy-chart-tools{padding:4px 6px;gap:5px}body main .chart .academy-chart-tools select,body main .chart .academy-chart-tools button{height:38px;padding:0 10px;font-size:.64rem}'
     + 'body main .chart>.intervals{margin:4px 0 0;gap:4px}body main .chart>.intervals button{min-height:36px;padding:0 11px;font-size:.68rem}body main .chart>.intervals select{min-height:36px;font-size:.68rem}'
-    /* three controls other modules drop into these rows with their own inline or lazy styles: the MIDDAY pill
-       (click-alert-ui), the DATA chip (data-chip) and Unlock Tools in the top bar. Same tap size as their neighbours. */
-    + 'body main .toolbar #midday-report-toggle{height:36px;line-height:24px}body main .toolbar .data-chip{min-height:34px;padding:0 10px;font-size:.62rem}body main .bar #academy-unlock{height:34px;line-height:32px;padding:0 10px}'
     + 'body main .chart{padding:3px}'
     /* below the chart */
     + 'body .academy-below{padding:10px 8px;min-height:0}body .academy-below .below-title{margin:0 0 8px;font-size:.66rem}'
