@@ -105,7 +105,7 @@
   function place() {
     if (!M.c) return;
     const side = chainSide();
-    if (side) { card.classList.add('dock-stay'); CLEAR.forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== side) side.appendChild(card); return; }
+    if (side) { card.classList.add('dock-stay'); CLEAR.forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== side) side.prepend(card); return; }
     card.classList.remove('dock-stay');
     const dk = window.smlChartDock;
     if (dk && (dk.holds(card) || dk.room())) { if (card.style.position) CLEAR.forEach((k) => { card.style[k] = ''; }); return; }

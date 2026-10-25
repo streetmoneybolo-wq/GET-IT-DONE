@@ -2710,11 +2710,14 @@ test('the contract chart lives beside the options chain, carries its own tools, 
   assert.ok(dock.includes("el.classList.contains('dock-stay')) continue;"), 'the chart dock leaves a dock-stay card where it is');
   assert.ok(dock.includes("[...dock.children].filter((c) => c.classList.contains('dock-stay')).forEach(undock);"), 'and lets go of one it already holds');
   const odock = fs.readFileSync(path.join(__dirname, 'academy-options-dock.js'), 'utf8');
+  const odesk = fs.readFileSync(path.join(__dirname, 'academy-options-desk.js'), 'utf8');
   assert.ok(odock.includes("side.id = 'options-side'; side.appendChild(card);"), 'the calculator sits in a side column');
   assert.ok(odock.includes('#options-side{position:sticky;top:8px;'), 'which is sticky beside the chain');
+  assert.ok(odock.includes('max-height:calc(100vh - 16px);overflow:auto;overscroll-behavior:contain;'), 'and no taller than the window, scrolling inside itself: a sticky column taller than the chain has nothing to stick within (seen live 2026-10-25: calculator 1009px + card 608px never stuck)');
+  assert.ok(odock.includes('#options-side{position:static;max-height:none;overflow:visible}'), 'a plain block again on narrow windows');
+  assert.ok(odesk.includes("if (card.parentElement !== side) side.prepend(card); return; }"), 'the card goes on top of the column, the calculator below it');
   assert.ok(odock.includes('id="oc-chart" hidden'), 'with a CONTRACT CHART button that appears once a row is loaded');
   assert.ok(odock.includes("else if (b.id === 'oc-chart') { if (S.loadedTd) window.dispatchEvent(new CustomEvent('sml-option-mini', { detail: { td: S.loadedTd } })); }"), 'and opens the chart for that row');
-  const odesk = fs.readFileSync(path.join(__dirname, 'academy-options-desk.js'), 'utf8');
   assert.ok(odesk.includes("const chainSide = () => (!CH.on && M.home !== 'chart' && dockTwoCol()) ? $('options-side') : null;"), 'home is beside the chain unless the chain has the stage or the member chose the chart');
   assert.ok(odesk.includes("return !!d && !d.classList.contains('no-chain') && window.matchMedia('(min-width:1001px)').matches;"), 'and only while the dock is really two columns: with no chain rows (no session) the side column is a full-width block far below the chart, so the card keeps its home by the chart (seen live 2026-10-25)');
   assert.ok(odesk.includes("const homeBtn = (!CH.on && $('options-side') && dockTwoCol()) ?"), 'the home toggle is offered only when there is a side column to move to');

@@ -28,10 +28,10 @@
     /* no chain on screen (signed out, or nothing loaded yet): one column, the calculator laid out side by side, so the lab is not a tall box beside an empty one */
     + '.options-dock.no-chain{grid-template-columns:1fr}.options-dock.no-chain .opt-calc{position:static;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:4px 18px;align-items:start}.options-dock.no-chain .opt-calc>*{grid-column:1;min-width:0}.options-dock.no-chain .opt-calc .oc-out{grid-column:2;grid-row:1/span 6;margin-top:0;align-self:stretch}.options-dock.no-chain .opt-calc .oc-hint,.options-dock.no-chain .opt-calc .oc-more{grid-column:2}'
     /* the side column: the calculator and, when one is open, the contract chart, stuck beside the chain as it scrolls */
-    + '#options-side{position:sticky;top:8px;display:grid;gap:10px;align-content:start;min-width:0}#options-side>.opt-calc{position:static}'
+    + '#options-side{position:sticky;top:8px;display:grid;gap:10px;align-content:start;min-width:0;max-height:calc(100vh - 16px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}#options-side>.opt-calc{position:static}'
     + '#options-side>#opt-mini{position:static!important;width:auto!important;max-width:none!important;max-height:none!important;right:auto!important;top:auto!important;margin:0!important}'
     + '.opt-calc .oc-chart{width:100%;margin-top:8px;border:1px solid #2f6cf5;border-radius:7px;background:#0d1a2e;color:#9cc8ff;font:800 .66rem ui-monospace,monospace;letter-spacing:.03em;padding:8px;cursor:pointer}.opt-calc .oc-chart:hover{background:#163055}'
-    + '@media(max-width:1000px){.options-dock{grid-template-columns:1fr}.opt-calc{position:static}#options-side{position:static}.options-dock.no-chain .opt-calc{display:block}}';
+    + '@media(max-width:1000px){.options-dock{grid-template-columns:1fr}.opt-calc{position:static}#options-side{position:static;max-height:none;overflow:visible}.options-dock.no-chain .opt-calc{display:block}}';
   document.head.appendChild(style);
 
   const dock = document.createElement('div'); dock.className = 'options-dock'; dock.id = 'options-dock';
