@@ -75,5 +75,8 @@ test('phone controls are big enough to tap: 44px rows, not the 20-22px compact p
   assert.match(pass, /#midday-report-toggle\{height:44px/, 'the MIDDAY pill');
   assert.match(pass, /\.toolbar \.data-chip\{min-height:44px/, 'the DATA chip');
   assert.match(pass, /\.bar #academy-unlock\{height:44px/, 'Unlock Tools in the top bar');
+  /* the Chart / Flow / Options / Algo / Comments tabs are the mobile shell's, not the compact pass's */
+  const shell = fs.readFileSync(path.join(__dirname, 'academy-mobile-shell.js'), 'utf8');
+  assert.ok(shell.includes('#ms-top button{flex:1 0 auto;position:relative;min-height:44px;'), 'the view tabs too');
   assert.ok(!/height:2[0-4]px;padding:0 [5-7]px;font-size:\.5[46]rem/.test(pass), 'no 20-24px control sizes left in the compact pass');
 });
