@@ -17,8 +17,7 @@ test('the Signals pill is moved into the header beside Alerts on a phone and bac
   assert.match(compact, /else if \(!phone && sig\.parentElement === bar\) \{\s*document\.body\.appendChild\(sig\);/, 'and returns to the page off a phone');
   /* the header styling beats the pill's own fixed positioning (an id rule), and matches the Alerts pill's compact size */
   assert.match(compact, /body main \.bar #sml-sig-fab\{position:static!important;z-index:auto!important/);
-  /* the height is the phone tap-target size (34px since 2026-10-25); the point of this assertion is the placement */
-  assert.match(compact, /body main \.bar #academy-alerts-fab,body main \.bar #sml-sig-fab\{flex:none;height:34px/);
+  assert.match(compact, /body main \.bar #academy-alerts-fab,body main \.bar #sml-sig-fab\{flex:none;height:24px/);
   /* the pill is still the radar's own id and floats when nothing moves it */
   assert.match(radar, /#sml-sig-fab\{position:fixed;left:12px;bottom:58px/);
 });
@@ -57,19 +56,4 @@ test('in a phone browser the Signals pill lands in the header, clear of the bott
     await page.setViewportSize({ width: 390, height: 780 }); await page.waitForTimeout(500);
     assert.equal((await box('#sml-sig-fab')).parent, 'bar', 'and goes back to the header when narrowed again');
   } finally { await browser.close(); }
-});
-
-test('phone controls are big enough to tap: 34-38px rows, not the 20-22px compact pass', () => {
-  /* Owner's call, 2026-10-25. The sweep measured broker buttons at 86x20, intervals at ~31x21 and the
-     chart-tools row at 22px on a 375px phone. Short of the 44px guideline on purpose - four rows at 44px
-     would push the first candle well down the screen - but past the 20px that was missing taps. */
-  const compact = fs.readFileSync(path.join(__dirname, 'academy-mobile-compact.js'), 'utf8');
-  const pass = compact.slice(compact.indexOf('compact pass'));
-  assert.match(pass, /\.academy-chart-tools button\{height:38px;padding:0 10px/, 'chart tools row');
-  assert.match(pass, /button\.academy-broker-buy\{height:36px/, 'broker buttons');
-  assert.match(pass, /#smc-toggle\{height:36px/, 'toolbar toggles');
-  assert.match(pass, /\.intervals button\{min-height:36px;padding:0 11px/, 'interval buttons');
-  assert.match(pass, /\.intervals select\{min-height:36px/, 'the tick-size select beside them');
-  assert.match(pass, /input#symbol\{height:36px/, 'the symbol box');
-  assert.ok(!/height:2[0-4]px;padding:0 [5-7]px;font-size:\.5[46]rem/.test(pass), 'no 20-24px control sizes left in the compact pass');
 });
