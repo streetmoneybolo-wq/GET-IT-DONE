@@ -1,3 +1,5 @@
+/* OWNER'S RULE: the phone layout stays COMPACT. Do not grow buttons to 44px tap targets or add rows above the chart;
+   academy-phone-compact-guard.test.js fails any change that does. Only the owner may ask for a taller phone layout. */
 /* Phone layout for the Academy Live Chart Lab (≤720px). Loaded last, after every
    other Academy module. Several of those modules append their own <style> lazily
    (after data arrives), so every rule here carries extra specificity rather than

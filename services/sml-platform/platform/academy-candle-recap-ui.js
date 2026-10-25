@@ -34,7 +34,7 @@
     + '#candle-recap table{width:100%;border-collapse:collapse;font:600 .62rem ui-monospace,monospace}#candle-recap td,#candle-recap th{padding:4px 5px;text-align:left;border-bottom:1px solid rgba(31,47,69,.7)}#candle-recap th{color:#7f95b1;font-weight:700}#candle-recap td.r{text-align:right}'
     + '#candle-recap .scen{display:grid;grid-template-columns:1fr 1fr;gap:8px}#candle-recap .scen div{padding:8px;border-radius:8px;border:1px solid #1f2f45}#candle-recap .scen .bull{border-color:#1f8a5f;background:#0b1f15}#candle-recap .scen .bear{border-color:#a4485a;background:#2a0b10}#candle-recap .scen b{display:block;margin-bottom:3px;font:800 .58rem ui-monospace,monospace;letter-spacing:.06em}'
     + '#candle-recap .note{margin-top:8px;color:#7f95b1;font-size:.58rem;font-weight:500}#candle-recap .x{float:right;border:1px solid #2b4b5a;border-radius:6px;background:#0c1821;color:#cfe3ea;font:800 11px/1 system-ui;padding:4px 7px;cursor:pointer}'
-    + '#candle-recap-hint{display:none;color:#7fd6f0;font:700 .56rem ui-monospace,monospace;margin-left:4px}#candle-recap-hint.on{display:inline}'
+    + '#candle-recap-hint{display:none;color:#7fd6f0;font:700 .56rem ui-monospace,monospace;margin-left:4px}#candle-recap-hint.on{display:inline}#candle-recap-hint{white-space:nowrap;flex:none}@media(max-width:720px){#candle-recap-hint.on{display:none}}'
     + 'body.sml-recap-tf .academy-chart-stage{cursor:pointer}';
   document.head.appendChild(css);
 
