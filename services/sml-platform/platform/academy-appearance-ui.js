@@ -63,6 +63,8 @@
     + '#aa-panel .ft{display:flex;gap:8px;margin-top:12px}#aa-panel .ft button{flex:1;border:1px solid #2a4a58;border-radius:7px;background:#0d1a24;color:#e6eef2;padding:7px;font:800 .66rem system-ui;cursor:pointer}'
     + '#aa-panel .note{color:#7f95a1;font-weight:500;font-size:.6rem;margin-top:8px}'
     + '#aa-panel .bm{width:100%;border:1px solid #ffb020;border-radius:8px;background:#2a1f08;color:#ffe3b0;padding:8px;font:800 .66rem system-ui;cursor:pointer}#aa-panel .bm:hover{background:#ffb020;color:#1a1305}';
+  /* phone: theme swatches, colour inputs, selects, the slider, the module buttons and the footer are 44px tap targets */
+  ui.textContent += '@media(max-width:720px){#aa-panel .sw button{min-height:44px}#aa-panel .row label{min-height:44px}#aa-panel input[type=color]{height:44px;width:56px}#aa-panel select{min-height:44px}#aa-panel input[type=range]{height:44px}#aa-panel .bm{min-height:44px}#aa-panel .ft button{min-height:44px}}';
   document.head.appendChild(ui);
   const btn = document.createElement('button'); btn.id = 'aa-btn'; btn.type = 'button'; btn.textContent = 'Aa Customize'; btn.setAttribute('aria-expanded', 'false');
   const panel = document.createElement('div'); panel.id = 'aa-panel'; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Customize your Academy');

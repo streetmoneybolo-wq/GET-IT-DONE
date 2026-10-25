@@ -53,7 +53,8 @@
     + '#sml-settings-panel .edges{display:flex;flex-wrap:wrap;gap:6px 12px}#sml-settings-panel .edges input{width:64px;background:#0d1720;color:#eaf5f8;border:1px solid #294554;border-radius:6px;padding:5px}#sml-settings-panel .brk{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}#sml-settings-panel select{width:100%;background:#0d1720;color:#eaf5f8;border:1px solid #294554;border-radius:6px;padding:6px}'
     + '#sml-settings-panel .pv{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}#sml-settings-panel .pv span{border:1px solid;border-radius:6px;padding:3px 8px;font:800 .62rem system-ui}'
     + '#sml-settings-panel .note{color:#7f95a1;font-weight:500;font-size:.6rem;margin-top:8px}#sml-settings-panel .ft{display:flex;gap:8px;margin-top:12px}#sml-settings-panel .ft button{flex:1;border:1px solid #2a4a58;border-radius:7px;background:#0d1a24;color:#e6eef2;padding:7px;font:800 .66rem system-ui;cursor:pointer}'
-    + '@media(max-width:720px){#sml-settings-btn{right:auto;left:10px;bottom:48px}}';
+    /* phone: every row, the select and the footer buttons are 44px tap targets; the native boxes grow so the tick is readable */
+    + '@media(max-width:720px){#sml-settings-btn{right:auto;left:10px;bottom:48px}#sml-settings-panel label{min-height:44px;align-items:center;padding:0}#sml-settings-panel input[type=checkbox],#sml-settings-panel input[type=radio]{width:22px;height:22px;flex:none}#sml-settings-panel select{min-height:44px}#sml-settings-panel .ft button{min-height:44px}}';
   document.head.appendChild(css);
   const btn = document.createElement('button'); btn.id = 'sml-settings-btn'; btn.type = 'button'; btn.textContent = '⚙ Settings'; btn.setAttribute('aria-expanded', 'false'); btn.title = 'Settings: which Buy buttons the Academy shows';
   const panel = document.createElement('div'); panel.id = 'sml-settings-panel'; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Academy settings');

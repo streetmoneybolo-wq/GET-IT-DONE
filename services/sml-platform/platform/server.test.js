@@ -2688,6 +2688,17 @@ test('the Activity tells the client which SKU is which tier', () => {
   assert.ok(src.includes("const picker = skus.length && ACADEMY_PLANS_UI"), 'and the picker ships only with the SKUs');
 });
 
+test('phone: the Settings and Appearance panels are tap-sized', () => {
+  /* Measured at 375x812 after the 44px pass: Settings rows were 26-29px with 13px boxes, its select 31
+     and Reset/Done 30; Appearance's theme swatches and selects 31, colour inputs 26, the text-size slider
+     16, the module buttons 32, Reset/Done 30. Both panels open from the MORE sheet and fit the screen;
+     only the sizes were wrong. */
+  const settings = fs.readFileSync(path.join(__dirname, 'academy-settings-ui.js'), 'utf8');
+  assert.ok(settings.includes('#sml-settings-panel label{min-height:44px;align-items:center;padding:0}#sml-settings-panel input[type=checkbox],#sml-settings-panel input[type=radio]{width:22px;height:22px;flex:none}#sml-settings-panel select{min-height:44px}#sml-settings-panel .ft button{min-height:44px}'), 'settings rows, boxes, select and footer');
+  const aa = fs.readFileSync(path.join(__dirname, 'academy-appearance-ui.js'), 'utf8');
+  assert.ok(aa.includes("ui.textContent += '@media(max-width:720px){#aa-panel .sw button{min-height:44px}#aa-panel .row label{min-height:44px}#aa-panel input[type=color]{height:44px;width:56px}#aa-panel select{min-height:44px}#aa-panel input[type=range]{height:44px}#aa-panel .bm{min-height:44px}#aa-panel .ft button{min-height:44px}}';"), 'appearance swatches, inputs, selects, slider, module buttons and footer');
+});
+
 test('the tool guide scrolls as one list: the voice tips live inside the scroller, not after it', () => {
   /* Reported on desktop as "the window doesn't show them all". Reproduced at 1440x640: the .body (the
      tool list) collapsed to 51px and showed none of its 19 rows without scrolling, because the eight
