@@ -57,7 +57,10 @@
     /* the guide: every tool, its group and its own one-line explanation */
     + '#tool-guide{position:fixed;z-index:2147483300;top:50px;right:10px;width:min(560px,calc(100vw - 20px));max-height:calc(100dvh - 64px);display:none;flex-direction:column;background:#0b141c;border:1px solid #2b5362;border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.6);color:#dbe6ec;font:500 .7rem/1.4 system-ui,sans-serif;overflow:hidden}#tool-guide.open{display:flex}'
     + '#tool-guide header{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #1b3540;flex:none}#tool-guide header b{font:900 .76rem ui-monospace,monospace;letter-spacing:.06em;color:#9ed3e6}#tool-guide header small{color:#7f98a6}#tool-guide header .x{margin-left:auto;background:none;border:0;color:#7f98a6;font-size:18px;cursor:pointer}'
-    + '#tool-guide .body{overflow:auto;padding:6px 10px 10px}#tool-guide h4{margin:8px 0 4px;font:800 .58rem ui-monospace,monospace;letter-spacing:.1em;color:#5f7986}#tool-guide h4 span{color:#8fa6b3;font-weight:600;letter-spacing:0;margin-left:6px}'
+    /* .body is the one scroller: flex 1 / min-height 0 so it is the part that gives way when the panel hits its
+       max-height, and the voice tips live inside it. They used to sit after it as direct children of the panel
+       (overflow:hidden), so on a short Activity frame the tool list collapsed to a sliver and the tips were cut. */
+    + '#tool-guide .body{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 10px 10px}#tool-guide h4{margin:8px 0 4px;font:800 .58rem ui-monospace,monospace;letter-spacing:.1em;color:#5f7986}#tool-guide h4 span{color:#8fa6b3;font-weight:600;letter-spacing:0;margin-left:6px}'
     + '#tool-guide .t{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:start;padding:5px 6px;border-radius:7px;cursor:pointer}#tool-guide .t:hover{background:rgba(158,211,230,.07)}#tool-guide .t b{font:800 .62rem ui-monospace,monospace;color:#fff}#tool-guide .t b.on:after{content:" ●";color:#52e6ad}#tool-guide .t span{color:#9fb3be}'
     + '#tool-guide .foot{padding:8px 12px;border-top:1px solid #13262f;color:#6f8794;font-size:.58rem}'
     + '#tool-guide .tips{cursor:default}#tool-guide .tips span{display:flex;flex-wrap:wrap;gap:4px 6px}#tool-guide .tips a{color:#9ed3e6;text-decoration:none;font:700 .64rem system-ui,sans-serif;padding:2px 7px;border-radius:999px;background:rgba(158,211,230,.09)}#tool-guide .tips a:hover{background:rgba(0,226,154,.18);color:#00e29a}'
@@ -137,8 +140,8 @@
       if (!items.length) return '';
       return '<h4>' + g.label + '<span>' + esc(g.hint) + '</span></h4>' + items.map((b) => '<div class="t" data-tool="' + esc(b.id) + '"><b class="' + (isOn(b) ? 'on' : '') + '">' + esc(b.textContent.trim().slice(0, 18)) + '</b><span>' + esc((b.title || b.getAttribute('aria-label') || '').split(/\.\s|\(/)[0].slice(0, 140) || 'Opens ' + b.textContent.trim()) + '</span></div>').join('');
     }).join('');
-    guide.innerHTML = '<header><b>TOOL GUIDE</b><small>tap a tool to open it · ● is on</small><button type="button" class="x" data-close="1" aria-label="Close">×</button></header><div class="body">' + (groups || '<div class="t"><span>The tools are still loading.</span></div>') + '</div>'
-      + tipsHtml() + '<div class="foot">CHART tools draw on the candles · FLOW tools read who is buying and selling · DESK panels take the lower deck · SHARE posts and alerts. Pop any panel out with ⧉; Aa changes the look; ⚙ picks your buy buttons.</div>';
+    guide.innerHTML = '<header><b>TOOL GUIDE</b><small>tap a tool to open it · ● is on</small><button type="button" class="x" data-close="1" aria-label="Close">×</button></header><div class="body">' + (groups || '<div class="t"><span>The tools are still loading.</span></div>')
+      + tipsHtml() + '</div><div class="foot">CHART tools draw on the candles · FLOW tools read who is buying and selling · DESK panels take the lower deck · SHARE posts and alerts. Pop any panel out with ⧉; Aa changes the look; ⚙ picks your buy buttons.</div>';
   }
 
   /* reparent every known button into its group; a button that boots late is caught by the observer below */

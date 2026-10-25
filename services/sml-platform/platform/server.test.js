@@ -2688,6 +2688,18 @@ test('the Activity tells the client which SKU is which tier', () => {
   assert.ok(src.includes("const picker = skus.length && ACADEMY_PLANS_UI"), 'and the picker ships only with the SKUs');
 });
 
+test('the tool guide scrolls as one list: the voice tips live inside the scroller, not after it', () => {
+  /* Reported on desktop as "the window doesn't show them all". Reproduced at 1440x640: the .body (the
+     tool list) collapsed to 51px and showed none of its 19 rows without scrolling, because the eight
+     VOICE TIPS / PLAYBOOKS blocks and the foot sat AFTER .body as direct children of an overflow:hidden
+     panel. On a 900px-tall screen everything happened to fit, which is why it looked fine here. */
+  const src = fs.readFileSync(path.join(__dirname, 'academy-toolbar-nav.js'), 'utf8');
+  assert.ok(src.includes("+ tipsHtml() + '</div><div class=\"foot\">"), 'the tips are inside .body; .body closes after them');
+  assert.ok(!src.includes("+ '</div>'
+      + tipsHtml()"), 'and not before them');
+  assert.ok(src.includes("#tool-guide .body{flex:1 1 auto;min-height:0;overflow:auto;"), '.body is the flex child that gives way, and the only scroller');
+});
+
 test('bug sweep 2026-10-25: the intro warm-up no longer asks for a route that needs a session, and the live poll rests when nothing changes', () => {
   const src = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
   /* slide-design requires a session and the intro runs before one exists: that fetch was a guaranteed
