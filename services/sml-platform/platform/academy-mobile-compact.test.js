@@ -71,5 +71,9 @@ test('phone controls are big enough to tap: 34-38px rows, not the 20-22px compac
   assert.match(pass, /\.intervals button\{min-height:36px;padding:0 11px/, 'interval buttons');
   assert.match(pass, /\.intervals select\{min-height:36px/, 'the tick-size select beside them');
   assert.match(pass, /input#symbol\{height:36px/, 'the symbol box');
+  /* dropped into the same rows by other modules, with their own inline or lazy styles */
+  assert.match(pass, /#midday-report-toggle\{height:36px/, 'the MIDDAY pill');
+  assert.match(pass, /\.toolbar \.data-chip\{min-height:34px/, 'the DATA chip');
+  assert.match(pass, /\.bar #academy-unlock\{height:34px/, 'Unlock Tools in the top bar');
   assert.ok(!/height:2[0-4]px;padding:0 [5-7]px;font-size:\.5[46]rem/.test(pass), 'no 20-24px control sizes left in the compact pass');
 });
