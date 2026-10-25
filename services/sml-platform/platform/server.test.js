@@ -2773,6 +2773,11 @@ test('bug sweep 2026-10-25: the intro warm-up no longer asks for a route that ne
   assert.ok(!warm.includes('slide-design'), 'no slide-design in the pre-session warm-up');
   assert.ok(warm.includes('/academy-activity/curriculum?v=') && warm.includes('/academy-activity/scanner'), 'the public warm-ups stay');
   assert.ok(src.includes("cache:index===0?'force-cache':'no-store'"), 'only the curriculum is force-cached now that there is no fourth entry');
+  /* the curriculum module asked for the same route when it rendered the first lesson, before any session: one 401 per
+     signed-out load (seen live 2026-10-25). Both session-arrival handlers call loadClaudeDesign(lessons[current]) again */
+  const cur = fs.readFileSync(path.join(__dirname, 'academy-activity-curriculum.js'), 'utf8');
+  assert.ok(cur.includes("if(!session)return;try{const headers={authorization:'Bearer '+session};const response=await fetch('/academy-activity/slide-design?moduleId='"), 'no slide-design fetch without a session');
+  assert.equal((cur.match(/void loadClaudeDesign\(lessons\[current\]\)/g) || []).length, 2, 'and the design loads once the session arrives, by either path');
 
   const live = fs.readFileSync(path.join(__dirname, 'academy-live.js'), 'utf8');
   /* measured on a Saturday: 1.4 requests a second per open tab for a book that had not moved in hours */
