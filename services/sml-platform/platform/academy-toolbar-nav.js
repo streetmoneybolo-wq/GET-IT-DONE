@@ -64,7 +64,7 @@
     + '#tool-guide .t{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:start;padding:5px 6px;border-radius:7px;cursor:pointer}#tool-guide .t:hover{background:rgba(158,211,230,.07)}#tool-guide .t b{font:800 .62rem ui-monospace,monospace;color:#fff}#tool-guide .t b.on:after{content:" ●";color:#52e6ad}#tool-guide .t span{color:#9fb3be}'
     + '#tool-guide .foot{padding:8px 12px;border-top:1px solid #13262f;color:#6f8794;font-size:.58rem}'
     + '#tool-guide .tips{cursor:default}#tool-guide .tips span{display:flex;flex-wrap:wrap;gap:4px 6px}#tool-guide .tips a{color:#9ed3e6;text-decoration:none;font:700 .64rem system-ui,sans-serif;padding:2px 7px;border-radius:999px;background:rgba(158,211,230,.09)}#tool-guide .tips a:hover{background:rgba(0,226,154,.18);color:#00e29a}'
-    + '@media(max-width:720px){#tool-guide{top:auto;bottom:0;left:0;right:0;width:auto;max-height:72dvh;border-radius:14px 14px 0 0}#tool-guide .t{grid-template-columns:84px 1fr}}';
+    + '@media(max-width:720px){#tool-guide{top:auto;bottom:0;left:0;right:0;width:auto;max-height:72dvh;border-radius:14px 14px 0 0}#tool-guide .t{grid-template-columns:84px 1fr;min-height:44px;align-items:center}#tool-guide .tips a{display:inline-flex;align-items:center;min-height:44px;padding:0 12px}#tool-guide header .x{width:44px;height:44px;display:grid;place-items:center}}' /* phone: every row, voice-tip chip and the close button is a 44px tap target */;
   document.head.appendChild(style);
 
   let rail = null, guide = null, quoteBtn = null, quoteClose = null;
