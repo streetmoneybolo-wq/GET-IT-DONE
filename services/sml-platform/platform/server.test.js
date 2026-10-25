@@ -2699,6 +2699,14 @@ test('phone: the Settings and Appearance panels are tap-sized', () => {
   assert.ok(aa.includes("ui.textContent += '@media(max-width:720px){#aa-panel .sw button{min-height:44px}#aa-panel .row label{min-height:44px}#aa-panel input[type=color]{height:44px;width:56px}#aa-panel select{min-height:44px}#aa-panel input[type=range]{height:44px}#aa-panel .bm{min-height:44px}#aa-panel .ft button{min-height:44px}}';"), 'appearance swatches, inputs, selects, slider, module buttons and footer');
 });
 
+test('phone: the shell nav and sub rows hide while a lesson is open', () => {
+  /* Measured at 375x812 with a lesson open: #lesson is fixed at z-index 20, #ms-nav is sticky at 9000 and
+     #ms-sub at 8999, so both painted over the lesson and elementFromPoint on the STOCK tab and a WALLS chip
+     returned them - tappable through the lesson, and ~100px of lesson content under them. */
+  const shell = fs.readFileSync(path.join(__dirname, 'academy-mobile-shell.js'), 'utf8');
+  assert.ok(shell.includes("A + '.academy-lesson-open #ms-nav,' + A + '.academy-lesson-open #ms-sub,' + A + '.academy-lesson-open #ms-more{display:none!important}'"), 'hidden under body.academy-lesson-open');
+});
+
 test('phone: the lesson crumb clears the fixed Back to Chart pill', () => {
   /* At 375px the pill (fixed, top-right, 118px wide) sat over the end of "MODULE 0 · LESSON 1 · 1 OF 151":
      elementFromPoint on the crumb's last character returned the pill. The crumb now reserves the pill's

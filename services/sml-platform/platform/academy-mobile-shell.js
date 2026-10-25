@@ -59,6 +59,8 @@
     /* The tab bar and the sub-tab bar sit in the page directly under the chart, never fixed to the bottom of the window: a fixed bar inside the
        Discord app floated up over the candles when the page was pulled past its top. They start at the chart's lower edge and, once the chart has scrolled
        away, pin to the top of the window so they stay in reach; they never sit over the chart. */
+    /* a lesson opens full-screen (fixed, z 20) with its own Back to Chart; the sticky nav and sub rows sit at z 9000 and would paint over it, tappable, covering ~100px of the lesson */
+    A + '.academy-lesson-open #ms-nav,' + A + '.academy-lesson-open #ms-sub,' + A + '.academy-lesson-open #ms-more{display:none!important}',
     '#ms-nav{display:none}' + A + ' #ms-nav{position:sticky;top:var(--sml-inset-top,0px);grid-column:1/-1;width:100%;margin:6px 0 0;z-index:9000;display:flex;height:var(--ms-nav-h);background:#08121a;border-top:1px solid #1f3a46;border-bottom:1px solid #1f3a46;box-shadow:0 8px 24px rgba(0,0,0,.45)}',
     A + ' #ms-nav button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;background:none;color:#7f97a4;font:800 .5rem ui-monospace,monospace;letter-spacing:.06em;padding:4px 0}',
     A + ' #ms-nav button i{font-style:normal;font-size:1.05rem;line-height:1;filter:grayscale(.7)}',
