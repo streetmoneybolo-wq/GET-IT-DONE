@@ -46,12 +46,13 @@
  * 2026-09-25: advance pin -> d4444fd (js/live-watch.js: Boost Arena guardrail client).
  * 2026-09-25: advance pin -> 85480be (Ticker Terminal and Loop Channel use the shared Massive SSE relay).
  * 2026-09-25: advance pin -> 2fe3476 (reliable live click map startup hook).
+ * 2026-10-31: advance pin -> 1e9c372 (hide Recommended Videos until 200 uploads).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '2fe3476c3967182e3e60ca631774da80fc1f863a' );
+	define( 'SML_CDN_ASSET_REVISION', '1e9c372b79fba5f029910ffc2d362e815b33ace8' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
