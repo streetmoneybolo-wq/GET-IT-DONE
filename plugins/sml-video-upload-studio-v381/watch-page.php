@@ -216,6 +216,9 @@ if (!function_exists('sml_vus_rest_rail')) {
             'up_next' => $up_next,
             'related' => $related,
             'ticker' => $ticker,
+            // The homepage uses this to keep the recommendation rail hidden
+            // until the public library has enough depth to be useful.
+            'video_count' => count($rows),
         );
     }
 }

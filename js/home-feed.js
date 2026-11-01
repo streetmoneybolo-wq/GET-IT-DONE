@@ -640,6 +640,7 @@
     function textOnly(html){ var t=document.createElement('template'); t.innerHTML=String(html==null?'':html); return (t.content.textContent||'').replace(/\s+/g,' ').trim(); }
     // ---- endless-feed media rails (uploads / live / shorts) ----
     var mediaRailData = { uploads: [], live: [], shorts: [] };
+    var recommendedUploadsReady = false;
     function mediaCard(x, badge){
       var url = x.url || x.watch_url || (x.id ? ('/watch/' + encodeURIComponent(x.id) + '/') : '/watch/');
       var img = x.img || x.thumbnail || x.image || '';
@@ -727,7 +728,7 @@
       // inside the #sml-hf-pinned wrapper at the top.
       var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none' && !(c.closest && c.closest('#sml-hf-pinned')); });
       if (posts.length < 3) return;
-      placeRailAfter(posts, Math.min(2, posts.length - 1), buildMediaRail('uploads','Video Uploads','Recommended creator uploads, cycling endlessly just like a social feed rail.','recommended videos', mediaRailData.uploads, 'UPLOAD'));
+      if (recommendedUploadsReady) placeRailAfter(posts, Math.min(2, posts.length - 1), buildMediaRail('uploads','Video Uploads','Recommended creator uploads, cycling endlessly just like a social feed rail.','recommended videos', mediaRailData.uploads, 'UPLOAD'));
       if (posts.length >= 6) placeRailAfter(posts, Math.min(5, posts.length - 1), buildMediaRail('live','Live Videos','Live streams and active watch pages from StockMarketLoop creators.','live now', mediaRailData.live, 'LIVE'));
       if (posts.length >= 8) placeRailAfter(posts, Math.min(7, posts.length - 1), buildRecRail('know','Traders you may know','People connected to who you follow and interact with.','you may know', recRailData.know));
       if (posts.length >= 11) placeRailAfter(posts, Math.min(10, posts.length - 1), buildMediaRail('shorts','Shorts & Profile Uploads','Short/non-index uploads from profile pages and feed uploads. Uploads still require a title.','quick clips', mediaRailData.shorts, 'SHORT'));
@@ -2550,7 +2551,11 @@
         // still require a title, so shorts do too. Shorts are EXCLUDED from the
         // Uploads rail (below) so they never double-show.
         var isShort = function(x){ var t=((x&&x.type)||x.kind||x.format||x.visibility||'').toString().toLowerCase(); return !!(x && x.title && (x.short || x.is_short || x.noindex || /short|clip|profile|noindex/.test(t))); };
-        mediaRailData.uploads = items.filter(function(x){ var id=x && (x.id||x.watch_url||x.url||x.title); if(!id||seen[id]) return false; if(isShort(x)) return false; seen[id]=1; return true; }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
+        var videoCount = Number(j && (j.video_count != null ? j.video_count : j.total_videos));
+        // Fail closed when an older endpoint does not report the total. The
+        // rail must not return until the site has at least 200 uploads.
+        recommendedUploadsReady = Number.isFinite(videoCount) && videoCount >= 200;
+        mediaRailData.uploads = recommendedUploadsReady ? items.filter(function(x){ var id=x && (x.id||x.watch_url||x.url||x.title); if(!id||seen[id]) return false; if(isShort(x)) return false; seen[id]=1; return true; }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; }) : [];
         mediaRailData.shorts = items.filter(function(x){ var id=x && (x.id||x.watch_url||x.url||x.title); if(!id||seenS[id]) return false; if(!isShort(x)) return false; seenS[id]=1; return true; }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
         positionRecommendationRails();
       }).catch(function(){});
