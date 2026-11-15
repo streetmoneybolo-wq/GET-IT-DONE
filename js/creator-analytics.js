@@ -322,7 +322,152 @@
   /* One map engine, two uses: country-level presence (rows = [{countryCode, viewers}]) and, with opts.points,
      individual located events such as tracked-link clicks ([{lat, lng, bot, fresh, title}]) drawn on the same
      world → country → state views. opts.host targets a specific map when a page shows more than one. */
+  var sharedMapLibrePromise = null;
+  function ensureSharedMapLibre() {
+    if (window.maplibregl && window.maplibregl.Map) return Promise.resolve();
+    if (window.__smlMapLibrePromise) return window.__smlMapLibrePromise;
+    if (sharedMapLibrePromise) return sharedMapLibrePromise;
+    sharedMapLibrePromise = new Promise(function (resolve, reject) {
+      var css = document.querySelector('link[data-sml-maplibre-css]');
+      if (!css) {
+        css = document.createElement('link'); css.rel = 'stylesheet';
+        css.href = 'https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css';
+        css.setAttribute('data-sml-maplibre-css', '1'); document.head.appendChild(css);
+      }
+      var script = document.createElement('script');
+      script.src = 'https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js'; script.async = true; script.crossOrigin = 'anonymous';
+      script.onload = function () { window.maplibregl && window.maplibregl.Map ? resolve() : reject(new Error('MapLibre did not initialize')); };
+      script.onerror = function () { reject(new Error('MapLibre could not load')); };
+      document.head.appendChild(script);
+    });
+    window.__smlMapLibrePromise = sharedMapLibrePromise;
+    return sharedMapLibrePromise;
+  }
+
+  function initSharedLocationMap(rows, cities, privacyThreshold, opts) {
+    opts = opts || {};
+    var host = opts.host || (opts.id ? q('[data-ca-geo-map-id="' + opts.id + '"]') : null) || q('[data-ca-geo-map]'); if (!host) return;
+    rows = Array.isArray(rows) ? rows : [];
+    var points = (Array.isArray(opts.points) ? opts.points : []).filter(function (p) {
+      return p && isFinite(Number(p.lat)) && isFinite(Number(p.lng)) && Math.abs(Number(p.lat)) <= 85.0511 && Math.abs(Number(p.lng)) <= 180;
+    });
+    ensureSharedMapLibre().then(function () {
+      if (!host.isConnected) return;
+      if (host._caMap) { host._caMap.remove(); host._caMap = null; }
+      if (host._caStreetMarker) { host._caStreetMarker.remove(); host._caStreetMarker = null; }
+      var features = [];
+      rows.forEach(function (row) {
+        var code = String(row.countryCode || '').toUpperCase(), center = COUNTRY_CENTER[code], count = n(row.viewers || row.users);
+        if (!center || !count) return;
+        features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: center }, properties: {
+          kind: 'country', count: count, label: countryName(code), detail: fmt(count) + ' ' + (opts.countUnit || 'active now')
+        } });
+      });
+      points.forEach(function (point) {
+        features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [Number(point.lng), Number(point.lat)] }, properties: {
+          kind: point.bot ? 'bot' : 'human', count: 1, label: point.title || (point.bot ? 'Bot / preview click' : 'Human click'),
+          detail: point.bot ? 'Bot / preview click' : 'Human click'
+        } });
+      });
+
+      host.innerHTML = '<div class="ca-maplibre" role="application" aria-label="' + esc(opts.ariaLabel || 'Interactive analytics location map') + '"></div>' +
+        '<div class="ca-map-legend"><span><i class="country"></i>Located audience</span>' + (points.length ? '<span><i class="human"></i>Human click</span><span><i class="bot"></i>Bot / preview</span>' : '') + '</div>' +
+        '<p class="ca-map-status" aria-live="polite">Loading the shared analytics map...</p>';
+      var mapHost = host.querySelector('.ca-maplibre'), status = host.querySelector('.ca-map-status');
+      var map = new maplibregl.Map({
+        container: mapHost, style: 'https://tiles.openfreemap.org/styles/dark', center: [0, 20], zoom: 1.35,
+        minZoom: 1, maxZoom: 18, attributionControl: true, cooperativeGestures: true, renderWorldCopies: false
+      });
+      host._caMap = map;
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+      map.addControl(new maplibregl.FullscreenControl(), 'top-right');
+      var loaded = false, fellBack = false;
+      var timer = window.setTimeout(showFallback, 10000);
+      function showFallback() {
+        if (fellBack || !host.isConnected || host._caMap !== map) return;
+        fellBack = true; window.clearTimeout(timer);
+        if (host._caStreetMarker) { host._caStreetMarker.remove(); host._caStreetMarker = null; }
+        map.remove(); host._caMap = null;
+        var wrapper = document.createElement('div'); wrapper.innerHTML = fallbackLocationMap(rows, opts);
+        wrapper.firstChild.dataset.mapError = 'Shared map tiles unavailable'; host.replaceWith(wrapper.firstChild);
+      }
+      map.on('load', function () {
+        loaded = true;
+        map.addSource('ca-locations', {
+          type: 'geojson', data: { type: 'FeatureCollection', features: features },
+          cluster: features.length > 120, clusterRadius: 42, clusterMaxZoom: 8,
+          clusterProperties: { total: ['+', ['get', 'count']] }
+        });
+        map.addLayer({ id: 'ca-location-clusters', type: 'circle', source: 'ca-locations', filter: ['has', 'point_count'], paint: {
+          'circle-color': '#159b66', 'circle-opacity': .9, 'circle-stroke-color': '#a4ffd5', 'circle-stroke-width': 1.5,
+          'circle-radius': ['interpolate', ['linear'], ['get', 'total'], 1, 14, 100, 24, 1000, 34]
+        } });
+        map.addLayer({ id: 'ca-location-cluster-count', type: 'symbol', source: 'ca-locations', filter: ['has', 'point_count'], layout: {
+          'text-field': ['to-string', ['get', 'total']], 'text-size': 12, 'text-font': ['Noto Sans Bold']
+        }, paint: { 'text-color': '#fff' } });
+        map.addLayer({ id: 'ca-location-country', type: 'circle', source: 'ca-locations', filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'kind'], 'country']], paint: {
+          'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 7, 100, 17, 1000, 27],
+          'circle-color': '#23c982', 'circle-opacity': .62, 'circle-stroke-color': '#b4ffdc', 'circle-stroke-width': 2
+        } });
+        map.addLayer({ id: 'ca-location-human', type: 'circle', source: 'ca-locations', filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'kind'], 'human']], paint: {
+          'circle-radius': 6, 'circle-color': '#23c982', 'circle-opacity': .72, 'circle-stroke-color': '#b4ffdc', 'circle-stroke-width': 1.5
+        } });
+        map.addLayer({ id: 'ca-location-bot', type: 'circle', source: 'ca-locations', filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'kind'], 'bot']], paint: {
+          'circle-radius': 7, 'circle-color': '#ff566e', 'circle-opacity': .62, 'circle-stroke-color': '#ffb4bf', 'circle-stroke-width': 1.5
+        } });
+        if (features.length) {
+          var bounds = new maplibregl.LngLatBounds(); features.forEach(function (feature) { bounds.extend(feature.geometry.coordinates); });
+          map.fitBounds(bounds, { padding: 52, maxZoom: features.length === 1 ? 4 : 7, duration: 0 });
+        } else status.textContent = 'No located activity is available yet. The map will update when location data arrives.';
+
+        function inspect(event) {
+          var feature = event.features && event.features[0]; if (!feature) return;
+          if (feature.properties.cluster) {
+            map.getSource('ca-locations').getClusterExpansionZoom(feature.properties.cluster_id).then(function (zoom) { map.easeTo({ center: feature.geometry.coordinates, zoom: zoom }); }).catch(function () {});
+            return;
+          }
+          var coords = feature.geometry.coordinates, props = feature.properties;
+          var box = document.createElement('div'); box.className = 'ca-map-popup';
+          var title = document.createElement('strong'); title.textContent = props.label; box.appendChild(title);
+          var detail = document.createElement('span'); detail.textContent = props.detail; box.appendChild(detail);
+          var street = document.createElement('button'); street.type = 'button'; street.textContent = 'View street imagery here'; box.appendChild(street);
+          var popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px' }).setLngLat(coords).setDOMContent(box).addTo(map);
+          street.addEventListener('click', function () {
+            if (!window.SMLMapillary || typeof window.SMLMapillary.open !== 'function') return;
+            if (host._caStreetMarker) host._caStreetMarker.remove();
+            var markerElement = document.createElement('div'); markerElement.className = 'sml-mly-maplibre-dot';
+            var marker = new maplibregl.Marker({ element: markerElement, anchor: 'center' }).setLngLat(coords).addTo(map);
+            host._caStreetMarker = marker; popup.remove();
+            window.SMLMapillary.open({
+              host: host, marker: markerElement, lat: Number(coords[1]), lng: Number(coords[0]), label: props.label,
+              onClose: function () { if (host._caStreetMarker === marker) { marker.remove(); host._caStreetMarker = null; } }
+            });
+          });
+        }
+        ['ca-location-clusters', 'ca-location-country', 'ca-location-human', 'ca-location-bot'].forEach(function (layer) {
+          map.on('click', layer, inspect);
+          map.on('mouseenter', layer, function () { map.getCanvas().style.cursor = 'pointer'; });
+          map.on('mouseleave', layer, function () { map.getCanvas().style.cursor = ''; });
+        });
+      });
+      map.on('idle', function () {
+        if (!loaded || fellBack || !host.isConnected || host._caMap !== map) return;
+        var rendered = map.queryRenderedFeatures(), hasBase = rendered.some(function (feature) { return feature.source && feature.source !== 'ca-locations'; });
+        if (hasBase) { window.clearTimeout(timer); if (status && status.isConnected) status.remove(); }
+      });
+      map.on('error', function () { if (status && status.isConnected) status.textContent = 'Map tiles are taking longer than expected...'; });
+    }).catch(function () {
+      if (!host.isConnected) return;
+      var wrapper = document.createElement('div'); wrapper.innerHTML = fallbackLocationMap(rows, opts);
+      wrapper.firstChild.dataset.mapError = 'Shared map library unavailable'; host.replaceWith(wrapper.firstChild);
+    });
+  }
+
   function initLiveLocationMap(rows, cities, privacyThreshold, opts) {
+    return initSharedLocationMap(rows, cities, privacyThreshold, opts);
+  }
+
+  function initLegacyLocationMap(rows, cities, privacyThreshold, opts) {
     opts = opts || {};
     var host = opts.host || (opts.id ? q('[data-ca-geo-map-id="' + opts.id + '"]') : null) || q('[data-ca-geo-map]'); if (!host) return;
     rows = Array.isArray(rows) ? rows : []; cities = Array.isArray(cities) ? cities : [];

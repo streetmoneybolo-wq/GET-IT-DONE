@@ -66,6 +66,10 @@
 
   function loadMapLibrary() {
     if (window.maplibregl && window.maplibregl.Map) { return Promise.resolve(); }
+    if (window.__smlMapLibrePromise) {
+      mapLibrePromise = window.__smlMapLibrePromise;
+      return mapLibrePromise.catch(function () { mapLibreLoadError = true; return loadWorld(); });
+    }
     if (mapLibrePromise) { return mapLibrePromise; }
     mapLibrePromise = new Promise(function (resolve, reject) {
       var css = document.querySelector('link[data-sml-maplibre-css]');
@@ -83,6 +87,7 @@
       s.onerror = function () { reject(new Error('MapLibre could not load')); };
       document.head.appendChild(s);
     });
+    window.__smlMapLibrePromise = mapLibrePromise;
     return mapLibrePromise.catch(function () { mapLibreLoadError = true; return loadWorld(); });
   }
 
