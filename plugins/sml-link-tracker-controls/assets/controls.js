@@ -368,6 +368,7 @@
       var what = [r.device, r.platform, r.browser].filter(Boolean).join(' · ');
       var tag = r.status === 'blocked' ? '<span class="sml-lc-tag red">Blocked</span>' : (r.status === 'bot' ? '<span class="sml-lc-tag">Bot or preview</span>' : '<span class="sml-lc-tag green">Went through</span>');
       return '<div class="sml-lc-visit"><div><b>' + esc(place(r)) + '</b> ' + tag + '<div class="sml-lc-sub">' + esc(r.at) + ' · ' + esc(what || 'Unknown device') + '</div></div>'
+        + (r.reason ? '<div class="sml-lc-guard-reason"><b>' + esc(r.layer || 'protection') + '</b>' + esc(r.reason) + '</div>' : '')
         + '<div class="sml-lc-acts"><button type="button" class="sml-lc-link" data-lc-visit="ip" data-src="' + r.source + '" data-id="' + r.id + '">Block this IP</button>'
         + '<button type="button" class="sml-lc-link" data-lc-visit="device" data-src="' + r.source + '" data-id="' + r.id + '">Block ' + esc(r.device || 'device') + 's</button></div></div>';
     }).join('') + '</div>';
@@ -420,7 +421,7 @@
       + '<div data-lc-map></div>'
       + '<h4>Where clicks come from</h4>' + whereTable(st)
       + '<h4>Recent visits</h4>' + recentList(st)
-      + '<h4>Activity monitoring</h4>' + monitoringBlock(st)
+      + '<h4>Protection and monitoring</h4>' + monitoringBlock(st)
       + '<h4>Who is blocked</h4>' + rulesBlock(st);
     drawMap(el.querySelector('[data-lc-map]'), st);
     var form = el.querySelector('[data-lc-add]');
@@ -429,7 +430,15 @@
 
   function monitoringBlock(st) {
     var m=st.monitor||{};
-    return '<form class="sml-lc-monitor" data-lc-monitor><label><input type="checkbox" name="enabled" '+(Number(m.enabled)?'checked':'')+'> Email me about unusual activity on this link</label><div class="sml-lc-monitor-grid">'
+    return '<form class="sml-lc-monitor" data-lc-monitor><fieldset class="sml-lc-guard"><legend>Protection layers</legend><label>Protection mode<select name="protection_mode"><option value="standard" '+(m.protection_mode==='standard'?'selected':'')+'>Standard · manual rules</option><option value="balanced" '+(m.protection_mode!=='standard'&&m.protection_mode!=='strict'?'selected':'')+'>Balanced · rules + rate controls</option><option value="strict" '+(m.protection_mode==='strict'?'selected':'')+'>Strict · rate controls + verification</option></select></label><div class="sml-lc-monitor-grid">'
+      + '<label>Rate window (minutes)<input type="number" name="rate_window" min="1" max="60" value="'+esc(m.rate_window||10)+'"></label>'
+      + '<label>Per-IP request limit<input type="number" name="ip_limit" min="5" value="'+esc(m.ip_limit||60)+'"></label>'
+      + '<label>Per-network request limit<input type="number" name="network_limit" min="10" value="'+esc(m.network_limit||180)+'"></label>'
+      + '<label>Fingerprint request limit<input type="number" name="fingerprint_limit" min="5" value="'+esc(m.fingerprint_limit||90)+'"></label></div>'
+      + '<label><input type="checkbox" name="challenge_enabled" '+(Number(m.challenge_enabled)?'checked':'')+'> Require signed browser verification</label>'
+      + '<label><input type="checkbox" name="block_bots" '+(Number(m.block_bots)?'checked':'')+'> Block detected bots and link-preview clients</label>'
+      + '<p class="sml-lc-note">Balanced mode blocks malformed and excessive requests. Strict mode also requires JavaScript verification and blocks detected bots. The bot switch adds that denial to Balanced mode and can stop Discord or social preview cards.</p></fieldset>'
+      + '<label><input type="checkbox" name="enabled" '+(Number(m.enabled)?'checked':'')+'> Email me about unusual activity on this link</label><div class="sml-lc-monitor-grid">'
       + '<label>Window (minutes)<input type="number" name="window_minutes" min="1" max="60" value="'+esc(m.window_minutes||10)+'"></label>'
       + '<label>Click burst threshold<input type="number" name="click_threshold" min="5" value="'+esc(m.click_threshold||40)+'"></label>'
       + '<label>Bot/preview threshold<input type="number" name="bot_threshold" min="1" value="'+esc(m.bot_threshold||15)+'"></label>'
@@ -510,7 +519,7 @@
 
   document.addEventListener('submit', function (e) {
     var monitor=e.target.closest('[data-lc-monitor]');
-    if(monitor){e.preventDefault();var mp=monitor.closest('[data-lc-panel]'),mid=mp.getAttribute('data-lc-panel');var body={enabled:monitor.elements.enabled.checked?1:0,window_minutes:Number(monitor.elements.window_minutes.value),click_threshold:Number(monitor.elements.click_threshold.value),bot_threshold:Number(monitor.elements.bot_threshold.value),blocked_threshold:Number(monitor.elements.blocked_threshold.value),repeat_threshold:Number(monitor.elements.repeat_threshold.value)};req('/links/'+mid+'/monitoring',{method:'POST',body:body}).then(function(r){var st=panels[mid];st.monitor=r.settings;st.alerts=r.alerts||[];render(mid);flash(mid,'Monitoring settings saved.');}).catch(function(err){flash(mid,err.message);});return;}
+    if(monitor){e.preventDefault();var mp=monitor.closest('[data-lc-panel]'),mid=mp.getAttribute('data-lc-panel');var body={enabled:monitor.elements.enabled.checked?1:0,window_minutes:Number(monitor.elements.window_minutes.value),click_threshold:Number(monitor.elements.click_threshold.value),bot_threshold:Number(monitor.elements.bot_threshold.value),blocked_threshold:Number(monitor.elements.blocked_threshold.value),repeat_threshold:Number(monitor.elements.repeat_threshold.value),protection_mode:monitor.elements.protection_mode.value,rate_window:Number(monitor.elements.rate_window.value),ip_limit:Number(monitor.elements.ip_limit.value),network_limit:Number(monitor.elements.network_limit.value),fingerprint_limit:Number(monitor.elements.fingerprint_limit.value),challenge_enabled:monitor.elements.challenge_enabled.checked?1:0,block_bots:monitor.elements.block_bots.checked?1:0};req('/links/'+mid+'/monitoring',{method:'POST',body:body}).then(function(r){var st=panels[mid];st.monitor=r.settings;st.alerts=r.alerts||[];render(mid);flash(mid,'Protection and monitoring settings saved.');}).catch(function(err){flash(mid,err.message);});return;}
     var form = e.target.closest('[data-lc-add]');
     if (!form) { return; }
     e.preventDefault();

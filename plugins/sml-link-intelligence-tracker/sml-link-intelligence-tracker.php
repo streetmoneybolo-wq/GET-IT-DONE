@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Link Intelligence Tracker
  * Description: Real-time tracked links, click intelligence, and admin-only IP analytics for StockMarketLoop.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: StockMarketLoop
  */
 
 defined('ABSPATH') || exit;
 
-define('SML_LIT_VERSION', '1.2.0');
+define('SML_LIT_VERSION', '1.3.0');
 define('SML_LIT_REST_NAMESPACE', 'sml-intel/v1');
 define('SML_LIT_FILE', __FILE__);
 define('SML_LIT_PATH', plugin_dir_path(__FILE__));
@@ -146,7 +146,7 @@ function sml_lit_unique_slug($base) {
     $t = sml_lit_tables();
     $base = substr(sanitize_title($base), 0, 46) ?: 'link';
     for ($i = 0; $i < 20; $i++) {
-        $suffix = strtolower(wp_generate_password($i ? 6 : 4, false, false));
+        $suffix = strtolower(wp_generate_password($i ? 16 : 12, false, false));
         $slug = substr($base . '-' . $suffix, 0, 78);
         $exists = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$t['links']} WHERE slug=%s", $slug));
         if (!$exists) return $slug;
@@ -159,17 +159,29 @@ function sml_lit_client_ip() {
         $ip = sml_gl_client_ip();
         if ($ip) return $ip;
     }
-    $candidates = array();
-    $headers = array('HTTP_CF_CONNECTING_IP', 'HTTP_TRUE_CLIENT_IP', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR');
-    foreach ($headers as $header) {
-        if (empty($_SERVER[$header])) continue;
-        $value = sanitize_text_field(wp_unslash($_SERVER[$header]));
-        foreach (explode(',', $value) as $part) {
-            $ip = trim($part);
-            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) $candidates[] = $ip;
+    $public = function ($value) {
+        $ip = trim((string) $value);
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) ? $ip : '';
+    };
+    // WordPress.com and Cloudflare overwrite these edge headers. Never trust a
+    // visitor-supplied X-Forwarded-For or X-Real-IP chain from a public peer.
+    foreach (array('HTTP_TRUE_CLIENT_IP', 'HTTP_CF_CONNECTING_IP') as $header) {
+        if (!empty($_SERVER[$header])) {
+            $ip = $public(sanitize_text_field(wp_unslash($_SERVER[$header])));
+            if ($ip !== '') return $ip;
         }
     }
-    return $candidates ? $candidates[0] : '';
+    $remote_raw = isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'])) : '';
+    $remote = $public($remote_raw);
+    if ($remote !== '') return $remote;
+
+    // A forwarded chain is considered only when the immediate peer is an
+    // internal address. Walk from the trusted proxy side toward the client.
+    if ($remote_raw !== '' && filter_var($remote_raw, FILTER_VALIDATE_IP) && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $parts = array_reverse(array_map('trim', explode(',', sanitize_text_field(wp_unslash($_SERVER['HTTP_X_FORWARDED_FOR'])))));
+        foreach ($parts as $part) { $ip = $public($part); if ($ip !== '') return $ip; }
+    }
+    return '';
 }
 
 function sml_lit_ip_hash($ip) {

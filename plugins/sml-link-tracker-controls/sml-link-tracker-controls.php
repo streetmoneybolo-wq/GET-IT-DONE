@@ -1,14 +1,14 @@
 <?php
 /**
  * Plugin Name: SML Link Tracker Controls
- * Description: Adds an interactive click map, inline Mapillary street imagery, and per-link access rules to the SML Link Intelligence Tracker.
- * Version: 1.4.1
+ * Description: Adds an interactive click map, inline street maps, and layered per-link access protection to the SML Link Intelligence Tracker.
+ * Version: 1.5.0
  * Author: StockMarketLoop
  */
 
 defined('ABSPATH') || exit;
 
-define('SML_LINK_TRACKER_CONTROLS_VERSION', '1.4.1');
+define('SML_LINK_TRACKER_CONTROLS_VERSION', '1.5.0');
 define('SML_LINK_TRACKER_CONTROLS_FILE', __FILE__);
 define('SML_LINK_TRACKER_CONTROLS_URL', plugin_dir_url(__FILE__));
 define('SML_LINK_TRACKER_CONTROLS_MAX_RULES', 200);
@@ -60,6 +60,8 @@ function sml_ltc_install() {
         device VARCHAR(30) NOT NULL DEFAULT '',
         browser VARCHAR(80) NOT NULL DEFAULT '',
         platform VARCHAR(80) NOT NULL DEFAULT '',
+        layer VARCHAR(24) NOT NULL DEFAULT 'manual',
+        reason VARCHAR(190) NOT NULL DEFAULT '',
         created_at DATETIME NOT NULL,
         PRIMARY KEY  (id),
         KEY link_created (link_id,created_at),
@@ -76,6 +78,13 @@ function sml_ltc_install() {
         blocked_threshold SMALLINT UNSIGNED NOT NULL DEFAULT 10,
         repeat_threshold SMALLINT UNSIGNED NOT NULL DEFAULT 12,
         cooldown_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 30,
+        protection_mode VARCHAR(12) NOT NULL DEFAULT 'balanced',
+        rate_window SMALLINT UNSIGNED NOT NULL DEFAULT 10,
+        ip_limit SMALLINT UNSIGNED NOT NULL DEFAULT 60,
+        network_limit SMALLINT UNSIGNED NOT NULL DEFAULT 180,
+        fingerprint_limit SMALLINT UNSIGNED NOT NULL DEFAULT 90,
+        challenge_enabled TINYINT(1) NOT NULL DEFAULT 0,
+        block_bots TINYINT(1) NOT NULL DEFAULT 0,
         updated_at DATETIME NOT NULL,
         PRIMARY KEY (link_id), KEY user_id (user_id)
     ) $charset;");
@@ -132,7 +141,131 @@ function sml_ltc_visitor_context($rules, $with_geo = null) {
         'device' => $agent['device'],
         'platform' => $agent['platform'],
         'browser' => $agent['browser'],
+        'user_agent' => $ua,
+        'is_bot' => (int) $agent['is_bot'],
+        'bot_reason' => (string) $agent['bot_reason'],
+        'server_fp' => function_exists('sml_lit_server_fp') ? sml_lit_server_fp() : hash('sha256', $ua),
     );
+}
+
+/* ------------------------------------------------------------------ layered guard */
+
+function sml_ltc_guard_defaults() {
+    return array(
+        'protection_mode' => 'balanced', 'rate_window' => 10, 'ip_limit' => 60,
+        'network_limit' => 180, 'fingerprint_limit' => 90,
+        'challenge_enabled' => 0, 'block_bots' => 0,
+    );
+}
+
+function sml_ltc_guard_settings($link_id) {
+    global $wpdb;
+    $t = sml_ltc_tables();
+    $row = $wpdb->get_row($wpdb->prepare("SELECT protection_mode,rate_window,ip_limit,network_limit,fingerprint_limit,challenge_enabled,block_bots FROM {$t['monitor']} WHERE link_id=%d", (int) $link_id), ARRAY_A);
+    $out = array_merge(sml_ltc_guard_defaults(), is_array($row) ? $row : array());
+    $out['protection_mode'] = in_array($out['protection_mode'], array('standard', 'balanced', 'strict'), true) ? $out['protection_mode'] : 'balanced';
+    foreach (array('rate_window', 'ip_limit', 'network_limit', 'fingerprint_limit', 'challenge_enabled', 'block_bots') as $key) $out[$key] = (int) $out[$key];
+    return $out;
+}
+
+function sml_ltc_guard_network($ip) {
+    $bin = @inet_pton((string) $ip);
+    if ($bin === false) return '';
+    if (strlen($bin) === 4) return bin2hex(substr($bin, 0, 3)) . '/24';
+    return bin2hex(substr($bin, 0, 8)) . '/64';
+}
+
+function sml_ltc_guard_counter($key, $ttl) {
+    $key = 'g_' . hash('sha256', (string) $key);
+    $ttl = max(60, (int) $ttl);
+    if (function_exists('wp_using_ext_object_cache') && wp_using_ext_object_cache()) {
+        if (wp_cache_add($key, 1, 'sml_ltc_guard', $ttl)) return 1;
+        $count = wp_cache_incr($key, 1, 'sml_ltc_guard');
+        if ($count !== false) return (int) $count;
+    }
+    $old = (int) get_transient('sml_ltc_' . $key);
+    $count = $old + 1;
+    set_transient('sml_ltc_' . $key, $count, $ttl);
+    return $count;
+}
+
+function sml_ltc_guard_cookie_name($link_id) { return 'sml_ltc_v_' . (int) $link_id; }
+
+function sml_ltc_guard_identity($link_id, $ctx, $expires) {
+    return (int) $link_id . '|' . (int) $expires . '|' . sml_lit_ip_hash((string) ($ctx['ip'] ?? '')) . '|' . hash('sha256', (string) ($ctx['user_agent'] ?? ''));
+}
+
+function sml_ltc_guard_cookie_valid($link_id, $ctx) {
+    $name = sml_ltc_guard_cookie_name($link_id);
+    $raw = isset($_COOKIE[$name]) ? (string) wp_unslash($_COOKIE[$name]) : '';
+    if (!preg_match('/^(\d{10})\.([a-f0-9]{64})$/', $raw, $m) || (int) $m[1] < time()) return false;
+    $want = hash_hmac('sha256', sml_ltc_guard_identity($link_id, $ctx, (int) $m[1]), wp_salt('secure_auth'));
+    return hash_equals($want, $m[2]);
+}
+
+function sml_ltc_guard_challenge_token($link_id, $ctx) {
+    $expires = time() + 300;
+    $payload = (int) $link_id . '|' . $expires . '|' . sml_lit_ip_hash((string) ($ctx['ip'] ?? '')) . '|' . hash('sha256', (string) ($ctx['user_agent'] ?? ''));
+    return base64_encode($payload) . '.' . hash_hmac('sha256', $payload, wp_salt('nonce'));
+}
+
+function sml_ltc_guard_verify_challenge($link, $ctx) {
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' || empty($_SERVER['HTTP_X_SML_GUARD'])) return false;
+    $raw = isset($_POST['token']) ? (string) wp_unslash($_POST['token']) : '';
+    $parts = explode('.', $raw, 2);
+    $payload = count($parts) === 2 ? base64_decode($parts[0], true) : false;
+    if (!is_string($payload) || !hash_equals(hash_hmac('sha256', $payload, wp_salt('nonce')), $parts[1])) return new WP_Error('bad_challenge', 'Browser verification expired.', array('status' => 403));
+    $values = explode('|', $payload);
+    if (count($values) !== 4 || (int) $values[0] !== (int) $link['id'] || (int) $values[1] < time() || (int) $values[1] > time() + 360) return new WP_Error('bad_challenge', 'Browser verification expired.', array('status' => 403));
+    if (!hash_equals($values[2], sml_lit_ip_hash((string) ($ctx['ip'] ?? ''))) || !hash_equals($values[3], hash('sha256', (string) ($ctx['user_agent'] ?? '')))) return new WP_Error('bad_challenge', 'Browser verification changed.', array('status' => 403));
+    $expires = time() + 12 * HOUR_IN_SECONDS;
+    $value = $expires . '.' . hash_hmac('sha256', sml_ltc_guard_identity((int) $link['id'], $ctx, $expires), wp_salt('secure_auth'));
+    setcookie(sml_ltc_guard_cookie_name((int) $link['id']), $value, array('expires' => $expires, 'path' => '/go/' . rawurlencode($link['slug']) . '/', 'secure' => is_ssl(), 'httponly' => true, 'samesite' => 'Lax'));
+    nocache_headers();
+    wp_send_json(array('ok' => true));
+}
+
+function sml_ltc_guard_render_challenge($link, $ctx) {
+    status_header(200); nocache_headers();
+    header('Content-Type: text/html; charset=utf-8'); header('X-Robots-Tag: noindex, nofollow'); header('Referrer-Policy: no-referrer');
+    $token = sml_ltc_guard_challenge_token((int) $link['id'], $ctx);
+    echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Checking this link</title>';
+    echo '<style>html,body{height:100%;margin:0;background:#070c15;color:#c9d6e5;font:16px system-ui,-apple-system,Segoe UI,sans-serif}body{display:grid;place-items:center;text-align:center;padding:24px}.b{max-width:430px}.s{width:38px;height:38px;border:3px solid #263746;border-top-color:#38f58a;border-radius:50%;margin:0 auto 18px;animation:r .8s linear infinite}h1{font-size:21px;color:#fff}p{color:#8ea2b8}@keyframes r{to{transform:rotate(360deg)}}</style></head><body><div class="b"><div class="s"></div><h1>Checking this protected link</h1><p id="m">Verifying your browser before continuing.</p></div>';
+    echo '<script>(function(){var t=' . wp_json_encode($token) . ',m=document.getElementById("m");fetch(location.href,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/x-www-form-urlencoded","X-SML-Guard":"1"},body:"token="+encodeURIComponent(t)}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(){location.replace(location.href)}).catch(function(){m.textContent="This browser could not be verified. Refresh to try again."})}());</script></body></html>';
+    exit;
+}
+
+function sml_ltc_guard_decision($link, $ctx, $settings) {
+    if ($settings['protection_mode'] === 'standard') return null;
+    $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    if (!in_array($method, array('GET', 'HEAD'), true)) return array('layer' => 'protocol', 'reason' => 'Unsupported request method');
+    if ($ctx['user_agent'] === '') return array('layer' => 'integrity', 'reason' => 'Missing browser identity');
+    if (($settings['block_bots'] || $settings['protection_mode'] === 'strict') && $ctx['is_bot']) return array('layer' => 'automation', 'reason' => $ctx['bot_reason'] ?: 'Automated client');
+
+    $window = max(1, min(60, $settings['rate_window'])) * MINUTE_IN_SECONDS;
+    $link_id = (int) $link['id'];
+    $ip_limit = max(5, $settings['ip_limit']);
+    $network_limit = max(10, $settings['network_limit']);
+    $fingerprint_limit = max(5, $settings['fingerprint_limit']);
+    if ($settings['protection_mode'] === 'strict') {
+        $ip_limit = min($ip_limit, 20); $network_limit = min($network_limit, 60); $fingerprint_limit = min($fingerprint_limit, 30);
+    }
+    if ($ctx['ip'] !== '') {
+        $ip_count = sml_ltc_guard_counter($link_id . '|ip|' . sml_lit_ip_hash($ctx['ip']), $window);
+        if ($ip_count > $ip_limit) return array('layer' => 'rate_ip', 'reason' => 'Too many requests from one address');
+        $network = sml_ltc_guard_network($ctx['ip']);
+        if ($network !== '') {
+            $network_count = sml_ltc_guard_counter($link_id . '|network|' . $network, $window);
+            if ($network_count > $network_limit) return array('layer' => 'rate_network', 'reason' => 'Too many requests from one network');
+        }
+    }
+    if ($ctx['server_fp'] !== '') {
+        $fp_count = sml_ltc_guard_counter($link_id . '|fp|' . $ctx['server_fp'], $window);
+        if ($fp_count > $fingerprint_limit) return array('layer' => 'rate_fingerprint', 'reason' => 'Repeated browser fingerprint');
+    }
+    $global_count = sml_ltc_guard_counter($link_id . '|global', $window);
+    if ($global_count > max(300, $network_limit * 5)) return array('layer' => 'rate_global', 'reason' => 'Link traffic burst exceeded its safety ceiling');
+    return null;
 }
 
 function sml_ltc_log_blocked($link, $rule, $ctx) {
@@ -160,9 +293,11 @@ function sml_ltc_log_blocked($link, $rule, $ctx) {
         'device' => $ctx['device'],
         'browser' => $ctx['browser'],
         'platform' => $ctx['platform'],
+        'layer' => (string) ($rule['layer'] ?? 'manual'),
+        'reason' => substr((string) ($rule['reason'] ?? ''), 0, 190),
         'created_at' => $now,
     );
-    $formats = array('%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');
+    $formats = array('%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');
     if ($ctx['lat'] !== null && $ctx['lng'] !== null) {
         $row['lat'] = $ctx['lat'];
         $row['lng'] = $ctx['lng'];
@@ -180,13 +315,15 @@ function sml_ltc_render_blocked() {
     header('Content-Type: text/html; charset=utf-8');
     header('X-Robots-Tag: noindex, nofollow');
     header('Referrer-Policy: no-referrer');
-    echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Not available in your region</title>';
+    echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Protected link unavailable</title>';
     echo '<style>html,body{height:100%;margin:0;background:#070c15;color:#c9d6e5;font:16px system-ui,-apple-system,Segoe UI,sans-serif}body{display:grid;place-items:center;text-align:center;padding:24px}.b{max-width:420px}.i{width:54px;height:54px;border-radius:50%;border:2px solid #ff566e;color:#ff566e;display:grid;place-items:center;margin:0 auto 18px;font-size:26px;font-weight:800}h1{margin:0 0 8px;font-size:22px;color:#fff}p{margin:0;color:#8ea2b8;line-height:1.55}</style></head><body><div class="b"><div class="i">&#x2715;</div>';
-    echo '<h1>This link can\'t be used in your region</h1><p>The person who shared it has made it unavailable where you are.</p></div></body></html>';
+    echo '<h1>This protected link is unavailable</h1><p>This request did not pass the access rules set by the person who shared the link.</p></div></body></html>';
     exit;
 }
 
-/* The tracker's own redirect runs at priority 0. This runs first, so a blocked visitor is never logged as a click and never learns the destination. */
+/* The tracker's own redirect runs at priority 0. This layered guard runs first,
+   so blocked and unverified requests are never logged as clicks and never
+   receive the destination URL. */
 add_action('template_redirect', function () {
     if (!function_exists('sml_lit_get_link') || !function_exists('sml_lit_client_ip') || !function_exists('sml_lit_geo')) { return; }
     $slug = get_query_var('sml_lit_slug');
@@ -194,14 +331,31 @@ add_action('template_redirect', function () {
     $link = sml_lit_get_link($slug);
     if (!$link || $link['status'] !== 'active') { return; }
     $rules = sml_ltc_rules_for_link((int) $link['id']);
-    if (!$rules) { return; }
+    $settings = sml_ltc_guard_settings((int) $link['id']);
     $ctx = sml_ltc_visitor_context($rules);
-    $hit = sml_ltc_first_match($rules, $ctx);
-    if (!$hit) { return; }
-    if (!sml_ltc_rules_need_geo($rules)) { $ctx = sml_ltc_visitor_context($rules, true); }
-    if (!defined('DONOTCACHEPAGE')) { define('DONOTCACHEPAGE', true); }
-    sml_ltc_log_blocked($link, $hit, $ctx);
-    sml_ltc_render_blocked();
+    if ($rules) {
+        $hit = sml_ltc_first_match($rules, $ctx);
+        if ($hit) {
+            if (!sml_ltc_rules_need_geo($rules)) $ctx = sml_ltc_visitor_context($rules, true);
+            if (!defined('DONOTCACHEPAGE')) define('DONOTCACHEPAGE', true);
+            $hit['layer'] = 'manual'; $hit['reason'] = 'Matched ' . $hit['rule_type'] . ' access rule';
+            sml_ltc_log_blocked($link, $hit, $ctx); sml_ltc_render_blocked();
+        }
+    }
+
+    $verified = sml_ltc_guard_verify_challenge($link, $ctx);
+    if (is_wp_error($verified)) { status_header(403); wp_send_json_error(array('message' => $verified->get_error_message()), 403); }
+    $decision = sml_ltc_guard_decision($link, $ctx, $settings);
+    if ($decision) {
+        if (!sml_ltc_rules_need_geo($rules)) $ctx = sml_ltc_visitor_context($rules, true);
+        if (!defined('DONOTCACHEPAGE')) define('DONOTCACHEPAGE', true);
+        $decision['id'] = 0; sml_ltc_log_blocked($link, $decision, $ctx); sml_ltc_render_blocked();
+    }
+    $needs_challenge = $settings['protection_mode'] === 'strict' || !empty($settings['challenge_enabled']);
+    if ($needs_challenge && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && !$ctx['is_bot'] && !sml_ltc_guard_cookie_valid((int) $link['id'], $ctx)) {
+        if (!defined('DONOTCACHEPAGE')) define('DONOTCACHEPAGE', true);
+        sml_ltc_guard_render_challenge($link, $ctx);
+    }
 }, -5);
 
 /* ------------------------------------------------------------------- REST */
@@ -390,10 +544,10 @@ function sml_ltc_rest_map(WP_REST_Request $request) {
         $recent[] = array('source' => 'click', 'id' => (int) $r['id'], 'status' => $r['is_bot'] ? 'bot' : 'allowed', 'cc' => $r['country_code'], 'country' => $r['country'], 'region' => $r['region'], 'city' => $r['city'],
             'device' => $r['device'], 'browser' => $r['browser'], 'platform' => $r['platform'], 'at' => $r['created_at']);
     }
-    $rows = $wpdb->get_results($wpdb->prepare("SELECT id, country_code, country, region, city, device, browser, platform, created_at FROM {$at} WHERE link_id=%d AND created_at >= %s ORDER BY id DESC LIMIT 10", $lid, $since), ARRAY_A);
+    $rows = $wpdb->get_results($wpdb->prepare("SELECT id, country_code, country, region, city, device, browser, platform, layer, reason, created_at FROM {$at} WHERE link_id=%d AND created_at >= %s ORDER BY id DESC LIMIT 10", $lid, $since), ARRAY_A);
     foreach ($rows as $r) {
         $recent[] = array('source' => 'attempt', 'id' => (int) $r['id'], 'status' => 'blocked', 'cc' => $r['country_code'], 'country' => $r['country'], 'region' => $r['region'], 'city' => $r['city'],
-            'device' => $r['device'], 'browser' => $r['browser'], 'platform' => $r['platform'], 'at' => $r['created_at']);
+            'device' => $r['device'], 'browser' => $r['browser'], 'platform' => $r['platform'], 'layer' => $r['layer'], 'reason' => $r['reason'], 'at' => $r['created_at']);
     }
     usort($recent, function ($a, $b) { return strcmp($b['at'], $a['at']); });
 
@@ -419,7 +573,8 @@ function sml_ltc_rest_monitor_get(WP_REST_Request $request) {
     if (is_wp_error($link)) { return $link; }
     $t = sml_ltc_tables(); $id = (int) $link['id'];
     $settings = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$t['monitor']} WHERE link_id=%d", $id), ARRAY_A);
-    if (!$settings) { $settings = array('enabled'=>0,'window_minutes'=>10,'click_threshold'=>40,'bot_threshold'=>15,'blocked_threshold'=>10,'repeat_threshold'=>12,'cooldown_minutes'=>30); }
+    if (!$settings) { $settings = array_merge(array('enabled'=>0,'window_minutes'=>10,'click_threshold'=>40,'bot_threshold'=>15,'blocked_threshold'=>10,'repeat_threshold'=>12,'cooldown_minutes'=>30), sml_ltc_guard_defaults()); }
+    else { $settings = array_merge(sml_ltc_guard_defaults(), $settings); }
     unset($settings['user_id'], $settings['link_id']);
     $alerts = $wpdb->get_results($wpdb->prepare("SELECT alert_type,message,observed,created_at FROM {$t['alerts']} WHERE link_id=%d ORDER BY id DESC LIMIT 10", $id), ARRAY_A);
     return rest_ensure_response(array('settings'=>$settings,'alerts'=>$alerts));
@@ -438,6 +593,13 @@ function sml_ltc_rest_monitor_save(WP_REST_Request $request) {
         'blocked_threshold' => max(1,min(10000,absint($request->get_param('blocked_threshold') ?: 10))),
         'repeat_threshold' => max(3,min(10000,absint($request->get_param('repeat_threshold') ?: 12))),
         'cooldown_minutes' => max(5,min(1440,absint($request->get_param('cooldown_minutes') ?: 30))),
+        'protection_mode' => in_array((string) $request->get_param('protection_mode'), array('standard','balanced','strict'), true) ? (string) $request->get_param('protection_mode') : 'balanced',
+        'rate_window' => max(1,min(60,absint($request->get_param('rate_window') ?: 10))),
+        'ip_limit' => max(5,min(10000,absint($request->get_param('ip_limit') ?: 60))),
+        'network_limit' => max(10,min(20000,absint($request->get_param('network_limit') ?: 180))),
+        'fingerprint_limit' => max(5,min(10000,absint($request->get_param('fingerprint_limit') ?: 90))),
+        'challenge_enabled' => absint($request->get_param('challenge_enabled')) ? 1 : 0,
+        'block_bots' => absint($request->get_param('block_bots')) ? 1 : 0,
         'user_id' => (int) $link['user_id'], 'updated_at' => current_time('mysql'),
     );
     $exists = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$t['monitor']} WHERE link_id=%d", $id));
