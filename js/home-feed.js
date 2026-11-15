@@ -32,8 +32,8 @@
     } catch (e) { /* the feed never depends on this */ }
   }
   var GREEN = '#38F58A';
-  // Shadow-banned groups: never build them into the My Groups module.
-  var SML_BANNED_SLUGS = ['the-options-plug','spy-spy-highflyers'];
+  // Policy-blocked groups and retired duplicates never enter the My Groups module.
+  var SML_BANNED_SLUGS = ['the-options-plug','spy-spy-highflyers','making-easy-money-community'];
   function SML_BANNED_GROUP(slug, name){ slug=String(slug||'').toLowerCase(); if(SML_BANNED_SLUGS.indexOf(slug)>=0) return true; return /options?\s*plug|spy.?spy.?highfly/i.test(String(name||'')); }
 
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -2852,7 +2852,9 @@
     // the directory's top groups instead of placeholders.
     fetch('/groups/', { credentials: 'same-origin' }).then(function(r){ return r.text(); }).then(function(html){
       var doc = new DOMParser().parseFromString(html, 'text/html'), dir = [], map = {};
-      doc.querySelectorAll('a[href*="/groups/"]').forEach(function(a){
+      var directoryLinks = doc.querySelectorAll('a.sml-gex-tile-link[href*="/groups/"]');
+      if (!directoryLinks.length) directoryLinks = doc.querySelectorAll('a[href*="/groups/"]');
+      directoryLinks.forEach(function(a){
         var hf = a.getAttribute('href') || ''; var m = hf.match(/\/groups\/([a-z0-9-]+)/i); if (!m) return;
         var slug = m[1]; var im = a.querySelector('img'); var src = im ? (im.getAttribute('data-src') || im.getAttribute('src') || '') : '';
         var nm = im ? (im.getAttribute('alt') || '').replace(/\s*group logo\s*/i, '').trim() : '';

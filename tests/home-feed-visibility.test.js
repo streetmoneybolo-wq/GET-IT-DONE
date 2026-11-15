@@ -17,6 +17,8 @@ assert.match(homeFeed, /class="sml-hf-mmc-view"[^>]*>View on moomoo/);
 assert.match(homeFeed, /class="sml-hf-mmc-terminal"/);
 assert.match(homeFeed, /recommendedUploadsReady = Number\.isFinite\(channelCount\) && channelCount >= 15;/);
 assert.doesNotMatch(homeFeed, /videoCount >= 200/);
+assert.match(homeFeed, /SML_BANNED_SLUGS = \['the-options-plug','spy-spy-highflyers','making-easy-money-community'\]/);
+assert.match(homeFeed, /querySelectorAll\('a\.sml-gex-tile-link\[href\*="\/groups\/"\]'\)/);
 
 assert.match(gate, /'channel_count'\] = count\( \$channels \)/);
 assert.match(gate, /sml_vus_visible_videos\( \$exclude_id \)/);
