@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML CDN Version Resolver
  * Description: Pins the shared frontend asset revision WITHOUT replacing the real resolver.
- * Version: 1.0.9
+ * Version: 1.0.13
  *
  * 1.0.0 defined sml_cdn_resolve_ref() here. mu-plugins load before WPCode, and
  * WPCode #6873 "SML CDN Loader" declares that same function inside its loader
@@ -46,13 +46,20 @@
  * 2026-09-25: advance pin -> d4444fd (js/live-watch.js: Boost Arena guardrail client).
  * 2026-09-25: advance pin -> 85480be (Ticker Terminal and Loop Channel use the shared Massive SSE relay).
  * 2026-09-25: advance pin -> 2fe3476 (reliable live click map startup hook).
- * 2026-10-31: advance pin -> 1e9c372 (hide Recommended Videos until 200 uploads).
+ * 2026-09-28: advance pin -> 49adc9e (js/creator-analytics.js: Moderation shows linked Discord ID).
+ * 2026-10-07: advance pin -> ef703a9 (Moderation account header: email, Discord, copy buttons, risk band).
+ * 2026-10-30: advance pin -> 0ba1e66 (js/live-watch.js: renderPlats/renderBoost return early when the Boost Arena markup is absent; the site-wide load threw on public profiles).
+ * 2026-11-14: advance pin -> eafa802 (terminal shell packaging and live-feed null guards).
+ * 2026-11-15: advance pin eafa802 -> 7c22816 (creator analytics accuracy, loading, and Loop Letter attribution).
+ * 2026-11-15: advance pin 7c22816 -> 43165517 (keep the GA4 source report label in sync with its selected range).
+ * 2026-11-15: advance pin 43165517 -> 1ce9d8b8 (mobile group tools start at the top of the phone workspace).
+ * 2026-11-15: advance pin 1ce9d8b8 -> a9e9319 (inline Mapillary street imagery across analytics maps).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '1e9c372b79fba5f029910ffc2d362e815b33ace8' );
+	define( 'SML_CDN_ASSET_REVISION', 'a9e9319b90f4e7ac31e44a206d0cf64f3b564a7b' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
