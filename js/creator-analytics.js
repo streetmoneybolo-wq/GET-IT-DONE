@@ -246,21 +246,34 @@
     RU:[73,25],IN:[72,52],PK:[68,49],BD:[76,52],CN:[80,42],JP:[92,43],KR:[88,44],ID:[82,67],PH:[88,59],VN:[83,56],TH:[79,57],
     AU:[88,80],NZ:[98,88],ZA:[55,82],NG:[48,61],KE:[59,66],EG:[58,50],MA:[45,48],SA:[65,52],AE:[68,53],IL:[60,48]
   };
+  var COUNTRY_CENTER = {
+    US:[-98.6,39.8],CA:[-106.3,56.1],MX:[-102.6,23.6],BR:[-51.9,-14.2],AR:[-63.6,-38.4],CL:[-71.5,-35.7],CO:[-74.3,4.6],PE:[-75,-9.2],
+    GB:[-3.4,55.4],IE:[-8,53.4],FR:[2.2,46.2],ES:[-3.7,40.5],PT:[-8.2,39.4],DE:[10.5,51.2],NL:[5.3,52.1],BE:[4.5,50.5],IT:[12.6,41.9],
+    CH:[8.2,46.8],AT:[14.6,47.5],SE:[18.6,60.1],NO:[8.5,60.5],FI:[25.7,61.9],PL:[19.1,51.9],UA:[31.2,48.4],RO:[25,45.9],GR:[21.8,39.1],TR:[35.2,39.1],
+    RU:[105.3,61.5],IN:[78.9,20.6],PK:[69.3,30.4],BD:[90.4,23.7],CN:[104.2,35.9],JP:[138.3,36.2],KR:[127.8,35.9],ID:[113.9,-.8],PH:[121.8,12.9],VN:[108.3,14.1],TH:[100.9,15.9],
+    AU:[133.8,-25.3],NZ:[174.9,-40.9],ZA:[22.9,-30.6],NG:[8.7,9.1],KE:[37.9,.02],EG:[30.8,26.8],MA:[-7.1,31.8],SA:[45.1,23.9],AE:[53.8,23.4],IL:[34.9,31]
+  };
   function countryName(code) {
     try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) || code; } catch (e) { return code; }
   }
-  function fallbackLocationMap(rows) {
-    rows = Array.isArray(rows) ? rows : [];
+  function fallbackLocationMap(rows, opts) {
+    rows = Array.isArray(rows) ? rows : []; opts = opts || {};
     var max = 1; rows.forEach(function (r) { max = Math.max(max, n(r.viewers || r.users)); });
     var dots = rows.map(function (r) {
-      var code = String(r.countryCode || '').toUpperCase(), p = COUNTRY_POINT[code];
-      if (!p) return '';
+      var code = String(r.countryCode || '').toUpperCase(), p = COUNTRY_POINT[code], center = COUNTRY_CENTER[code];
+      if (!p || !center) return '';
       var count = n(r.viewers || r.users), radius = Math.max(1.8, Math.min(4.6, 1.8 + 2.8 * count / max));
-      return '<g class="ca-map-dot"><circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + radius.toFixed(1) + '"></circle><circle class="ring" cx="' + p[0] + '" cy="' + p[1] + '" r="' + (radius + 3).toFixed(1) + '"></circle><title>' + esc(countryName(code)) + ': ' + fmt(count) + ' active</title></g>';
+      var label = countryName(code) + ': ' + fmt(count) + ' ' + (opts.countUnit || 'active now');
+      return '<g class="ca-map-dot" tabindex="0" role="button" aria-label="' + esc(label) + '. View Mapillary imagery near the country center." data-sml-mapillary-lat="' + center[1] + '" data-sml-mapillary-lng="' + center[0] + '" data-sml-mapillary-label="' + esc(countryName(code) + ' map center') + '"><circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + radius.toFixed(1) + '"></circle><circle class="ring" cx="' + p[0] + '" cy="' + p[1] + '" r="' + (radius + 3).toFixed(1) + '"></circle><title>' + esc(label) + ' - select for street imagery</title></g>';
+    }).join('');
+    var eventDots = (Array.isArray(opts.points) ? opts.points : []).filter(function (p) { return p && isFinite(Number(p.lat)) && isFinite(Number(p.lng)); }).map(function (p) {
+      var lat = Number(p.lat), lng = Number(p.lng), x = Math.max(5, Math.min(105, 5 + (lng + 180) / 360 * 100)), y = Math.max(5, Math.min(95, 5 + (90 - lat) / 180 * 90));
+      var label = p.title || (p.bot ? 'Bot / preview click' : 'Human click');
+      return '<g class="ca-click-dot ' + (p.bot ? 'bot' : 'human') + (p.fresh ? ' fresh' : '') + '" tabindex="0" role="button" aria-label="' + esc(label) + '. View Mapillary street imagery." data-sml-mapillary-lat="' + lat + '" data-sml-mapillary-lng="' + lng + '" data-sml-mapillary-label="' + esc(label) + '"><circle cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="2.2"></circle><circle class="ring" cx="' + x.toFixed(2) + '" cy="' + y.toFixed(2) + '" r="4.6"></circle><title>' + esc(label) + ' - select for street imagery</title></g>';
     }).join('');
     return '<div class="ca-map"><svg viewBox="0 0 110 100" role="img" aria-label="Active users by country">' +
-      '<path d="M5 19l14-9 16 4 7 10-8 8-9-3-7 9-9-4zM28 48l11 5 8 14-5 24-10-9-5-20zM45 18l16-7 19 6 17 10-7 13-17-2-8 9-12-7-9-12zM49 48l14-4 11 12-6 29-13 4-8-21zM78 57l11-8 13 8-3 12-13 3zM88 78l13-3 6 10-9 10-12-7z"></path>' + dots + '</svg>' +
-      (rows.length ? '<div class="ca-map-note">Live country-level presence · hover a marker for its count</div>' : '<div class="ca-map-empty"><b>No located active viewers right now</b><span>The map updates as creator-page heartbeats arrive through the site CDN.</span></div>') + '</div>';
+      '<path d="M5 19l14-9 16 4 7 10-8 8-9-3-7 9-9-4zM28 48l11 5 8 14-5 24-10-9-5-20zM45 18l16-7 19 6 17 10-7 13-17-2-8 9-12-7-9-12zM49 48l14-4 11 12-6 29-13 4-8-21zM78 57l11-8 13 8-3 12-13 3zM88 78l13-3 6 10-9 10-12-7z"></path>' + dots + eventDots + '</svg>' +
+      (rows.length || eventDots ? '<div class="ca-map-note">Select a location dot for inline Mapillary street imagery</div>' : '<div class="ca-map-empty"><b>No located active viewers right now</b><span>The map updates as creator-page heartbeats arrive through the site CDN.</span></div>') + '</div>';
   }
 
   function liveLocationMap(rows, opts) {
@@ -433,7 +446,7 @@
       } else renderWorld();
     }).catch(function (error) {
       if (!host.isConnected) return;
-      var wrapper = document.createElement('div'); wrapper.innerHTML = fallbackLocationMap(rows);
+      var wrapper = document.createElement('div'); wrapper.innerHTML = fallbackLocationMap(rows, opts);
       wrapper.firstChild.dataset.mapError = error && error.message ? error.message : 'Interactive map unavailable';
       host.replaceWith(wrapper.firstChild);
       if (window.console && console.warn) console.warn('Creator Analytics map fallback:', error);

@@ -76,6 +76,24 @@
       });
   }
 
+  function delegatedTarget(event) {
+    var target = event.target && event.target.closest ? event.target.closest('[data-sml-mapillary-lat][data-sml-mapillary-lng]') : null;
+    if (!target || (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ')) { return; }
+    if (event.type === 'keydown') { event.preventDefault(); }
+    var host = target.closest('.ca-map, .sml-lt-map, [data-ca-geo-map]');
+    if (!host) { return; }
+    event.stopPropagation();
+    open({
+      host: host,
+      marker: target,
+      lat: Number(target.getAttribute('data-sml-mapillary-lat')),
+      lng: Number(target.getAttribute('data-sml-mapillary-lng')),
+      label: target.getAttribute('data-sml-mapillary-label') || target.getAttribute('aria-label') || 'Selected location'
+    });
+  }
+
   window.SMLMapillary = { open: open, close: close, configured: !!cfg.configured };
+  document.addEventListener('click', delegatedTarget);
+  document.addEventListener('keydown', delegatedTarget);
   window.dispatchEvent(new CustomEvent('sml-mapillary-ready'));
 }());
