@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Mapillary Analytics
  * Description: Adds an inline Mapillary street-imagery viewer to Creator Analytics maps without exposing the Mapillary client token.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: StockMarketLoop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'SML_MAPILLARY_ANALYTICS_VERSION', '1.0.1' );
+define( 'SML_MAPILLARY_ANALYTICS_VERSION', '1.0.2' );
 define( 'SML_MAPILLARY_ANALYTICS_FILE', __FILE__ );
 
 function sml_ma_token(): string {
@@ -153,15 +153,7 @@ add_action( 'rest_api_init', function () {
 		)
 	);
 } );
-add_action( 'wp_footer', function () {
-	if ( ! is_user_logged_in() || ! sml_ma_is_analytics_request() ) {
-		return;
-	}
-	static $printed = false;
-	if ( $printed ) {
-		return;
-	}
-	$printed = true;
+function sml_ma_frontend_markup(): string {
 	$base = plugin_dir_url( SML_MAPILLARY_ANALYTICS_FILE );
 	$dir  = plugin_dir_path( SML_MAPILLARY_ANALYTICS_FILE );
 	$js_v = SML_MAPILLARY_ANALYTICS_VERSION . '-' . (int) @filemtime( $dir . 'assets/mapillary-analytics.js' );
@@ -173,11 +165,37 @@ add_action( 'wp_footer', function () {
 		'isAdmin'    => current_user_can( 'manage_options' ),
 		'settings'   => admin_url( 'options-general.php?page=sml-mapillary-analytics' ),
 	);
-	echo "\n<!-- SML Mapillary Analytics -->\n";
-	echo '<script id="sml-mapillary-config">window.SML_MAPILLARY_ANALYTICS=' . wp_json_encode( $config ) . ';</script>' . "\n";
-	echo '<link rel="stylesheet" href="' . esc_url( $base . 'assets/mapillary-analytics.css?v=' . $cs_v ) . '">' . "\n";
-	echo '<script src="' . esc_url( $base . 'assets/mapillary-analytics.js?v=' . $js_v ) . '" defer></script>' . "\n";
+	return "\n<!-- SML Mapillary Analytics -->\n"
+		. '<script id="sml-mapillary-config">window.SML_MAPILLARY_ANALYTICS=' . wp_json_encode( $config ) . ';</script>' . "\n"
+		. '<link rel="stylesheet" id="sml-mapillary-css" href="' . esc_url( $base . 'assets/mapillary-analytics.css?v=' . $cs_v ) . '">' . "\n"
+		. '<script id="sml-mapillary-js" src="' . esc_url( $base . 'assets/mapillary-analytics.js?v=' . $js_v ) . '" defer></script>' . "\n";
+}
+
+add_action( 'wp_footer', function () {
+	if ( ! is_user_logged_in() || ! sml_ma_is_analytics_request() ) {
+		return;
+	}
+	echo sml_ma_frontend_markup();
 }, 990 );
+
+function sml_ma_buffer_inject( $html ) {
+	if ( ! is_string( $html ) || ! is_user_logged_in() || false === stripos( $html, '</body>' ) ) {
+		return $html;
+	}
+	if ( false !== strpos( $html, 'sml-mapillary-config' ) || false !== strpos( $html, 'mapillary-analytics.js' ) ) {
+		return $html;
+	}
+	$position = strripos( $html, '</body>' );
+	return substr( $html, 0, $position ) . sml_ma_frontend_markup() . substr( $html, $position );
+}
+
+add_action( 'init', function () {
+	if ( ! sml_ma_is_analytics_request() ) {
+		return;
+	}
+	nocache_headers();
+	ob_start( 'sml_ma_buffer_inject' );
+}, 2 );
 
 add_action( 'admin_menu', function () {
 	add_options_page( 'Mapillary Analytics', 'Mapillary Analytics', 'manage_options', 'sml-mapillary-analytics', 'sml_ma_settings_page' );
