@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Mapillary Analytics
  * Description: Adds an inline Mapillary street-imagery viewer to Creator Analytics maps without exposing the Mapillary client token.
- * Version: 1.0.3
+ * Version: 1.0.4
  * Author: StockMarketLoop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'SML_MAPILLARY_ANALYTICS_VERSION', '1.0.3' );
+define( 'SML_MAPILLARY_ANALYTICS_VERSION', '1.0.4' );
 define( 'SML_MAPILLARY_ANALYTICS_FILE', __FILE__ );
 
 function sml_ma_token(): string {

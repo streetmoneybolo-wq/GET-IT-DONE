@@ -18,13 +18,21 @@
     current = null;
   }
 
-  function message(panel, title, body, action) {
-    var content = panel.querySelector('[data-sml-mly-content]');
-    content.innerHTML = '<div class="sml-mly-message"><strong>' + esc(title) + '</strong><span>' + esc(body) + '</span>' + (action || '') + '</div>';
-  }
-
   function embedUrl(imageId) {
     return 'https://www.mapillary.com/embed?map_style=Mapillary%20streets&image_key=' + encodeURIComponent(imageId) + '&style=split';
+  }
+
+  function googleEmbedUrl(lat, lng) {
+    return 'https://maps.google.com/maps?q=' + encodeURIComponent(lat.toFixed(6) + ',' + lng.toFixed(6)) + '&z=17&output=embed';
+  }
+
+  function googleFallback(panel, options, reason, action) {
+    var lat = Number(options.lat), lng = Number(options.lng);
+    var content = panel.querySelector('[data-sml-mly-content]');
+    var eyebrow = panel.querySelector('header span');
+    if (eyebrow) { eyebrow.textContent = 'GOOGLE MAPS BACKUP'; }
+    content.innerHTML = '<div class="sml-mly-google-map"><iframe title="Google map backup near ' + esc(options.label || 'selected location') + '" src="' + esc(googleEmbedUrl(lat, lng)) + '" loading="eager" allow="fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><i class="sml-mly-google-dot" aria-hidden="true"></i></div>' +
+      '<div class="sml-mly-google-note"><div><strong>Google Maps backup</strong><span>' + esc(reason) + '</span></div>' + (action || '') + '</div>';
   }
 
   function open(options) {
@@ -47,7 +55,7 @@
 
     if (!cfg.configured) {
       var setup = cfg.isAdmin && cfg.settings ? '<a class="sml-mly-setup" href="' + esc(cfg.settings) + '">Connect Mapillary</a>' : '';
-      message(panel, 'Mapillary connection required', 'Add a Mapillary client token to enable inline street imagery.', setup);
+      googleFallback(panel, options, 'Mapillary is not connected. The selected coordinates are shown here without leaving StockMarketLoop.', setup);
       return;
     }
 
@@ -62,7 +70,7 @@
       .then(function (data) {
         if (!current || current.panel !== panel || !panel.isConnected) { return; }
         if (!data.available || !data.image || !data.image.id) {
-          message(panel, 'No nearby street imagery', 'Mapillary does not currently have a public capture near this map coordinate.');
+          googleFallback(panel, options, 'Mapillary has no nearby public capture, so Google Maps is showing the selected coordinates.');
           return;
         }
         var captured = data.image.captured_at ? new Date(Number(data.image.captured_at)).toLocaleDateString() : '';
@@ -72,7 +80,7 @@
       })
       .catch(function (error) {
         if (!current || current.panel !== panel || !panel.isConnected) { return; }
-        message(panel, 'Street imagery unavailable', error && error.message ? error.message : 'Mapillary could not be loaded.');
+        googleFallback(panel, options, (error && error.message ? error.message : 'Mapillary could not be loaded.') + ' Google Maps is showing the selected coordinates instead.');
       });
   }
 
