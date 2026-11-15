@@ -233,7 +233,7 @@
         '#sml-hf-shell #sml-optimized-home{position:static !important;inset:auto !important;z-index:auto !important;height:auto !important;min-height:0 !important;width:auto !important;overflow:visible !important;background:transparent !important;display:block !important;}' +
         // Keep the reserved promo/research slot and its duplicate public nav parked
         // until the owner is ready to use that space for a major announcement.
-        '#sml-hf-shell #sml-optimized-home>.sml-research-nav,#sml-hf-shell #sml-optimized-home>#sml-primary-public-nav{display:none!important;}' +
+        '#sml-hf-shell #sml-optimized-home>.sml-nq-status,#sml-hf-shell #sml-optimized-home>.sml-research-nav,#sml-hf-shell #sml-optimized-home>#sml-primary-public-nav{display:none!important;}' +
         // The real feed is itself a full app (own header + nav/watchlist/groups rails).
         // Hide its chrome so only its real POSTS flow inside our shell's center column.
         '#sml-optimized-home .oh-top{display:none !important;}' +

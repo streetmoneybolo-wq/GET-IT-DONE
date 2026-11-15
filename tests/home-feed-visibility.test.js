@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const homeFeed = fs.readFileSync(path.join(__dirname, '..', 'js', 'home-feed.js'), 'utf8');
 const gate = fs.readFileSync(path.join(__dirname, '..', 'mu-plugins', 'sml-home-feed-visibility-gates.php'), 'utf8');
 
-assert.match(homeFeed, /#sml-optimized-home>\.sml-research-nav[^']*#sml-optimized-home>#sml-primary-public-nav\{display:none!important;\}/);
+assert.match(homeFeed, /#sml-optimized-home>\.sml-nq-status[^']*#sml-optimized-home>\.sml-research-nav[^']*#sml-optimized-home>#sml-primary-public-nav\{display:none!important;\}/);
 assert.match(homeFeed, /\.sml-hf-mmc-view\{grid-column:2;justify-self:center;\}/);
 assert.match(homeFeed, /\.sml-hf-mmc-terminal\{grid-column:3;justify-self:end;\}/);
 assert.match(homeFeed, /\.sml-hf-mmc \.sml-sth-actions a\{[^}]*margin-left:0!important;margin-right:0!important/);

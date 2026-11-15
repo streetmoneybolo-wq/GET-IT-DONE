@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML CDN Version Resolver
  * Description: Pins the shared frontend asset revision WITHOUT replacing the real resolver.
- * Version: 1.0.15
+ * Version: 1.0.16
  *
  * 1.0.0 defined sml_cdn_resolve_ref() here. mu-plugins load before WPCode, and
  * WPCode #6873 "SML CDN Loader" declares that same function inside its loader
@@ -56,12 +56,13 @@
  * 2026-11-15: advance pin 1ce9d8b8 -> a9e9319 (inline Mapillary street imagery across analytics maps).
  * 2026-11-15: advance pin 830bcf2f -> 54edac9a (home-feed promo parking, centered Moomoo source link, and 15-channel video gate).
  * 2026-11-15: advance pin 54edac9a -> 5861c5a0 (remove the retired Making Easy Money Community duplicate from My Groups).
+ * 2026-11-15: advance pin 5861c5a0 -> af762a51 (remove the market-session status bar above the home feed).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '5861c5a095f98fb45304c21c4a56bf19d70bbef5' );
+	define( 'SML_CDN_ASSET_REVISION', 'af762a511b82a7427e77e3e7bc5b7ec0e2909111' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
