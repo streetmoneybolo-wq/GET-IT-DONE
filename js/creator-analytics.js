@@ -23,7 +23,7 @@
   var loader = document.getElementById('sml-ca-js');
   var NONCE = window.SML_CA_NONCE || (loader && loader.dataset.nonce) || window.SML_CG_NONCE || (window.wpApiSettings && window.wpApiSettings.nonce) || '';
   var ASSET_BASE = loader && loader.src ? loader.src.split('/js/creator-analytics.js')[0] + '/' : '';
-  var LOGO = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@main/img/loop-logo.png';
+  var LOGO = 'https://stockmarketloop.com/wp-content/sml-cdn/main/img/loop-logo.png';
   var BANNED_GROUPS = ['the-options-plug', 'spy-spy-highflyers']; // shadow-banned site-wide (see snippet 6873)
   var root = document.getElementById('sml-ca-root');
   if (!root) return;
@@ -32,9 +32,12 @@
   function api(path) {
     var h = {}; if (NONCE) h['X-WP-Nonce'] = NONCE;
     var u = '/wp-json' + path + (path.indexOf('?') > -1 ? '&' : '?') + '_=' + Date.now();
-    return fetch(u, { credentials: 'same-origin', headers: h, cache: 'no-store' })
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = controller ? window.setTimeout(function () { controller.abort(); }, 15000) : null;
+    return fetch(u, { credentials: 'same-origin', headers: h, cache: 'no-store', ...(controller ? { signal: controller.signal } : {}) })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }, function () { return { ok: r.ok, status: r.status, j: null }; }); })
-      .catch(function () { return { ok: false, status: 0, j: null }; });
+      .then(function (result) { if (timer) window.clearTimeout(timer); return result; })
+      .catch(function () { if (timer) window.clearTimeout(timer); return { ok: false, status: 0, j: null }; });
   }
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function q(sel, r) { return (r || root).querySelector(sel); }
@@ -50,6 +53,10 @@
        from before and after the clean-URL switch split one video in two and lose its title */
     try { var u = new URL(String(url || ''), location.origin); return u.origin.toLowerCase() + u.pathname.replace(/^(\/watch\/[A-Za-z0-9_-]{8,32})\/[^\/]+\/?$/, '$1/').replace(/\/+$/, '/') ; }
     catch (e) { return String(url || '').split(/[?#]/)[0].replace(/\/+$/, '/'); }
+  }
+  function localPath(url) {
+    try { var u = new URL(String(url || ''), location.origin); return u.origin.toLowerCase() === location.origin.toLowerCase() ? u.pathname : ''; }
+    catch (e) { return ''; }
   }
   function itemSeries(item) {
     var key = cleanUrl(item && item.url);
@@ -120,37 +127,71 @@
   }
   function dlabel(s) { var d = String(s.date || ''); var m = d.match(/^\d{4}-(\d{2})-(\d{2})/); if (!m) return d; return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][parseInt(m[1], 10) - 1] + ' ' + parseInt(m[2], 10); }
   function delta(series, key, total) {
-    // honest comparison inside the 28-day window: last 14 days vs the 14 before
-    if (!series || series.length < 4) return '';
-    var half = Math.floor(series.length / 2), a = 0, b = 0;
-    series.slice(half).forEach(function (s) { a += n(s[key]); }); series.slice(0, half).forEach(function (s) { b += n(s[key]); });
+    // Compare equal calendar windows, not equal row counts (GA can omit quiet days).
+    if (!series || series.length < 2) return '';
+    var dated = series.filter(function (row) { return /^\d{4}-\d{2}-\d{2}$/.test(String(row.date || '')) && isFinite(Date.parse(row.date + 'T00:00:00Z')); }).slice().sort(function (a, b) { return a.date.localeCompare(b.date); });
+    if (dated.length < 2) return '';
+    var firstDay = Date.parse(dated[0].date + 'T00:00:00Z'), lastDay = Date.parse(dated[dated.length - 1].date + 'T00:00:00Z');
+    var span = Math.floor((lastDay - firstDay) / 86400000) + 1;
+    if (span < 4) return '';
+    var half = Math.floor(span / 2), splitDay = firstDay + half * 86400000, a = 0, b = 0;
+    dated.forEach(function (row) { if (Date.parse(row.date + 'T00:00:00Z') < splitDay) b += n(row[key]); else a += n(row[key]); });
     if (!a && !b) return '<div class="ca-delta flat">' + (n(total) > 0 ? 'daily breakdown not reported for this metric' : 'no activity yet in this window') + '</div>';
-    if (!b) return '<div class="ca-delta">▲ new activity · last ' + (series.length - half) + ' days</div>';
+    if (!b) return '<div class="ca-delta">▲ new activity · latest ' + (span - half) + ' calendar days</div>';
     var p = (a - b) / b * 100; var up = p >= 0;
-    return '<div class="ca-delta' + (up ? '' : ' down') + '">' + (up ? '▲ +' : '▼ ') + p.toFixed(1) + '% · last ' + (series.length - half) + ' days vs prior ' + half + '</div>';
+    return '<div class="ca-delta' + (up ? '' : ' down') + '">' + (up ? '▲ +' : '▼ ') + p.toFixed(1) + '% · latest ' + (span - half) + ' calendar days vs prior ' + half + '</div>';
+  }
+  function whyInsightMarkup() {
+    var ga = S.ga4, series = ga && Array.isArray(ga.series) ? ga.series : [];
+    if (!ga) return empty('GA4 explanation unavailable', 'Check Analytics health for the connection status. The dashboard will not guess why traffic changed when historical data is missing.');
+    var failed = ga.reportHealth && Array.isArray(ga.reportHealth.failed) ? ga.reportHealth.failed : [];
+    if (failed.indexOf('series') !== -1) return empty('Daily trend unavailable', 'The GA4 daily-series report failed for this range. The dashboard will not infer a change from incomplete data.');
+    var dated = series.filter(function (row) { return /^\d{4}-\d{2}-\d{2}$/.test(String(row.date || '')) && isFinite(Date.parse(row.date + 'T00:00:00Z')); }).slice().sort(function (a, b) { return a.date.localeCompare(b.date); });
+    if (dated.length < 2) return empty('Not enough processed history yet', 'The explanation needs daily GA4 observations spanning at least four calendar days. It will not guess from missing data.');
+    var firstDay = Date.parse(dated[0].date + 'T00:00:00Z'), lastDay = Date.parse(dated[dated.length - 1].date + 'T00:00:00Z');
+    var calendarDays = Math.floor((lastDay - firstDay) / 86400000) + 1;
+    if (calendarDays < 4) return empty('Not enough processed history yet', 'The explanation needs daily GA4 observations spanning at least four calendar days. It will not guess from missing data.');
+    var splitDay = firstDay + Math.floor(calendarDays / 2) * 86400000, priorDays = Math.floor(calendarDays / 2), recentDays = calendarDays - priorDays, prior = 0, recent = 0;
+    dated.forEach(function (row) { if (Date.parse(row.date + 'T00:00:00Z') < splitDay) prior += n(row.views); else recent += n(row.views); });
+    var change = prior ? ((recent - prior) / prior * 100) : null;
+    var topItem = ga.items && ga.items.length ? ga.items[0] : null;
+    var topSource = ga.sources && ga.sources.length ? ga.sources.slice().sort(function (a, b) { return n(b.sessions) - n(a.sessions); })[0] : null;
+    var trend = change == null ? 'there is no comparable baseline yet' : (change >= 0 ? 'attributed views rose ' + change.toFixed(1) + '%' : 'attributed views fell ' + Math.abs(change).toFixed(1) + '%') + ' in the latest ' + recentDays + ' calendar days versus the prior ' + priorDays + ' calendar days';
+    var evidence = [];
+    if (topItem) evidence.push('Most-viewed tracked page: “' + esc(topItem.title || topItem.kind) + '” (' + fmt(topItem.views) + ' attributed views).');
+    if (topSource) evidence.push('Largest reported source: ' + esc(topSource.source || 'Unknown') + ' (' + fmt(topSource.sessions) + ' sessions).');
+    return '<div class="ca-card ca-why-card"><h3>What the data says</h3><p>' + esc(trend) + ' in the observed window (' + esc(dated[0].date) + ' to ' + esc(dated[dated.length - 1].date) + '). Days without returned rows contribute no observed views; GA4 processing and privacy thresholds can hide some activity.</p>' +
+      (evidence.length ? '<p>' + evidence.join(' ') + '</p>' : '<p>There is not enough processed page/source detail to identify a leading item or source yet.</p>') +
+      '<div class="ca-note">These are observed associations, not proof that a page or referral caused the change. GA4 reports are processed and can lag; this is not a second-by-second view counter.</div></div>';
   }
 
   function healthPanel(ga, presence, trackedRows) {
     var tracking = ga && ga.itemTracking ? ga.itemTracking : {};
-    var gaReady = !!ga;
-    var itemReady = gaReady && tracking.available === true;
-    var presenceReady = !!presence;
+    var gaReady = !!ga && ga.configured !== false && ga.available !== false;
+    var itemQueryReady = gaReady && tracking.available === true;
+    var itemReady = itemQueryReady && tracking.observed === true;
+    var presenceReady = !!presence && presence.available === true;
     var checked = tracking.checkedAt ? ago(tracking.checkedAt) : '';
     var statuses = [
       ['GA4 connection', gaReady, gaReady ? (ga.cached ? 'Connected · cached report' : 'Connected · fresh report') : 'Unavailable — historical analytics are not being reported'],
-      ['Item attribution', itemReady, itemReady ? 'Active for Channels, videos, live streams, Letters, and articles' : 'Unavailable — item visits are not being attributed'],
+      ['Item attribution', itemReady, itemReady ? 'Events observed for creator-owned pages' : (itemQueryReady ? 'Report query works, but no item events were observed in this range; verify the tag and GA4 custom dimensions' : 'Unavailable — item reports could not be read')],
       ['Realtime presence', presenceReady, presenceReady ? 'Connected · ' + fmt(presence.window || 90) + '-second activity window' : 'Unavailable — active viewers cannot be reported'],
-      ['Processed items', itemReady, fmt((trackedRows || []).length) + ' item' + ((trackedRows || []).length === 1 ? '' : 's') + (checked ? ' · checked ' + checked : '')]
+      ['Processed items', itemReady, itemReady ? fmt((trackedRows || []).length) + ' item' + ((trackedRows || []).length === 1 ? '' : 's') + (checked ? ' · checked ' + checked : '') : (itemQueryReady ? 'No attributed items returned in the selected range' : 'Item reports unavailable')]
     ];
+    if (S.gaLoading) statuses[0] = ['GA4 connection', false, 'Loading creator-scoped historical reports…'];
+    var partialReports = ga && ga.reportHealth && Array.isArray(ga.reportHealth.failed) ? ga.reportHealth.failed : [];
+    if (partialReports.length) statuses.push(['Partial GA4 data', false, 'Unavailable breakdowns: ' + partialReports.join(', ')]);
     return '<div class="ca-card ca-health"><h3>Analytics health<span class="ca-fresh">automatic checks</span></h3><div class="ca-health-grid">' + statuses.map(function (s) {
-      return '<div class="ca-health-row"><span class="ca-health-dot ' + (s[1] ? 'ok' : 'bad') + '"></span><div><b>' + esc(s[0]) + '</b><small>' + esc(s[2]) + '</small></div></div>';
+      var state = s[1] ? 'ok' : (/^Loading\b|^Report query works\b|^No attributed items\b/.test(s[2]) ? 'pending' : 'bad');
+      return '<div class="ca-health-row"><span class="ca-health-dot ' + state + '"></span><div><b>' + esc(s[0]) + '</b><small>' + esc(s[2]) + '</small></div></div>';
     }).join('') + '</div>' +
       (itemReady && !(trackedRows || []).length ? '<div class="ca-note">Tracking is working. No attributed item has finished GA4 processing yet; this is not reported as zero traffic.</div>' : '') +
+      (S.gaError ? '<div class="ca-note">' + (S.gaErrorMessage ? esc(S.gaErrorMessage) + ' ' : '') + 'GA4 did not return a usable historical report. Check the property connection and credentials, then re-select the range or reload. Missing reports are not treated as zero.</div>' : '') +
       '</div>';
   }
 
   /* ---------- state ---------- */
-  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, presence: null, presenceHistory: [], shadow: null, adsense: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main', mapFocus: null, didMainRender: false };
+  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, gaLoading: true, gaError: false, gaErrorMessage: '', gaRequest: 0, rangeDays: 28, presence: null, presenceHistory: [], shadow: null, adsense: null, letters: null, letterAnalyticsRows: [], subs: null, lsettings: null, uploads: null, groups: [], view: 'main', mapFocus: null, didMainRender: false };
 
   function rememberPresence(presence) {
     if (!presence || presence.count == null) return;
@@ -174,7 +215,7 @@
     return '<header class="ca-header"><div class="ca-brand"><a href="/" title="Stock Market Loop — Home"><img src="' + LOGO + '" alt="Stock Market Loop"></a><span class="ca-crumb">/ Creator Studio / Analytics</span></div><div class="ca-sp"></div>' +
       (rt ? '<div class="ca-creator"><div class="ca-avatar">' + (u.avatar_url ? '<img src="' + esc(u.avatar_url) + '" alt="">' : esc(initial)) + '</div><div><b>' + esc(u.display_name || '') + '</b><span>' + (S.gate && S.gate.channelHandle ? '@' + esc(S.gate.channelHandle) : (S.gate && S.gate.letterHandle ? '@' + esc(S.gate.letterHandle) : 'creator')) + '</span></div>' +
         '<div class="ca-lb"><b>' + fmt(ov.loop_bucks != null ? ov.loop_bucks : (lb.balance || 0)) + '</b><span>Loop Bucks' + (lb.rank ? ' · #' + esc(lb.rank) : '') + '</span></div></div>' : '') +
-      '<span class="ca-pill">Last 28 days</span><a class="ca-pill" href="/">⌂ Home</a><a class="ca-pill ca-pill-primary" href="/creator-studio/">← Back to Creator Studio</a></header>';
+      '<span class="ca-pill">Platform totals · 28 days</span><a class="ca-pill" href="/">⌂ Home</a><a class="ca-pill ca-pill-primary" href="/creator-studio/">← Back to Creator Studio</a></header>';
   }
 
   function pulseSection(id, title, note, html) {
@@ -193,8 +234,8 @@
       '<div class="ca-side-actions"><a class="ca-side-btn ca-side-back" href="/creator-studio/"><span class="i">←</span><span class="t">Back to Creator Studio</span></a><a class="ca-side-btn ca-side-home" href="/"><span class="i">⌂</span><span class="t">Home</span></a></div>' +
       '<div class="ca-side-prop"><span class="ca-pulse-mark">▲</span><span>Pulse <small>/ ' + esc(propertyName) + '</small></span></div>' +
       '<nav class="ca-nav">' + nav.map(function (x, i) { return '<a class="' + (i === 0 ? 'on' : '') + '" href="#ca-' + x[0] + '" data-ca-nav="' + x[0] + '"><span></span>' + x[1] + '</a>'; }).join('') + '</nav>' +
-      '<div class="ca-side-foot"><small>Property: ' + esc(propertyName) + '</small><small>GA4 data stream · creator scoped</small><a class="ca-side-btn ca-side-back" href="/creator-studio/"><span class="i">←</span><span class="t">Back to Creator Studio</span></a></div></aside>' +
-      '<div class="ca-work"><header class="ca-top"><div><span>Reports · All data</span><b>Analytics overview</b></div><div class="ca-sp"></div><span class="ca-live"><span class="b"></span>LIVE</span><button class="ca-pill" type="button" id="ca-range">Last 28 days⌄</button><button class="ca-pill" type="button" id="ca-compare">Compare</button><button class="ca-pill" type="button" id="ca-share">Share ↗</button></header>' +
+      '<div class="ca-side-foot"><small>Property: ' + esc(propertyName) + '</small><small>GA4 data stream · creator scoped</small></div></aside>' +
+      '<div class="ca-work"><header class="ca-top"><div><span>Reports · All data</span><b>Analytics overview</b></div><div class="ca-sp"></div><span class="ca-live' + (S.presence && S.presence.available ? '' : ' off') + '" title="Only active presence is near-real-time. GA4 views are processed and may be delayed"><span class="b"></span>' + (S.presence && S.presence.available ? 'PRESENCE LIVE' : 'PRESENCE UNAVAILABLE') + '</span><label class="ca-pill ca-range-label" for="ca-range">GA4 range <select id="ca-range" aria-label="GA4 report date range"><option value="7">7 days</option><option value="28">28 days</option><option value="90">90 days</option></select></label><button class="ca-pill" type="button" id="ca-why" aria-expanded="false">Why did this change?</button><button class="ca-pill" type="button" id="ca-share">Share ↗</button></header>' +
       '<main class="ca-main">' + content + '<div class="ca-foot">Counts are aggregated. Individual visitors, IP addresses, and exact locations are never shown.</div></main></div></div>';
   }
 
@@ -226,6 +267,7 @@
     rows = Array.isArray(rows) ? rows : []; opts = opts || {};
     return '<div class="ca-map ca-geo-map" data-ca-geo-map' + (opts.id ? ' data-ca-geo-map-id="' + esc(opts.id) + '"' : '') + '><div class="ca-map-loading"><span></span>Loading geographic map…</div>' +
       '<button class="ca-map-reset" type="button" data-ca-map-reset hidden>← World view</button>' +
+      '<button class="ca-map-street" type="button" data-ca-map-street hidden>Street imagery</button>' +
       '<div class="ca-map-caption" data-ca-map-caption>Click a country to explore</div>' +
       (!rows.length ? '<div class="ca-map-empty ca-map-empty-live"><b>' + esc(opts.emptyTitle || 'No located active viewers right now') + '</b><span>' + esc(opts.emptyBody || 'You can still explore the map. Live markers appear when creator-page heartbeats arrive.') + '</span></div>' : '') + '</div>';
   }
@@ -276,12 +318,25 @@
       if (!host.isConnected) return;
       var d3 = window.d3, topojson = window.topojson, world = loaded[1][0], statesTopo = loaded[1][1];
       var countries = topojson.feature(world, world.objects.countries).features;
-      var reset = host.querySelector('[data-ca-map-reset]'), caption = host.querySelector('[data-ca-map-caption]');
+      var reset = host.querySelector('[data-ca-map-reset]'), street = host.querySelector('[data-ca-map-street]'), caption = host.querySelector('[data-ca-map-caption]');
       var loading = host.querySelector('.ca-map-loading'); if (loading) loading.remove();
       var W = Math.max(520, Math.round(host.getBoundingClientRect().width || 720)), H = Math.max(300, Math.round(W * .53));
       var svg = d3.select(host).append('svg').attr('class', 'ca-geo-svg').attr('viewBox', '0 0 ' + W + ' ' + H).attr('role', 'img').attr('aria-label', opts.ariaLabel || 'Interactive active users map');
       var liveByName = {};
       rows.forEach(function (r) { liveByName[normalizedPlace(countryName(String(r.countryCode || '').toUpperCase()))] = n(r.viewers || r.users); });
+
+      function openStreet(lat, lng, label, marker) {
+        if (!window.SMLMapillary || typeof window.SMLMapillary.open !== 'function') return;
+        window.SMLMapillary.open({ host: host, marker: marker || null, lat: lat, lng: lng, label: label });
+      }
+      function setStreetTarget(feature, label) {
+        if (!street || !feature) return;
+        var center = d3.geoCentroid(feature);
+        if (!center || !isFinite(center[0]) || !isFinite(center[1])) { street.hidden = true; return; }
+        street.hidden = false;
+        street.onclick = function () { openStreet(center[1], center[0], label + ' map center', null); };
+        street.setAttribute('aria-label', 'View Mapillary street imagery near ' + label + ' map center');
+      }
 
       function clearCityList() { var old = host.querySelector('.ca-map-city-list'); if (old) old.remove(); }
       function cityList(countryLabel) {
@@ -295,21 +350,29 @@
       function pointDots(layer, projection) {
         points.forEach(function (p) {
           var xy = projection([Number(p.lng), Number(p.lat)]); if (!xy || !isFinite(xy[0]) || !isFinite(xy[1]) || xy[0] < 0 || xy[1] < 0 || xy[0] > W || xy[1] > H) return;
-          var g = layer.append('g').attr('class', 'ca-click-dot' + (p.bot ? ' bot' : ' human') + (p.fresh ? ' fresh' : ''));
+          var label = p.title || (p.bot ? 'Bot / preview click' : 'Human click');
+          var g = layer.append('g').attr('class', 'ca-click-dot' + (p.bot ? ' bot' : ' human') + (p.fresh ? ' fresh' : ''))
+            .attr('tabindex', 0).attr('role', 'button').attr('aria-label', label + '. View Mapillary street imagery.')
+            .on('click', function (event) { event.stopPropagation(); openStreet(Number(p.lat), Number(p.lng), label, this); })
+            .on('keydown', function (event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openStreet(Number(p.lat), Number(p.lng), label, this); } });
           g.append('circle').attr('cx', xy[0]).attr('cy', xy[1]).attr('r', 3.6);
           g.append('circle').attr('class', 'ring').attr('cx', xy[0]).attr('cy', xy[1]).attr('r', 8);
-          g.append('title').text(p.title || (p.bot ? 'Bot / preview click' : 'Human click'));
+          g.append('title').text(label + ' - select for street imagery');
         });
       }
       function liveDots(layer, projection, features) {
         var max = 1; Object.keys(liveByName).forEach(function (k) { max = Math.max(max, liveByName[k]); });
         features.forEach(function (feature) {
           var count = liveByName[normalizedPlace(feature.properties && feature.properties.name)]; if (!count) return;
-          var point = projection(d3.geoCentroid(feature)); if (!point || !isFinite(point[0]) || !isFinite(point[1])) return;
-          var radius = Math.max(4, Math.min(9, 4 + count / max * 5)), g = layer.append('g').attr('class', 'ca-real-live-dot' + (points.length ? ' ca-real-live-dot-quiet' : ''));
+          var geoCenter = d3.geoCentroid(feature), point = projection(geoCenter); if (!point || !isFinite(point[0]) || !isFinite(point[1])) return;
+          var label = (feature.properties.name || 'Country') + ': ' + count + ' ' + (opts.countUnit || 'active now');
+          var radius = Math.max(4, Math.min(9, 4 + count / max * 5)), g = layer.append('g').attr('class', 'ca-real-live-dot' + (points.length ? ' ca-real-live-dot-quiet' : ''))
+            .attr('tabindex', 0).attr('role', 'button').attr('aria-label', label + '. View Mapillary imagery near the country center.')
+            .on('click', function (event) { event.stopPropagation(); openStreet(geoCenter[1], geoCenter[0], (feature.properties.name || 'Country') + ' map center', this); })
+            .on('keydown', function (event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openStreet(geoCenter[1], geoCenter[0], (feature.properties.name || 'Country') + ' map center', this); } });
           g.append('circle').attr('cx', point[0]).attr('cy', point[1]).attr('r', radius);
           g.append('circle').attr('class', 'ring').attr('cx', point[0]).attr('cy', point[1]).attr('r', radius + 5);
-          g.append('title').text((feature.properties.name || 'Country') + ': ' + count + ' ' + (opts.countUnit || 'active now'));
+          g.append('title').text(label + ' - select for street imagery');
         });
         pointDots(layer, projection);
       }
@@ -323,7 +386,7 @@
           .attr('width', Math.ceil(tiles.scale)).attr('height', Math.ceil(tiles.scale));
       }
       function renderWorld() {
-        S.mapFocus = null; clearCityList(); reset.hidden = true; reset.textContent = '← World view';
+        S.mapFocus = null; clearCityList(); reset.hidden = true; reset.textContent = '← World view'; if (street) street.hidden = true;
         caption.textContent = opts.worldCaption || 'Click a country to zoom · live markers show country-level presence';
         svg.selectAll('*').remove();
         var projection = d3.geoNaturalEarth1().fitExtent([[8, 8], [W - 8, H - 8]], { type: 'FeatureCollection', features: countries }), path = d3.geoPath(projection);
@@ -356,6 +419,7 @@
         reset.hidden = false; reset.textContent = stateFeature ? '← United States' : '← World view';
         reset.onclick = function () { stateFeature ? renderCountry(feature) : renderWorld(); };
         caption.textContent = stateFeature ? stateFeature.properties.name + ' detail' : (countryLabel === 'United States' ? 'Click a state to zoom further' : 'Satellite country detail');
+        setStreetTarget(focus, stateFeature ? stateFeature.properties.name + ', ' + countryLabel : countryLabel);
         cityList(countryLabel);
       }
       reset.onclick = renderWorld;
@@ -410,7 +474,7 @@
   function repaint() {
     if (!painted || S.view !== 'main') { return; }
     clearTimeout(repaintT);
-    repaintT = setTimeout(function () { if (S.view === 'main') { renderMain(); } }, 80);
+    repaintT = setTimeout(renderAfterEditing, 80);
   }
   function warm(promise, assign) {
     return promise.then(function (r) { try { assign(r); } catch (e) {} repaint(); },
@@ -431,7 +495,6 @@
     var hasLetter = !!(S.gate && S.gate.hasLetter);
     warm(api('/sml-lb/v1/me'), function (x) { S.lb = x.ok ? x.j : null; });
     warm(api('/sml-live/v1/status'), function (x) { S.live = x.ok ? x.j : null; });
-    warm(api('/sml-creator-analytics/v1/audience?range=28'), function (x) { S.ga4 = x.ok ? x.j : null; });
     warm(api('/sml-creator-analytics/v1/presence'), function (x) { S.presence = x.ok ? x.j : null; rememberPresence(S.presence); });
     warm(api('/sml-creator-analytics/v1/monetization-shadow'), function (x) { S.shadow = x.ok ? x.j : null; });
     warm(api('/sml-creator-analytics/v1/adsense-attribution/me'), function (x) { S.adsense = x.ok ? x.j : null; });
@@ -440,12 +503,13 @@
     warm(hasLetter ? api('/sml-loopletters/v1/settings') : Promise.resolve({ ok: false }), function (x) { S.lsettings = x.ok ? x.j : null; });
     warm(api('/sml-video-upload-studio/v1/creator-dashboard'), function (x) { S.uploads = x.ok && x.j ? (x.j.recent_uploads || []) : []; });
     warm(loadGroups(), function (g) { S.groups = g || []; });
+    loadAudience(S.rangeDays, true);
 
-    liveLoop(refreshRealtime, 15000);
-    liveLoop(refreshPresence, 5000);
+    liveLoop(refreshRealtime, 60000);
+    liveLoop(refreshPresence, 20000);
   });
-  function refreshRealtime() { return api('/sml-members/v1/creator-studio/realtime').then(function (r) { if (r.ok && r.j && S.view === 'main') { S.rt = r.j; renderMain(); } }); }
-  function refreshPresence() { return api('/sml-creator-analytics/v1/presence').then(function (r) { if (r.ok && r.j) { S.presence = r.j; rememberPresence(S.presence); if (S.view === 'main') renderMain(); } }); }
+  function refreshRealtime() { return api('/sml-members/v1/creator-studio/realtime').then(function (r) { if (r.ok && r.j && S.view === 'main') { S.rt = r.j; renderAfterEditing(); } }); }
+  function refreshPresence() { return api('/sml-creator-analytics/v1/presence').then(function (r) { if (r.ok && r.j) { S.presence = r.j; rememberPresence(S.presence); renderAfterEditing(); } }); }
   /* Timer loops that behave: one request in flight at a time, nothing while the tab is hidden, and an immediate
      catch-up tick the moment the tab is visible again — so "live now" is live, not up to a minute old. */
   var LOOPS = [];
@@ -453,6 +517,29 @@
     var busy = false;
     function tick() { if (busy || document.hidden) return; busy = true; Promise.resolve().then(fn).catch(function () {}).then(function () { busy = false; }); }
     setInterval(tick, ms); LOOPS.push(tick); return tick;
+  }
+  function loadAudience(days, repaint) {
+    days = [7, 28, 90].indexOf(Number(days)) > -1 ? Number(days) : 28;
+    S.rangeDays = days;
+    S.gaLoading = true;
+    S.gaError = false;
+    var requestId = ++S.gaRequest;
+    return api('/sml-creator-analytics/v1/audience?range=' + days).then(function (r) {
+      if (requestId !== S.gaRequest) return;
+      S.ga4 = r.ok && r.j && r.j.configured !== false && r.j.available !== false ? r.j : null;
+      S.gaError = !S.ga4;
+      S.gaErrorMessage = S.gaError && r.j && r.j.message ? String(r.j.message) : '';
+      S.gaLoading = false;
+      if (repaint && S.view === 'main') renderAfterEditing();
+    });
+  }
+  function analyticsEditorFocused() {
+    var active = document.activeElement;
+    return !!(active && active.matches && active.matches('input, textarea, select, [contenteditable="true"]'));
+  }
+  function renderAfterEditing() {
+    if (S.view !== 'main' || analyticsEditorFocused()) return;
+    renderMain();
   }
   document.addEventListener('visibilitychange', function () { if (!document.hidden) LOOPS.forEach(function (t) { t(); }); });
 
@@ -532,14 +619,14 @@
       '<div class="ca-active-number"><div class="ca-big ' + (liveAudience > 0 ? 'acc' : '') + '">' + (liveAudience != null ? fmt(liveAudience) : '—') + '</div><div class="ca-live' + (isLive ? '' : ' off') + '"><span class="b"></span>' + (isLive ? 'ON AIR' : 'OFFLINE') + '</div></div>' +
       presenceBars() +
       '<div class="ca-sub">' + (presence ? (liveAudience > 0 ? 'Active across your creator pages' + (liveBreakdown ? ' · ' + esc(liveBreakdown) : '') : 'No active visitors in the current window.') : 'Creator presence is temporarily unavailable.') + '</div>' +
-      '<div class="ca-device-block"><h4>Device category <span>28-day GA4 mix</span></h4>' + (devices.length ? audienceBars(devices, 'device', 'users', 4) : '<div class="ca-sub">Device data will appear after GA4 processes creator-attributed visits.</div>') + '</div>' +
+      '<div class="ca-device-block"><h4>Device category <span>' + S.rangeDays + '-day GA4 mix</span></h4>' + (devices.length ? audienceBars(devices, 'device', 'users', 4) : '<div class="ca-sub">Device data will appear after GA4 processes creator-attributed visits.</div>') + '</div>' +
       (isLive ? '' : '<a class="ca-text-link" href="/go-live/">Start a live stream →</a>') + '</div>';
     var audience = '<div class="ca-grid ca-rt-hero">' + liveCard +
       '<div class="ca-card ca-map-card"><h3>Active users by location<span class="ca-fresh">live · country level</span></h3>' + liveLocationMap(liveCountries) + '</div></div>' +
       '<div class="ca-grid ca-rt-mini">' +
-        '<div class="ca-card ca-mini-card"><h3>Users by first source<span class="ca-fresh">28 days</span></h3>' + (realtimeSources.length ? audienceBars(realtimeSources, 'source', 'sessions', 5) : empty('Not enough data yet', 'Creator-scoped sources appear after GA4 processing.')) + '</div>' +
-        '<div class="ca-card ca-mini-card"><h3>Users by content kind<span class="ca-fresh">28 days</span></h3>' + (gaKinds.length ? audienceBars(gaKinds, 'kind', 'users', 5) : (Object.keys(liveKinds).length ? audienceBars(Object.keys(liveKinds).map(function (k) { return { kind: k, users: liveKinds[k] }; }), 'kind', 'users', 5) : empty('No activity yet', 'Creator content categories appear here.'))) + '</div>' +
-        '<div class="ca-card ca-mini-card"><h3>Views by page title<span class="ca-fresh">28 days</span></h3>' + (gaItems.length ? audienceBars(gaItems, 'title', 'views', 5) : empty('Not enough data yet', 'Tracked creator pages appear after attributed visits.')) + '</div>' +
+        '<div class="ca-card ca-mini-card"><h3>Sessions by source / medium<span class="ca-fresh">' + S.rangeDays + ' days · GA4</span></h3>' + (realtimeSources.length ? audienceBars(realtimeSources, 'source', 'sessions', 5) : empty('Not enough data yet', 'Creator-scoped session sources appear after GA4 processing.')) + '</div>' +
+        '<div class="ca-card ca-mini-card"><h3>Users by content kind<span class="ca-fresh">' + S.rangeDays + ' days</span></h3>' + (gaKinds.length ? audienceBars(gaKinds, 'kind', 'users', 5) : (Object.keys(liveKinds).length ? audienceBars(Object.keys(liveKinds).map(function (k) { return { kind: k, users: liveKinds[k] }; }), 'kind', 'users', 5) : empty('No activity yet', 'Creator content categories appear here.'))) + '</div>' +
+        '<div class="ca-card ca-mini-card"><h3>Views by page title<span class="ca-fresh">' + S.rangeDays + ' days</span></h3>' + (gaItems.length ? audienceBars(gaItems, 'title', 'views', 5) : empty('Not enough data yet', 'Tracked creator pages appear after attributed visits.')) + '</div>' +
         '<div class="ca-card ca-mini-card"><h3>Active countries<span class="ca-fresh">live</span></h3>' + (liveCountryRows.length ? audienceBars(liveCountryRows, 'country', 'viewers', 5) : empty('No located viewers', 'Country rows update with live presence.')) + '</div>' +
         '<div class="ca-card ca-mini-card"><h3>Key activity<span class="ca-fresh">28 days</span></h3><div class="ca-key-metrics"><div><b>' + fmt(ov.engagement) + '</b><span>engagements</span></div><div><b>' + fmt(ov.impressions) + '</b><span>impressions</span></div><div><b>' + pct(ov.ctr) + '</b><span>CTR</span></div></div></div>' +
       '</div>';
@@ -582,26 +669,51 @@
         var kind = /video/i.test(c.type) ? 'video' : (/letter/i.test(c.type) ? 'letter' : (/post/i.test(c.type) ? 'post' : 'publication'));
         var th = thumbs[c.url] ? '<img class="ca-thumb" src="' + esc(thumbs[c.url]) + '" alt="">' : '';
         return '<tr class="click" data-content="' + i + '"><td>' + th + '<span class="ca-title">' + esc(c.title || 'Untitled') + '</span><div class="ca-sub">' + esc((c.url || '').replace(/^https?:\/\/[^/]+/, '')) + (c.ticker ? ' · $' + esc(c.ticker) : '') + '</div></td><td><span class="ca-tag ' + kind + '">' + kind + '</span></td><td class="num">' + fmt(c.views) + '</td><td class="num">' + fmt(c.impressions) + '</td><td class="num">' + pct(c.ctr) + '</td></tr>';
-      }).join('') + '</tbody></table><div class="ca-note">Item-level GA4 tracking is active. This table will switch to tracked 28-day visits after the first attributed view is processed.</div>' : empty('No tracked content yet', 'Open a Channel, watch page, article, livestream, or published Loop Letter and its attributed visits will appear here after GA4 processes them.');
+      }).join('') + '</tbody></table><div class="ca-note">' + (ga && ga.itemTracking && ga.itemTracking.available ? 'These are existing platform totals, whose reporting window may differ from the GA4 range. Creator-attributed item visits begin when GA4 processes them; prior visits are not backfilled.' : 'These are existing platform totals, whose reporting window may differ. GA4 item attribution is unavailable or still processing; missing views are not shown as zero.') + '</div>' : empty(ga ? 'No tracked content yet' : 'Creator analytics unavailable', ga ? 'Open a Channel, watch page, article, livestream, or published Loop Letter and its attributed visits will appear here after GA4 processes them.' : 'Check Analytics health for the GA4 connection. The dashboard will not substitute guessed values.');
     // letters as content rows (title/status/words) when the engine has none of them
     var lettersCard = '';
     if (hasLetters) {
       var subs = S.subs || {};
+      var trackedLetters = gaRows.filter(function (item) { return item.type === 'letter'; });
+      var letterKind = ga && Array.isArray(ga.kinds) ? ga.kinds.find(function (item) { return item.kind === 'letter'; }) : null;
+      var letterHandle = (S.gate && S.gate.letterHandle) || (rt.user && rt.user.user_nicename) || '';
+      S.letterAnalyticsRows = (S.letters || []).map(function (letter) {
+        var id = String(letter.id || letter.letter_id || letter.post_id || '');
+        var slug = String(letter.slug || letter.post_name || '');
+        var url = localPath(letter.url || letter.public_url || letter.permalink || '');
+        if (!url && slug && letterHandle) url = '/n/' + encodeURIComponent(letterHandle) + '/' + encodeURIComponent(slug) + '/';
+        var match = trackedLetters.find(function (item) {
+          return (id && String(item.contentId || '') === id) || (url && cleanUrl(item.url) === cleanUrl(url));
+        });
+        if (!url && match) url = localPath(match.url);
+        return {
+          letter: letter,
+          item: match || {
+            title: letter.title || 'Untitled', type: 'letter', url: url, contentId: id,
+            views: null, users: null, sessions: null, analyticsSource: 'ga4', trackingAvailable: false
+          }
+        };
+      });
+      var letterViewTotal = trackedLetters.reduce(function (total, item) { return total + n(item.views); }, 0);
       lettersCard = '<div class="ca-card"><h3>Loop Letters<span class="ca-fresh">' + (S.lsettings && S.lsettings.publicUrl ? '<a href="' + esc(S.lsettings.publicUrl) + '">' + esc((S.lsettings.name || 'publication')) + ' ↗</a>' : 'your publication') + '</span></h3>' +
         '<div class="ca-kinds" style="margin-bottom:12px">' +
           '<div class="ca-kind"><b>Subscribers</b><div class="n">' + fmt(subs.confirmed) + '</div><div class="ca-sub">' + fmt(subs.pending) + ' pending · ' + fmt(subs.unsubscribed) + ' unsubscribed</div></div>' +
           '<div class="ca-kind"><b>Letters</b><div class="n">' + fmt((S.letters || []).length) + '</div><div class="ca-sub">' + (S.letters || []).filter(function (l) { return l.status === 'published'; }).length + ' published</div></div>' +
+          '<div class="ca-kind"><b>Tracked issue views</b><div class="n">' + (trackedLetters.length ? fmt(letterViewTotal) : '—') + '</div><div class="ca-sub">GA4 processed · last ' + S.rangeDays + ' days</div></div>' +
+          '<div class="ca-kind"><b>Readers / sessions</b><div class="n">' + (letterKind ? fmt(letterKind.users) + ' / ' + fmt(letterKind.sessions) : '—') + '</div><div class="ca-sub">unique across your letter pages · aggregated</div></div>' +
           '<div class="ca-kind"><b>New this week</b><div class="n">' + (S.letters || []).filter(function (l) { return within(l.published_at || l.created_at || l.date, 7); }).length + '</div><div class="ca-sub">letters in the last 7 days</div></div>' +
         '</div>' +
-        ((S.letters || []).length ? '<table><thead><tr><th>Letter</th><th>Status</th><th class="num">Words</th><th class="num">Read</th></tr></thead><tbody>' + (S.letters || []).slice(0, 8).map(function (l) {
-          return '<tr><td><span class="ca-title">' + esc(l.title || 'Untitled') + '</span><div class="ca-sub">' + esc(l.content_type || '') + (l.price_lb ? ' · ' + fmt(l.price_lb) + ' LB' : '') + '</div></td><td><span class="ca-tag ' + (l.status === 'published' ? 'letter' : '') + '">' + esc(l.status || '') + '</span></td><td class="num">' + fmt(l.word_count) + '</td><td class="num">' + (l.read_minutes ? l.read_minutes + ' min' : '—') + '</td></tr>';
+        (S.letterAnalyticsRows.length ? '<table><thead><tr><th>Letter</th><th>Status</th><th class="num">Views</th><th class="num">Readers</th><th class="num">Sessions</th><th class="num">Words</th><th class="num">Read time</th></tr></thead><tbody>' + S.letterAnalyticsRows.slice(0, 20).map(function (entry, i) {
+          var l = entry.letter, item = entry.item, available = item.trackingAvailable !== false;
+          return '<tr class="' + (l.status === 'published' ? 'click' : '') + '" ' + (l.status === 'published' ? 'data-letter="' + i + '"' : '') + '><td>' + (entry.item.url ? '<a class="ca-title" href="' + esc(entry.item.url) + '" target="_blank" rel="noopener">' + esc(l.title || item.title || 'Untitled') + '</a>' : '<span class="ca-title">' + esc(l.title || item.title || 'Untitled') + '</span>') + '<div class="ca-sub">' + esc(l.content_type || 'Loop Letter') + (l.price_lb ? ' · ' + fmt(l.price_lb) + ' LB' : '') + '</div></td><td><span class="ca-tag ' + (l.status === 'published' ? 'letter' : '') + '">' + esc(l.status || '') + '</span></td><td class="num">' + (available ? fmt(item.views) : '—') + '</td><td class="num">' + (available ? fmt(item.users) : '—') + '</td><td class="num">' + (available ? fmt(item.sessions) : '—') + '</td><td class="num">' + fmt(l.word_count) + '</td><td class="num">' + (l.read_minutes ? l.read_minutes + ' min' : '—') + '</td></tr>';
         }).join('') + '</tbody></table>' : empty('No letters yet', 'Write your first letter from Creator Studio.')) +
-        '<div class="ca-note">Per-letter reads and open rates appear when letter analytics is connected.</div></div>';
+        '<div class="ca-note">Select a published issue for its analytics. GA4 views are processed with delay; newsletter email opens and per-issue link clicks are not currently connected.</div></div>';
     }
     var sources = ga && Array.isArray(ga.sources) && ga.sources.length ? ga.sources : (rt.traffic_sources || []);
     var newWeek = (S.uploads || []).filter(function (u) { return within(u.created_at, 7); }).length + (S.letters || []).filter(function (l) { return within(l.published_at || l.created_at || l.date, 7); }).length;
-    var contentRow = '<div class="ca-grid ca-g32"><div class="ca-card"><h3>Top content<span class="ca-fresh">28 days · ' + (gaRows.length ? 'item tracking' : 'existing totals') + '</span></h3>' + contentTable + '</div>' +
-      '<div class="ca-col"><div class="ca-card"><h3>Where visitors came from</h3>' + (sources.length ? '<table>' + sources.slice(0, 8).map(function (s) { return '<tr><td>' + esc(s.source || s.name || '') + '</td><td class="num">' + fmt(s.sessions || s.views || s.count) + '</td></tr>'; }).join('') + '</table>' : empty('Not enough data yet', 'Traffic sources appear once the site’s analytics has enough visits to report — nothing is shown below the privacy threshold.')) + '</div>' +
+    var sourceReportFailed = !!(ga && ga.reportHealth && Array.isArray(ga.reportHealth.failed) && ga.reportHealth.failed.indexOf('sources') !== -1);
+    var contentRow = '<div class="ca-grid ca-g32"><div class="ca-card"><h3>Top content<span class="ca-fresh">' + (gaRows.length ? S.rangeDays + ' days · GA4 attributed views' : 'platform totals · reporting window varies') + '</span></h3>' + contentTable + '</div>' +
+      '<div class="ca-col"><div class="ca-card"><h3>Where visitors came from</h3>' + (sources.length ? '<table>' + sources.slice(0, 8).map(function (s) { return '<tr><td>' + esc(s.source || s.name || '') + '</td><td class="num">' + fmt(s.sessions || s.views || s.count) + '</td></tr>'; }).join('') + '</table>' : empty(sourceReportFailed ? 'GA4 source report unavailable' : (ga ? 'Not enough data yet' : 'Audience analytics unavailable'), sourceReportFailed ? 'This breakdown failed for the selected range; it is not being displayed as zero traffic.' : 'Session sources appear when GA4 has creator-attributed visits to report.')) + '</div>' +
       '<div class="ca-card"><h3>New this week</h3>' + (newWeek ? '<div class="ca-big">' + newWeek + '</div><div class="ca-sub">new uploads and letters in the last 7 days</div>' : empty('Not enough data yet', 'Nothing published in the last 7 days. New content shows here once it’s reached the reporting threshold.')) + '</div></div></div>';
 
     var health = healthPanel(ga, presence, gaRows);
@@ -635,7 +747,7 @@
     var languages = ga && Array.isArray(ga.languages) ? ga.languages : [];
     var browsers = ga && Array.isArray(ga.browsers) ? ga.browsers : [];
     var operatingSystems = ga && Array.isArray(ga.operatingSystems) ? ga.operatingSystems : [];
-    var demographics = '<div class="ca-grid ca-report-grid"><div class="ca-card"><h3>Countries<span class="ca-fresh">28 days</span></h3>' +
+    var demographics = '<div class="ca-grid ca-report-grid"><div class="ca-card"><h3>Countries<span class="ca-fresh">' + S.rangeDays + ' days</span></h3>' +
       (countries.length ? audienceBars(countries, 'country', 'users', 12) : empty(ga ? 'Not enough data yet' : 'Audience analytics unavailable', ga ? 'No country has reportable creator-attributed activity yet.' : 'Connect GA4 to report aggregated audience locations.')) + '</div>' +
       '<div class="ca-card"><h3>Languages<span class="ca-fresh">aggregated</span></h3>' + (languages.length ? audienceBars(languages, 'language', 'users', 10) : empty('Not enough data yet', 'Languages appear after GA4 processes creator-attributed visits.')) + '</div>' +
       '<div class="ca-card"><h3>Top cities<span class="ca-fresh">privacy threshold ≥ ' + fmt((ga && ga.privacyThreshold) || 10) + '</span></h3>' +
@@ -643,17 +755,14 @@
     var retention = '<div class="ca-grid ca-g11"><div class="ca-card"><h3>Audience retention<span class="ca-fresh">video playback</span></h3>' +
       empty('Retention curve not tracked yet', 'This panel will remain empty until verified video progress events are connected. No retention values are estimated.') + '</div>' +
       '<div class="ca-card"><h3>Returning audience<span class="ca-fresh">cohorts</span></h3>' + empty('Cohort data not connected yet', 'Returning-viewer cohorts require a privacy-safe creator-scoped GA4 report.') + '</div></div>';
-    var tech = '<div class="ca-grid ca-report-grid"><div class="ca-card"><h3>Device category<span class="ca-fresh">28 days</span></h3>' +
+    var tech = '<div class="ca-grid ca-report-grid"><div class="ca-card"><h3>Device category<span class="ca-fresh">' + S.rangeDays + ' days</span></h3>' +
       (devices.length ? audienceBars(devices, 'device', 'users', 8) : empty('Not enough data yet', 'Device data appears after GA4 processing.')) + '</div>' +
-      '<div class="ca-card"><h3>Browser<span class="ca-fresh">28 days</span></h3>' + (browsers.length ? audienceBars(browsers, 'browser', 'users', 10) : empty('Not enough data yet', 'Browser data appears after GA4 processing.')) + '</div>' +
-      '<div class="ca-card"><h3>Operating system<span class="ca-fresh">28 days</span></h3>' + (operatingSystems.length ? audienceBars(operatingSystems, 'operatingSystem', 'users', 10) : empty('Not enough data yet', 'Operating-system data appears after GA4 processing.')) + '</div></div>';
-    /* Overview leads. It is the section that answers "how am I doing", it renders
-       from the aggregate that arrives in the first boot wave, and putting the live
-       Realtime block above it meant the landing view was whichever slow presence
-       call had not come back yet. Realtime now warms up underneath it. */
+      '<div class="ca-card"><h3>Browser<span class="ca-fresh">' + S.rangeDays + ' days</span></h3>' + (browsers.length ? audienceBars(browsers, 'browser', 'users', 10) : empty('Not enough data yet', 'Browser data appears after GA4 processing.')) + '</div>' +
+      '<div class="ca-card"><h3>Operating system<span class="ca-fresh">' + S.rangeDays + ' days</span></h3>' + (operatingSystems.length ? audienceBars(operatingSystems, 'operatingSystem', 'users', 10) : empty('Not enough data yet', 'Operating-system data appears after GA4 processing.')) + '</div></div>';
     var dashboard =
-      pulseSection('overview', 'Overview', 'Last 28 days · your creator-owned content only', health + kpis + kindsCard) +
+      pulseSection('overview', 'Overview', 'Platform totals · last 28 days; GA4 reports use the selected range', health + kpis + kindsCard) +
       pulseSection('realtime', 'Realtime', 'Active creator-page viewers · updates every 20 seconds', audience) +
+      '<div id="ca-why-panel" class="ca-why-panel" hidden></div>' +
       pulseSection('acquisition', 'Acquisition', 'Traffic sources and creator-owned destinations', contentRow) +
       pulseSection('engagement', 'Engagement', 'Content, groups, and publications', groupsCard + (lettersCard || '')) +
       pulseSection('monetization', 'Monetization', 'Verified revenue, estimates, and payout safeguards', adsenseCard + shadowCard + revCard) +
@@ -663,10 +772,33 @@
     var keepY = window.scrollY;
     emitRender('before', { navigate: false });
     root.innerHTML = pulseShell(rt, dashboard);
+    var rangeSelect = document.getElementById('ca-range');
+    if (rangeSelect) {
+      rangeSelect.value = String(S.rangeDays);
+      rangeSelect.disabled = !!S.gaLoading;
+      rangeSelect.addEventListener('change', function () {
+        var days = Number(rangeSelect.value);
+        if ([7, 28, 90].indexOf(days) > -1) {
+          rangeSelect.disabled = true;
+          rangeSelect.blur();
+          loadAudience(days, true);
+        }
+      });
+    }
+    var whyButton = document.getElementById('ca-why');
+    if (whyButton) whyButton.addEventListener('click', function () {
+      var panel = document.getElementById('ca-why-panel');
+      if (!panel) return;
+      var open = panel.hidden;
+      panel.hidden = !open;
+      whyButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) panel.innerHTML = whyInsightMarkup();
+    });
     emitRender('after', { navigate: false, scrollY: keepY });
     initLiveLocationMap(liveCountries, cities, (ga && ga.privacyThreshold) || 10);
 
     root.querySelectorAll('tr[data-content]').forEach(function (tr) { tr.addEventListener('click', function () { renderContent(rows[Number(tr.getAttribute('data-content'))]); }); });
+    root.querySelectorAll('tr[data-letter]').forEach(function (tr) { tr.addEventListener('click', function (event) { if (event.target.closest && event.target.closest('a')) return; renderContent(S.letterAnalyticsRows[Number(tr.getAttribute('data-letter'))].item); }); });
     root.querySelectorAll('tr[data-group]').forEach(function (tr) { tr.addEventListener('click', function () { renderGroup(S.groups[Number(tr.getAttribute('data-group'))]); }); });
     root.querySelectorAll('[data-ca-nav]').forEach(function (link) { link.addEventListener('click', function () { root.querySelectorAll('[data-ca-nav]').forEach(function (x) { x.classList.toggle('on', x === link); }); }); });
     var shareButton = document.getElementById('ca-share');
@@ -675,10 +807,6 @@
       if (navigator.share) navigator.share(data).catch(function () {});
       else if (navigator.clipboard) navigator.clipboard.writeText(location.href).then(function () { shareButton.textContent = 'Link copied ✓'; });
     });
-    var compareButton = document.getElementById('ca-compare');
-    if (compareButton) compareButton.addEventListener('click', function () { root.classList.toggle('ca-compare-mode'); compareButton.textContent = root.classList.contains('ca-compare-mode') ? 'Comparing ✓' : 'Compare'; document.getElementById('ca-overview').scrollIntoView({ behavior: 'smooth' }); });
-    var rangeButton = document.getElementById('ca-range');
-    if (rangeButton) rangeButton.addEventListener('click', function () { rangeButton.textContent = 'Last 28 days ✓'; rangeButton.title = 'The verified creator report currently supports a fixed 28-day range.'; });
     if ('IntersectionObserver' in window) {
       var observer = new IntersectionObserver(function (entries) { entries.forEach(function (entry) { if (!entry.isIntersecting) return; root.querySelectorAll('[data-ca-nav]').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-ca-nav') === entry.target.id.replace('ca-', '')); }); }); }, { rootMargin: '-20% 0px -65% 0px' });
       root.querySelectorAll('.ca-section').forEach(function (section) { observer.observe(section); });
@@ -692,7 +820,7 @@
     return '<div class="ca-card"><h3>' + esc(label) + '<span class="ca-fresh">' + esc(fresh) + '</span></h3><div class="ca-big">' + big + '</div>' + deltaHtml + '<div class="ca-spark">' + sparkHtml + '</div></div>';
   }
   function backBar(title, sub, tag) {
-    return '<div class="ca-detail-head"><button class="ca-pill" id="ca-back">← Overview</button><div style="min-width:0"><div class="ca-dtitle">' + esc(title) + '</div><div class="ca-sub">' + esc(sub) + '</div></div>' + (tag ? '<span class="ca-tag ' + tag + '">' + tag + '</span>' : '') + '<div class="ca-sp"></div><span class="ca-pill">Last 28 days</span></div>';
+    return '<div class="ca-detail-head"><button class="ca-pill" id="ca-back">← Overview</button><div style="min-width:0"><div class="ca-dtitle">' + esc(title) + '</div><div class="ca-sub">' + esc(sub) + '</div></div>' + (tag ? '<span class="ca-tag ' + tag + '">' + tag + '</span>' : '') + '<div class="ca-sp"></div><span class="ca-pill">GA4 · last ' + S.rangeDays + ' days</span></div>';
   }
 
   /* ---------- CONTENT DRILL-DOWN ---------- */
@@ -709,13 +837,13 @@
       (((S.presence || {}).items) || []).forEach(function (p) { if (p.kind === kind && String(p.contentId) === String(contentId)) active += n(p.viewers); });
       var trackedHtml = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + backBar(c.title || 'Untitled', path, kind) +
         '<div class="ca-grid ca-g4">' +
-          '<div class="ca-card"><h3>Tracked views</h3><div class="ca-big">' + fmt(c.views) + '</div><div class="ca-sub">creator-attributed page views in the last 28 days</div></div>' +
-          '<div class="ca-card"><h3>Visitors</h3><div class="ca-big">' + fmt(c.users) + '</div><div class="ca-sub">aggregated GA4 users; no individual visitors are exposed</div></div>' +
-          '<div class="ca-card"><h3>Sessions</h3><div class="ca-big">' + fmt(c.sessions) + '</div><div class="ca-sub">sessions containing an attributed view of this item</div></div>' +
-          '<div class="ca-card"><h3>Active right now</h3><div class="ca-big ' + (active > 0 ? 'acc' : '') + '">' + fmt(active) + '</div><div class="ca-sub">first-party presence in the last ' + fmt((S.presence || {}).window || 90) + ' seconds</div></div>' +
+          '<div class="ca-card"><h3>Tracked views</h3><div class="ca-big">' + (c.trackingAvailable === false ? '—' : fmt(c.views)) + '</div><div class="ca-sub">creator-attributed page views in the last ' + S.rangeDays + ' days</div></div>' +
+          '<div class="ca-card"><h3>Visitors</h3><div class="ca-big">' + (c.trackingAvailable === false ? '—' : fmt(c.users)) + '</div><div class="ca-sub">aggregated GA4 users; no individual visitors are exposed</div></div>' +
+          '<div class="ca-card"><h3>Sessions</h3><div class="ca-big">' + (c.trackingAvailable === false ? '—' : fmt(c.sessions)) + '</div><div class="ca-sub">sessions containing an attributed view of this item</div></div>' +
+          '<div class="ca-card"><h3>Active right now</h3><div class="ca-big ' + (active > 0 ? 'acc' : '') + '">' + (c.trackingAvailable === false ? '—' : fmt(active)) + '</div><div class="ca-sub">first-party presence in the last ' + fmt((S.presence || {}).window || 90) + ' seconds</div></div>' +
         '</div>' +
         '<div class="ca-card"><h3>Daily item activity<span class="ca-fresh">tracked views · visitors · sessions</span></h3>' +
-          (ownSeries.length ? '<div class="ca-chart">' + lineChart(ownSeries, ['views', 'users', 'sessions'], [CSS_ACC, CSS_C2, CSS_C3], dlabel) + '</div><div class="ca-legend"><span><i style="background:' + CSS_ACC + '"></i>views</span><span><i style="background:' + CSS_C2 + '"></i>visitors</span><span><i style="background:' + CSS_C3 + '"></i>sessions</span></div>' : empty('No daily activity yet', 'GA4 has not processed a creator-attributed view for this item in the selected window.')) +
+          (ownSeries.length ? '<div class="ca-chart">' + lineChart(ownSeries, ['views', 'users', 'sessions'], [CSS_ACC, CSS_C2, CSS_C3], dlabel) + '</div><div class="ca-legend"><span><i style="background:' + CSS_ACC + '"></i>views</span><span><i style="background:' + CSS_C2 + '"></i>visitors</span><span><i style="background:' + CSS_C3 + '"></i>sessions</span></div>' : empty(c.trackingAvailable === false ? 'Issue analytics not processed yet' : 'No daily activity yet', c.trackingAvailable === false ? 'This issue has no creator-attributed GA4 rows in the selected period yet. Its metrics stay blank instead of being shown as zero.' : 'GA4 has not processed a creator-attributed view for this item in the selected window.')) +
         '</div>' +
         '<div class="ca-note">Tracking starts from the creator-attribution launch; older visits are intentionally not estimated or backfilled.</div>' +
         (c.url ? '<div><a class="ca-btn2" href="' + esc(c.url) + '">Open ' + esc(kind) + ' ↗</a></div>' : '') +
