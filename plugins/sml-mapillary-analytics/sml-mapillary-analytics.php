@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Mapillary Analytics
  * Description: Adds an inline Mapillary street-imagery viewer to Creator Analytics maps without exposing the Mapillary client token.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: StockMarketLoop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'SML_MAPILLARY_ANALYTICS_VERSION', '1.0.0' );
+define( 'SML_MAPILLARY_ANALYTICS_VERSION', '1.0.1' );
 define( 'SML_MAPILLARY_ANALYTICS_FILE', __FILE__ );
 
 function sml_ma_token(): string {
@@ -153,30 +153,31 @@ add_action( 'rest_api_init', function () {
 		)
 	);
 } );
-add_action( 'wp_enqueue_scripts', function () {
+add_action( 'wp_footer', function () {
 	if ( ! is_user_logged_in() || ! sml_ma_is_analytics_request() ) {
 		return;
 	}
+	static $printed = false;
+	if ( $printed ) {
+		return;
+	}
+	$printed = true;
 	$base = plugin_dir_url( SML_MAPILLARY_ANALYTICS_FILE );
 	$dir  = plugin_dir_path( SML_MAPILLARY_ANALYTICS_FILE );
 	$js_v = SML_MAPILLARY_ANALYTICS_VERSION . '-' . (int) @filemtime( $dir . 'assets/mapillary-analytics.js' );
 	$cs_v = SML_MAPILLARY_ANALYTICS_VERSION . '-' . (int) @filemtime( $dir . 'assets/mapillary-analytics.css' );
-	wp_enqueue_style( 'sml-mapillary-analytics', $base . 'assets/mapillary-analytics.css', array(), $cs_v );
-	wp_enqueue_script( 'sml-mapillary-analytics', $base . 'assets/mapillary-analytics.js', array(), $js_v, true );
-	wp_add_inline_script(
-		'sml-mapillary-analytics',
-		'window.SML_MAPILLARY_ANALYTICS=' . wp_json_encode(
-			array(
-				'rest'       => esc_url_raw( rest_url( 'sml-mapillary/v1/nearest' ) ),
-				'nonce'      => wp_create_nonce( 'wp_rest' ),
-				'configured' => '' !== sml_ma_token(),
-				'isAdmin'    => current_user_can( 'manage_options' ),
-				'settings'   => admin_url( 'options-general.php?page=sml-mapillary-analytics' ),
-			)
-		) . ';',
-		'before'
+	$config = array(
+		'rest'       => esc_url_raw( rest_url( 'sml-mapillary/v1/nearest' ) ),
+		'nonce'      => wp_create_nonce( 'wp_rest' ),
+		'configured' => '' !== sml_ma_token(),
+		'isAdmin'    => current_user_can( 'manage_options' ),
+		'settings'   => admin_url( 'options-general.php?page=sml-mapillary-analytics' ),
 	);
-}, 100 );
+	echo "\n<!-- SML Mapillary Analytics -->\n";
+	echo '<script id="sml-mapillary-config">window.SML_MAPILLARY_ANALYTICS=' . wp_json_encode( $config ) . ';</script>' . "\n";
+	echo '<link rel="stylesheet" href="' . esc_url( $base . 'assets/mapillary-analytics.css?v=' . $cs_v ) . '">' . "\n";
+	echo '<script src="' . esc_url( $base . 'assets/mapillary-analytics.js?v=' . $js_v ) . '" defer></script>' . "\n";
+}, 990 );
 
 add_action( 'admin_menu', function () {
 	add_options_page( 'Mapillary Analytics', 'Mapillary Analytics', 'manage_options', 'sml-mapillary-analytics', 'sml_ma_settings_page' );
