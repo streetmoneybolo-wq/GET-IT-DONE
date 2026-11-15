@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Link Tracker Analytics Tab Fix
  * Description: Force-loads the SML Link Tracker tab inside Creator Analytics using a separate plugin slug to bypass stale plugin-file caching.
- * Version: 1.0.9
+ * Version: 1.1.2
  * Author: StockMarketLoop
  */
 
 defined('ABSPATH') || exit;
 
-define('SML_LIT_FIX_VERSION', '1.0.9');
+define('SML_LIT_FIX_VERSION', '1.1.2');
 define('SML_LIT_FIX_URL', plugin_dir_url(__FILE__));
 
 function sml_lit_fix_is_creator_analytics_request() {
@@ -55,10 +55,25 @@ add_action('wp_footer', function () {
 }, 999);
 
 function sml_lit_fix_markup() {
+    $controls = '';
+    if (defined('SML_LINK_TRACKER_CONTROLS_URL') && defined('SML_LINK_TRACKER_CONTROLS_VERSION')) {
+        $controls_dir = WP_PLUGIN_DIR . '/sml-link-tracker-controls/assets/';
+        $controls_css_file = $controls_dir . 'controls.css';
+        $controls_js_file = $controls_dir . 'controls.js';
+        $controls_css_hash = @md5_file($controls_css_file);
+        $controls_js_hash = @md5_file($controls_js_file);
+        $controls_css_v = SML_LINK_TRACKER_CONTROLS_VERSION . '-' . ($controls_css_hash ? substr($controls_css_hash, 0, 12) : (int) @filemtime($controls_css_file));
+        $controls_js_v = SML_LINK_TRACKER_CONTROLS_VERSION . '-' . ($controls_js_hash ? substr($controls_js_hash, 0, 12) : (int) @filemtime($controls_js_file));
+        $controls_cfg = array('rest' => esc_url_raw(rest_url('sml-intel/v1')), 'nonce' => wp_create_nonce('wp_rest'), 'isAdmin' => current_user_can('manage_options'));
+        $controls = '<script id="sml-link-controls-config">window.SML_LINK_TRACKER_CONTROLS=' . wp_json_encode($controls_cfg) . ';</script>' . "\n"
+            . '<link rel="stylesheet" href="' . esc_url(SML_LINK_TRACKER_CONTROLS_URL . 'assets/controls.css?v=' . $controls_css_v) . '">' . "\n"
+            . '<script id="sml-link-controls-js" src="' . esc_url(SML_LINK_TRACKER_CONTROLS_URL . 'assets/controls.js?v=' . $controls_js_v) . '"></script>' . "\n";
+    }
     return "\n<!-- SML Link Tracker Analytics Tab Fix buffer injector active -->\n"
         . '<script id="sml-lit-tab-fix-config-buffer">window.SML_LIT=' . wp_json_encode(sml_lit_fix_config()) . ';</script>' . "\n"
         . '<link rel="stylesheet" id="sml-lit-tab-fix-css-buffer" href="' . esc_url(SML_LIT_FIX_URL . 'assets/sml-link-tracker-analytics-tab-fix.css?v=' . SML_LIT_FIX_VERSION . '-' . time()) . '">' . "\n"
-        . '<script id="sml-lit-tab-fix-js-buffer" src="' . esc_url(SML_LIT_FIX_URL . 'assets/sml-link-tracker-analytics-tab-fix.js?v=' . SML_LIT_FIX_VERSION . '-' . time()) . '"></script>' . "\n";
+        . '<script id="sml-lit-tab-fix-js-buffer" src="' . esc_url(SML_LIT_FIX_URL . 'assets/sml-link-tracker-analytics-tab-fix.js?v=' . SML_LIT_FIX_VERSION . '-' . time()) . '"></script>' . "\n"
+        . $controls;
 }
 
 function sml_lit_fix_ob($html) {

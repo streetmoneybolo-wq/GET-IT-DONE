@@ -103,6 +103,7 @@
         <span><b>${esc(data.summary.unique_devices == null ? '—' : data.summary.unique_devices)}</b> unique devices</span>
         <span><b>${esc(data.summary.bot_clicks)}</b> bot/preview clicks</span>
       </div>
+      <div class="sml-lit-link-map" data-link-alltime-map="${esc(id)}"><p>Loading all-time map…</p></div>
       ${clicks.length ? clicks.map((c) => `
         <div class="sml-lit-click">
           <b>${esc(c.created_at)}</b>
@@ -114,6 +115,12 @@
         </div>
       `).join('') : '<p>No clicks recorded yet.</p>'}
     `;
+    const mapHost = target.querySelector('[data-link-alltime-map]');
+    if (window.SMLLinkTrackerControls && typeof window.SMLLinkTrackerControls.renderAllTimeMap === 'function') {
+      window.SMLLinkTrackerControls.renderAllTimeMap(mapHost, id);
+    } else {
+      mapHost.innerHTML = '<p>The all-time click map controls are still loading. Reopen analytics in a moment.</p>';
+    }
   }
 
   async function loadAdmin(root) {
