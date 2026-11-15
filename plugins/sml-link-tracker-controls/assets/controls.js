@@ -141,18 +141,18 @@
     if (world) {
       W = NE_W; H = NE_H;
       proj = function (c) { return neProject(c); };
-      land = '<rect width="' + W + '" height="' + H + '" fill="#06101b"></rect>'
+      land = '<rect width="' + W + '" height="' + H + '" fill="#e9f0f5"></rect>'
         + world.countries.features.map(function (f) {
             var blocked = everyone || blockedCountries[String(f.id).padStart(3, '0')];
-            return '<path d="' + featurePath(f) + '" fill="' + (blocked ? 'rgba(255,86,110,.3)' : '#12243a') + '" stroke="#1f3a58" stroke-width=".5"></path>';
+            return '<path d="' + featurePath(f) + '" fill="' + (blocked ? '#ffc4ce' : '#cad9e5') + '" stroke="#70899e" stroke-width=".7"></path>';
           }).join('');
     } else {
       W = 900; H = 450;
       proj = function (c) { return [(c[0] + 180) / 360 * W, (90 - c[1]) / 180 * H]; };
       var g = '';
-      for (var lo = -180; lo <= 180; lo += 30) { g += '<line x1="' + proj([lo, 0])[0] + '" y1="0" x2="' + proj([lo, 0])[0] + '" y2="' + H + '" stroke="#16283f"></line>'; }
-      for (var la = -60; la <= 60; la += 30) { g += '<line x1="0" y1="' + proj([0, la])[1] + '" x2="' + W + '" y2="' + proj([0, la])[1] + '" stroke="#16283f"></line>'; }
-      land = '<rect width="' + W + '" height="' + H + '" fill="#08121f" stroke="#1f3a58"></rect>' + g;
+      for (var lo = -180; lo <= 180; lo += 30) { g += '<line x1="' + proj([lo, 0])[0] + '" y1="0" x2="' + proj([lo, 0])[0] + '" y2="' + H + '" stroke="#9db1c1"></line>'; }
+      for (var la = -60; la <= 60; la += 30) { g += '<line x1="0" y1="' + proj([0, la])[1] + '" x2="' + W + '" y2="' + proj([0, la])[1] + '" stroke="#9db1c1"></line>'; }
+      land = '<rect width="' + W + '" height="' + H + '" fill="#e9f0f5" stroke="#70899e"></rect>' + g;
     }
 
     var maxN = pts.reduce(function (m, p) { return Math.max(m, p.clicks, p.blocked); }, 1);
@@ -221,7 +221,7 @@
     var note = host.querySelector('.sml-lc-map-note');
     var map = new maplibregl.Map({
       container: mapHost,
-      style: 'https://tiles.openfreemap.org/styles/dark',
+      style: 'https://tiles.openfreemap.org/styles/liberty',
       center: [0, 20], zoom: 1.35, minZoom: 1, maxZoom: 18,
       attributionControl: true, cooperativeGestures: true, renderWorldCopies: false
     });
@@ -471,6 +471,15 @@
     }).catch(function (e) { flash(id, e.message); });
   }
 
+  function setCardExpanded(card, expanded) {
+    if (!card) { return; }
+    card.classList.toggle('sml-lc-card-expanded', !!expanded);
+    window.requestAnimationFrame(function () {
+      var mapHost = card.querySelector('[data-lc-map]');
+      if (mapHost && mapHost._smlMap && typeof mapHost._smlMap.resize === 'function') { mapHost._smlMap.resize(); }
+    });
+  }
+
   document.addEventListener('click', function (e) {
     var open = e.target.closest('[data-lc-open]');
     if (open) {
@@ -478,7 +487,11 @@
       var card = open.closest('[data-link-id]');
       var host = card && card.querySelector('[data-lc-panel]');
       if (!host) { return; }
-      if (!host.hidden) { host.hidden = true; open.textContent = 'Map and access rules'; return; }
+      if (!host.hidden) {
+        if (host.querySelector('.sml-mly-panel') && window.SMLMapillary && typeof window.SMLMapillary.close === 'function') { window.SMLMapillary.close(); }
+        host.hidden = true; open.textContent = 'Map and access rules'; setCardExpanded(card, false); return;
+      }
+      setCardExpanded(card, true);
       host.hidden = false; open.textContent = 'Hide map and access rules';
       panels[id] = panels[id] || { el: host, rules: [], map: null, flash: '' };
       panels[id].el = host;

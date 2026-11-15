@@ -10,8 +10,21 @@
     });
   }
 
+  function setExpanded(panel, expanded) {
+    if (!panel) { return; }
+    panel.classList.toggle('sml-mly-expanded', !!expanded);
+    document.documentElement.classList.toggle('sml-mly-modal-open', !!expanded);
+    var button = panel.querySelector('[data-sml-mly-expand]');
+    if (button) {
+      button.setAttribute('aria-pressed', expanded ? 'true' : 'false');
+      button.setAttribute('aria-label', expanded ? 'Restore map size' : 'Expand map');
+      button.setAttribute('title', expanded ? 'Restore map size' : 'Expand map');
+    }
+  }
+
   function close() {
     if (!current) { return; }
+    setExpanded(current.panel, false);
     if (current.marker && current.marker.classList) { current.marker.classList.remove('sml-mly-selected'); }
     if (typeof current.onClose === 'function') { try { current.onClose(); } catch (error) {} }
     if (current.panel && current.panel.parentNode) { current.panel.parentNode.removeChild(current.panel); }
@@ -19,7 +32,7 @@
   }
 
   function embedUrl(imageId) {
-    return 'https://www.mapillary.com/embed?map_style=Mapillary%20streets&image_key=' + encodeURIComponent(imageId) + '&style=split';
+    return 'https://www.mapillary.com/embed?map_style=Mapillary%20streets&image_key=' + encodeURIComponent(imageId) + '&style=photo';
   }
 
   function googleEmbedUrl(lat, lng) {
@@ -45,12 +58,13 @@
     var panel = document.createElement('section');
     panel.className = 'sml-mly-panel';
     panel.setAttribute('aria-label', 'Mapillary street imagery');
-    panel.innerHTML = '<header><div><span>MAPILLARY STREET IMAGERY</span><strong>' + esc(options.label || 'Selected location') + '</strong></div><button type="button" data-sml-mly-close aria-label="Close street imagery">&times;</button></header>' +
+    panel.innerHTML = '<header><div class="sml-mly-title"><span>MAPILLARY STREET IMAGERY</span><strong>' + esc(options.label || 'Selected location') + '</strong></div><div class="sml-mly-actions"><button type="button" data-sml-mly-expand aria-label="Expand map" aria-pressed="false" title="Expand map">&#x26F6;</button><button type="button" data-sml-mly-close aria-label="Close street imagery" title="Close street imagery">&times;</button></div></header>' +
       '<div class="sml-mly-content" data-sml-mly-content><div class="sml-mly-loading"><i></i><span>Finding the nearest street capture...</span></div></div>' +
       '<footer>The analytics map and selected dot remain visible. Imagery is near the selected map coordinate and may not show a visitor\'s exact position.</footer>';
     host.insertAdjacentElement('afterend', panel);
     if (options.marker && options.marker.classList) { options.marker.classList.add('sml-mly-selected'); }
     current = { panel: panel, marker: options.marker || null, onClose: options.onClose || null };
+    panel.querySelector('[data-sml-mly-expand]').addEventListener('click', function () { setExpanded(panel, !panel.classList.contains('sml-mly-expanded')); });
     panel.querySelector('[data-sml-mly-close]').addEventListener('click', close);
 
     if (!cfg.configured) {
@@ -60,7 +74,17 @@
     }
 
     var url = cfg.rest + (cfg.rest.indexOf('?') === -1 ? '?' : '&') + 'lat=' + encodeURIComponent(lat.toFixed(6)) + '&lng=' + encodeURIComponent(lng.toFixed(6));
-    fetch(url, { credentials: 'same-origin', cache: 'no-store', headers: { 'X-WP-Nonce': cfg.nonce || '' } })
+    var controller = window.AbortController ? new window.AbortController() : null;
+    var requestFinished = false;
+    var requestTimer = window.setTimeout(function () {
+      if (requestFinished) { return; }
+      requestFinished = true;
+      if (controller) { controller.abort(); }
+      if (current && current.panel === panel && panel.isConnected) {
+        googleFallback(panel, options, 'Mapillary took too long to respond, so Google Maps is showing the selected coordinates.');
+      }
+    }, 8000);
+    fetch(url, { credentials: 'same-origin', cache: 'no-store', headers: { 'X-WP-Nonce': cfg.nonce || '' }, signal: controller ? controller.signal : undefined })
       .then(function (response) {
         return response.json().catch(function () { return {}; }).then(function (data) {
           if (!response.ok) { throw new Error(data.message || 'Mapillary is unavailable right now.'); }
@@ -68,6 +92,9 @@
         });
       })
       .then(function (data) {
+        if (requestFinished) { return; }
+        requestFinished = true;
+        window.clearTimeout(requestTimer);
         if (!current || current.panel !== panel || !panel.isConnected) { return; }
         if (!data.available || !data.image || !data.image.id) {
           googleFallback(panel, options, 'Mapillary has no nearby public capture, so Google Maps is showing the selected coordinates.');
@@ -79,6 +106,9 @@
           '<div class="sml-mly-meta"><span>Nearest public capture' + (distance ? ' &middot; ' + distance.toLocaleString() + ' m away' : '') + '</span>' + (captured ? '<span>Captured ' + esc(captured) + '</span>' : '') + '</div>';
       })
       .catch(function (error) {
+        if (requestFinished) { return; }
+        requestFinished = true;
+        window.clearTimeout(requestTimer);
         if (!current || current.panel !== panel || !panel.isConnected) { return; }
         googleFallback(panel, options, (error && error.message ? error.message : 'Mapillary could not be loaded.') + ' Google Maps is showing the selected coordinates instead.');
       });
@@ -103,5 +133,8 @@
   window.SMLMapillary = { open: open, close: close, configured: !!cfg.configured };
   document.addEventListener('click', delegatedTarget);
   document.addEventListener('keydown', delegatedTarget);
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && current && current.panel && current.panel.classList.contains('sml-mly-expanded')) { setExpanded(current.panel, false); }
+  });
   window.dispatchEvent(new CustomEvent('sml-mapillary-ready'));
 }());

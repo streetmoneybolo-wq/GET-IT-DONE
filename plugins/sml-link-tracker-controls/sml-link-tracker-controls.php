@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Link Tracker Controls
  * Description: Adds an interactive click map, inline street maps, and layered per-link access protection to the SML Link Intelligence Tracker.
- * Version: 1.5.1
+ * Version: 1.6.0
  * Author: StockMarketLoop
  */
 
 defined('ABSPATH') || exit;
 
-define('SML_LINK_TRACKER_CONTROLS_VERSION', '1.5.1');
+define('SML_LINK_TRACKER_CONTROLS_VERSION', '1.6.0');
 define('SML_LINK_TRACKER_CONTROLS_FILE', __FILE__);
 define('SML_LINK_TRACKER_CONTROLS_URL', plugin_dir_url(__FILE__));
 define('SML_LINK_TRACKER_CONTROLS_MAX_RULES', 200);

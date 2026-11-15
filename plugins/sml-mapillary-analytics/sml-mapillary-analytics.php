@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Mapillary Analytics
  * Description: Adds an inline Mapillary street-imagery viewer to Creator Analytics maps without exposing the Mapillary client token.
- * Version: 1.0.4
+ * Version: 1.0.6
  * Author: StockMarketLoop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'SML_MAPILLARY_ANALYTICS_VERSION', '1.0.4' );
+define( 'SML_MAPILLARY_ANALYTICS_VERSION', '1.0.6' );
 define( 'SML_MAPILLARY_ANALYTICS_FILE', __FILE__ );
 
 function sml_ma_token(): string {
@@ -156,8 +156,12 @@ add_action( 'rest_api_init', function () {
 function sml_ma_frontend_markup(): string {
 	$base = plugin_dir_url( SML_MAPILLARY_ANALYTICS_FILE );
 	$dir  = plugin_dir_path( SML_MAPILLARY_ANALYTICS_FILE );
-	$js_v = SML_MAPILLARY_ANALYTICS_VERSION . '-' . (int) @filemtime( $dir . 'assets/mapillary-analytics.js' );
-	$cs_v = SML_MAPILLARY_ANALYTICS_VERSION . '-' . (int) @filemtime( $dir . 'assets/mapillary-analytics.css' );
+	$js_file = $dir . 'assets/mapillary-analytics.js';
+	$cs_file = $dir . 'assets/mapillary-analytics.css';
+	$js_hash = @md5_file( $js_file );
+	$cs_hash = @md5_file( $cs_file );
+	$js_v = SML_MAPILLARY_ANALYTICS_VERSION . '-' . ( $js_hash ? substr( $js_hash, 0, 12 ) : (int) @filemtime( $js_file ) );
+	$cs_v = SML_MAPILLARY_ANALYTICS_VERSION . '-' . ( $cs_hash ? substr( $cs_hash, 0, 12 ) : (int) @filemtime( $cs_file ) );
 	$config = array(
 		'rest'       => esc_url_raw( rest_url( 'sml-mapillary/v1/nearest' ) ),
 		'nonce'      => wp_create_nonce( 'wp_rest' ),
