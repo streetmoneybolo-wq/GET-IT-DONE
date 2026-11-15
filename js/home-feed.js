@@ -153,7 +153,7 @@
     return HFB.promise;
   }
 
-  var QUOTES_URL='https://stockmarketloop-loop-kick.onrender.com/api/quotes', LOGO_URL='https://stockmarketloop-loop-kick.onrender.com/api/logo/', BRAND_IMG='https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@main/img/loop-logo.png', AJAX_URL='/wp-admin/admin-ajax.php', Q={}, qTimer=null, SYMS=[], refreshSignalWatermarks=function(){}, ingestSignalQuoteEvents=function(){};
+  var QUOTES_URL='https://stockmarketloop-loop-kick.onrender.com/api/quotes', LOGO_URL='https://stockmarketloop-loop-kick.onrender.com/api/logo/', BRAND_IMG='https://stockmarketloop.com/wp-content/sml-cdn/main/img/loop-logo.png', AJAX_URL='/wp-admin/admin-ajax.php', Q={}, qTimer=null, SYMS=[], refreshSignalWatermarks=function(){}, ingestSignalQuoteEvents=function(){};
   function fmtP(v){return v==null?'—':'$'+(Math.abs(Number(v))>=1000?Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):Number(v).toFixed(2));}
   function fmtPct(v){return v==null?'—':(v>=0?'▲ +':'▼ ')+Number(v).toFixed(2)+'%';}
   function fmtChg(v){return v==null?'—':(v>=0?'+':'')+Number(v).toFixed(2);}
@@ -231,6 +231,9 @@
         'body.sml-hf-loop-kick-nav .sml-loop-launcher{display:none !important;}' +
         // Un-fix the real feed and let it flow inside the center column.
         '#sml-hf-shell #sml-optimized-home{position:static !important;inset:auto !important;z-index:auto !important;height:auto !important;min-height:0 !important;width:auto !important;overflow:visible !important;background:transparent !important;display:block !important;}' +
+        // Keep the reserved promo/research slot and its duplicate public nav parked
+        // until the owner is ready to use that space for a major announcement.
+        '#sml-hf-shell #sml-optimized-home>.sml-research-nav,#sml-hf-shell #sml-optimized-home>#sml-primary-public-nav{display:none!important;}' +
         // The real feed is itself a full app (own header + nav/watchlist/groups rails).
         // Hide its chrome so only its real POSTS flow inside our shell's center column.
         '#sml-optimized-home .oh-top{display:none !important;}' +
@@ -431,9 +434,12 @@
         '.sml-hf-mmc-author{display:flex;align-items:center;gap:10px;}' +
         '.sml-hf-mmc-av{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#1B2533;color:#FF9F43;font-weight:800;flex:none;}' +
         '.sml-hf-mmc-text{margin:8px 0 4px;font-size:14.5px;line-height:1.5;color:#E6EDF5;white-space:pre-line;overflow-wrap:anywhere;}' +
-        '.sml-hf-mmc .sml-sth-actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;}' +
-        '.sml-hf-mmc .sml-sth-actions a{color:#9EFFC6;font-weight:700;font-size:12.5px;text-decoration:none;}' +
+        '.sml-hf-mmc .sml-sth-actions{display:grid!important;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:14px;margin-top:10px;}' +
+        '.sml-hf-mmc .sml-sth-actions a{display:inline-flex;align-items:center;justify-content:center;width:max-content;margin-left:0!important;margin-right:0!important;color:#9EFFC6;font-weight:700;font-size:12.5px;text-decoration:none;}' +
+        '.sml-hf-mmc-view{grid-column:2;justify-self:center;}' +
+        '.sml-hf-mmc-terminal{grid-column:3;justify-self:end;}' +
         '.sml-hf-mmc .sml-sth-actions a:hover{text-decoration:underline;}' +
+        '@media(max-width:620px){.sml-hf-mmc .sml-sth-actions{display:flex!important;flex-direction:column;align-items:center;justify-content:center}.sml-hf-mmc-view,.sml-hf-mmc-terminal{grid-column:auto;align-self:center;justify-self:auto}}' +
         // Group chat cards: why this thread is here, the latest reply, and a reply count.
         '.sml-hf-chat-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;}' +
         '.sml-hf-chat-top .sml-hf-grouppost-tag{margin:0;}' +
@@ -2551,10 +2557,10 @@
         // still require a title, so shorts do too. Shorts are EXCLUDED from the
         // Uploads rail (below) so they never double-show.
         var isShort = function(x){ var t=((x&&x.type)||x.kind||x.format||x.visibility||'').toString().toLowerCase(); return !!(x && x.title && (x.short || x.is_short || x.noindex || /short|clip|profile|noindex/.test(t))); };
-        var videoCount = Number(j && (j.video_count != null ? j.video_count : j.total_videos));
+        var channelCount = Number(j && (j.channel_count != null ? j.channel_count : j.total_channels));
         // Fail closed when an older endpoint does not report the total. The
-        // rail must not return until the site has at least 200 uploads.
-        recommendedUploadsReady = Number.isFinite(videoCount) && videoCount >= 200;
+        // recommendation rail returns automatically at 15 distinct Loop channels.
+        recommendedUploadsReady = Number.isFinite(channelCount) && channelCount >= 15;
         mediaRailData.uploads = recommendedUploadsReady ? items.filter(function(x){ var id=x && (x.id||x.watch_url||x.url||x.title); if(!id||seen[id]) return false; if(isShort(x)) return false; seen[id]=1; return true; }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; }) : [];
         mediaRailData.shorts = items.filter(function(x){ var id=x && (x.id||x.watch_url||x.url||x.title); if(!id||seenS[id]) return false; if(!isShort(x)) return false; seenS[id]=1; return true; }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
         positionRecommendationRails();
@@ -2750,7 +2756,7 @@
         '<span class="oh-post-author-name">' + esc(name) + '</span></div>' +
         '<div class="oh-meta">' + esc(name) + ' · on moomoo' + (c.date ? ' · ' + esc(mmcAgo(c.date)) : '') + '</div>' +
         '<p class="sml-hf-mmc-text">' + esc(textOnly(c.text || '')) + '</p>' +
-        '<div class="sml-sth-actions"><a href="' + esc(reply) + '" target="_blank" rel="noopener nofollow">View on moomoo →</a> <a href="/stock-chart/?symbol=' + encodeURIComponent(sym) + '">$' + esc(sym) + ' terminal</a></div>';
+        '<div class="sml-sth-actions"><a class="sml-hf-mmc-view" href="' + esc(reply) + '" target="_blank" rel="noopener nofollow">View on moomoo →</a> <a class="sml-hf-mmc-terminal" href="/stock-chart/?symbol=' + encodeURIComponent(sym) + '">$' + esc(sym) + ' terminal</a></div>';
       return art;
     }
     function fetchWatchMoomooComments(){
